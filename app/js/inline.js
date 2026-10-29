@@ -141,7 +141,8 @@
   // so it stays a paragraph.
   function escapeLineStart(md) {
     if (/^\d+[.)] /.test(md)) return md.replace(/^(\d+)/, '$1\\'); // 1\. stays a paragraph
-    return /^(#{1,3} |[-*+] |> |\[[ xX]\] |[ \t]*---[ \t]*$)/.test(md) ? '\\' + md : md;
+    if (/^[ \t]+---[ \t]*$/.test(md)) return md.replace('-', '\\-'); // a backslash before a space would show
+    return /^(#{1,3} |[-*+•] |> |\[[ xX]\] |---[ \t]*$)/.test(md) ? '\\' + md : md;
   }
 
   // A link address as the parser can read it back: spaces and unbalanced parentheses get

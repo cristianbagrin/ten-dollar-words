@@ -180,6 +180,8 @@
     if (cur.notionId && !incoming.notionId) for (const k of LINK_FIELDS) incoming[k] = cur[k];
     if (id === openId && isBusy()) {
       for (const k of LINK_FIELDS) cur[k] = incoming[k];
+      // Typed in another tab too: this tab's next save wins, so say so instead of losing it quietly.
+      if (incoming.text !== cur.text && incoming.textAt > cur.textAt) emit({ key: e.key, id, conflict: true });
       return;
     }
     // Text older than ours: another tab saved its copy (say, marking it synced) just after we

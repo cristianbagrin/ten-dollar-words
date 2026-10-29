@@ -80,3 +80,10 @@ test('bold that starts or ends with punctuation stays bold; code keeps a trailin
   assert.equal(show('`C:\\` done'), '<c>C:\\</> done');
   assert.equal(show('a ** b ** c'), 'a ** b ** c');
 });
+
+test('escapeLineStart: a spaced --- and a • stay paragraphs, with no stray backslash', () => {
+  assert.equal(Inline.escapeLineStart(' ---'), ' \\---');
+  assert.equal(Inline.block(' \\---').type, 'p');
+  assert.equal(Inline.escapeLineStart('• b'), '\\• b');
+  assert.equal(Inline.block('\\• b').type, 'p');
+});

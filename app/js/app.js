@@ -401,10 +401,17 @@
     onList();
   }
 
+  let conflictWarnedAt = 0;
+
   function onExternal(ch) {
     if (ch.key === 'tdw.syncWant') return; // sync's business: another tab came to the front
     if (ch.key === 'tdw.settings') { reloadSettings(); return; }
     if (ch.key === 'tdw.geminiKey') { Panel.updateAI(); return; }
+    if (ch.conflict) {
+      if (Date.now() - conflictWarnedAt > 60000) UI.toast('This draft is also being typed in another tab. Type in one tab at a time, or one will overwrite the other.');
+      conflictWarnedAt = Date.now();
+      return;
+    }
     const d = state.draft;
     if (ch.key && ch.key.startsWith('tdw.draft.') && d && ch.id === d.id) {
       if (!ch.draft) draftDeleted(ch.id);

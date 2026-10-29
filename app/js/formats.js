@@ -57,14 +57,17 @@
     const map = [];
     const emit = (s, at) => { out += s; for (let k = 0; k < s.length; k++) map.push(at); };
     let ls = 0;
+    let ol = 0; // numbered lists count from 1 again, the way the editor shows them
     const lines = text.split('\n');
     lines.forEach((line, li) => {
       const b = Inline.block(line);
+      ol = b.type === 'ol' ? ol + 1 : 0;
       const last = li === lines.length - 1;
       if (b.type === 'opaque') { ls += line.length + 1; return; } // images and such aren't text
       let from = 0, base = 0;
       if (b.type === 'h1' || b.type === 'h2' || b.type === 'h3') { from = b.prefix; base = f.plain ? 0 : Inline.B; }
       else if (b.type === 'quote') from = b.prefix;
+      else if (b.type === 'ol') { emit(ol + '. ', ls); from = b.prefix; }
       else if (b.type === 'todo') { emit(b.checked ? '☑ ' : '☐ ', ls); from = b.prefix; }
       else if (b.type === 'hr') { emit(line, ls); from = line.length; }
       const { flags, links } = b.type === 'hr' ? { flags: [], links: [] } : Inline.parse(line, from);
