@@ -238,6 +238,15 @@
     propTimers.delete(d.id);
     propNames.delete(d.id);
     if (d.notionId) { entriesCache.delete(d.notionId); pages.delete(d.notionId); }
+    if (d.dirty) {
+      // Text that never reached Notion is never thrown away: it stays here as a local copy.
+      Store.unlink(d);
+      Object.assign(d, { localOnly: true, dirty: false, propsDirty: false });
+      Store.saveDraft(d);
+      if (TDW.UI) TDW.UI.toast('“' + Store.displayTitle(d) + '” is gone from Notion. Your unsynced text is kept here as a local copy.');
+      call('onList');
+      return;
+    }
     Store.deleteDraft(d.id);
     call('onRemoteDelete', d);
   }
@@ -280,10 +289,20 @@
       remote.add(p.id);
       if (upsert(p)) changed = true;
     }
-    // Gone from Notion: removed there, so remove it here too.
+    // Missing from the list: ask Notion about the page itself before removing it here, since a
+    // page edited while the list was being read can slip between two pages of results.
     for (const d of Store.listDrafts()) {
       if (!d.notionId || d.localOnly || remote.has(d.notionId) || !linkedBefore.has(d.notionId)) continue;
       if (pushing.has(d.id) || Store.pageMarked(d.notionId, 'restored')) continue;
+      let page = null;
+      try { page = await Notion.getPage(d.notionId); } catch (e) {
+        if (e.code !== 'not_found') throw e;
+      }
+      if (page && !page.in_trash && !page.is_archived) {
+        if (upsert(page)) changed = true;
+        continue;
+      }
+      if (!alive(d) || pushing.has(d.id)) continue;
       removeLocal(d);
       changed = true;
     }
@@ -592,8 +611,9 @@
     return flushing;
   }
 
+  // Queued even while disconnected: it's sent once this database is connected again.
   function trash(d) {
-    if (!d || !d.notionId || !isConnected()) return;
+    if (!d || !d.notionId) return;
     queueTrash(d.notionId);
   }
 

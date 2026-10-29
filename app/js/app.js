@@ -4,7 +4,7 @@
   const TDW = window.TDW;
   const { Engine, Editor, UI, Store, Sound, Panel, Popover, Dialogs, Spell, Sync, Formats, Account } = TDW;
 
-  const APP_VERSION = '1.5.1';
+  const APP_VERSION = '1.6.0';
   const SAMPLE_TEXT = [
     'Every word you type costs ten dollars. That sounds harsh, but it is really the fastest way to learn to cut.',
     'Most people write long sentences because they are afraid that short ones will make them look simple to readers.',
@@ -42,9 +42,12 @@
     if (meta && v) meta.setAttribute('content', v);
   }
 
+  const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+  const skinOf = (s) => (s.autoNight && darkScheme.matches ? 'night' : s.skin);
+
   function applySettings() {
     const s = state.settings;
-    root.dataset.skin = s.skin;
+    root.dataset.skin = skinOf(s);
     root.style.setProperty('--text-offset', s.textSize + 'px');
     root.classList.toggle('tw-scroll', !!s.typewriterScroll);
     setThemeColor();
@@ -57,7 +60,7 @@
     if ('sound' in patch) Sound.setProfile(patch.sound);
     if ('volume' in patch) Sound.setVolume(patch.volume);
     if ('noBackspace' in patch) updateBackspace();
-    if ('skin' in patch || 'textSize' in patch) Editor.render();
+    if ('skin' in patch || 'textSize' in patch || 'autoNight' in patch) Editor.render();
   }
 
   // Settings changed outside this tab: in another tab, or on another device (through the account).
@@ -225,6 +228,13 @@
   }
 
   /* ---------- Drafts ---------- */
+  // Save before leaving a draft. If storage is full, stay on it: switching would lose the text.
+  function keepUnsaved() {
+    if (saveNow()) return true;
+    UI.toast('Storage is full, so this draft stays open until it saves. Delete old drafts to make room.');
+    return false;
+  }
+
   function loadDraft(d) {
     clearTimeout(saveTimer);
     state.draft = d;
@@ -269,7 +279,7 @@
   async function openDraft(target) {
     const d = typeof target === 'string' ? Store.getDraft(target) : target;
     if (!d || state.draft === d) return;
-    saveNow();
+    if (!keepUnsaved()) return;
     dropIfEmpty(state.draft);
     const seq = ++openSeq;
     state.draft = d;
@@ -281,7 +291,7 @@
   }
 
   function newDraft(text) {
-    saveNow();
+    if (state.draft && !keepUnsaved()) return state.draft;
     openSeq++;
     const prev = state.draft;
     const f = Formats.get(state.settings.defaultFormat);
@@ -391,10 +401,17 @@
     onList();
   }
 
+  let conflictWarnedAt = 0;
+
   function onExternal(ch) {
     if (ch.key === 'tdw.syncWant') return; // sync's business: another tab came to the front
     if (ch.key === 'tdw.settings') { reloadSettings(); return; }
     if (ch.key === 'tdw.geminiKey') { Panel.updateAI(); return; }
+    if (ch.conflict) {
+      if (Date.now() - conflictWarnedAt > 60000) UI.toast('This draft is also being typed in another tab. Type in one tab at a time, or one will overwrite the other.');
+      conflictWarnedAt = Date.now();
+      return;
+    }
     const d = state.draft;
     if (ch.key && ch.key.startsWith('tdw.draft.') && d && ch.id === d.id) {
       if (!ch.draft) draftDeleted(ch.id);
@@ -483,6 +500,7 @@
   }
 
   function setMode(m) {
+    if (m === 'edit' && firstHint) { UI.hideToast(); firstHint = false; } // it's done its job
     const anchor = captureAnchor();
     state.mode = m;
     root.dataset.mode = m;
@@ -653,6 +671,7 @@
 
   let pointerSelecting = false;
   let lastPointerAt = 0;
+  let firstHint = false;
 
   function wire() {
     editor.addEventListener('keydown', (e) => {
@@ -712,13 +731,18 @@
 
     const fs = $('btn-fullscreen');
     fs.hidden = !document.fullscreenEnabled;
+    const fsLabel = () => {
+      const on = !!document.fullscreenElement;
+      fs.replaceChildren(UI.icon(on ? 'shrink' : 'expand'));
+      fs.setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen');
+      fs.title = on ? 'Exit full screen' : 'Full screen';
+    };
+    fsLabel();
     fs.addEventListener('click', () => {
       const p = document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen();
       if (p && p.catch) p.catch(() => {});
     });
-    document.addEventListener('fullscreenchange', () => {
-      fs.textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen';
-    });
+    document.addEventListener('fullscreenchange', fsLabel);
   }
 
   function buildControls() {
@@ -746,7 +770,8 @@
     $('format-slot').append(controls.format, btn);
 
     controls.nb = UI.toggle({ label: 'No backspace', title: 'No backspace in Write mode', onChange: setBackspaceOff });
-    $('nb-slot').append(UI.el('span', { class: 'nb-label', 'aria-hidden': 'true', text: 'No backspace' }), controls.nb);
+    $('nb-slot').append(UI.el('span', { class: 'nb-label', 'aria-hidden': 'true' },
+      UI.el('span', { class: 'nb-long', text: 'No backspace' }), UI.el('span', { class: 'nb-short', text: 'No ⌫' })), controls.nb);
     $('nb-slot').querySelector('.nb-label').addEventListener('click', () => controls.nb.click());
   }
 
@@ -792,11 +817,17 @@
     if (!Store.isMemoryOnly() && !Store.hintShown()) {
       UI.toast(UI.device.touch || !canHover.matches ? 'Tap Edit to see your spend and fixes.' : 'Press ' + UI.keys('⌘E') + ' or click Edit to see your spend and fixes.');
       Store.setHintShown();
+      firstHint = true;
     }
     if (location.protocol === 'https:' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
     document.fonts.ready.then(() => Editor.render());
+    darkScheme.addEventListener('change', () => {
+      if (!state.settings.autoNight) return;
+      applySettings();
+      Editor.render();
+    });
     Spell.load('dict/en-us.txt?v=' + APP_VERSION).then(() => {
       Spell.setPersonal(state.settings.dictionary);
       if (state.mode === 'edit') refresh();

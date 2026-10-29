@@ -67,18 +67,33 @@
     return fail('error', msg || 'HTTP ' + status, msg);
   }
 
+  const TIMEOUT_MS = 45000;
+
+  // A stalled connection gives up after TIMEOUT_MS, as if Gemini couldn't be reached.
   async function request(path, init, key) {
+    const timer = new AbortController();
+    const timeout = setTimeout(() => timer.abort(), TIMEOUT_MS);
+    const caller = init && init.signal;
+    if (caller) {
+      if (caller.aborted) timer.abort();
+      else caller.addEventListener('abort', () => timer.abort(), { once: true });
+    }
+    const timedOut = () => !(caller && caller.aborted) && timer.signal.aborted;
     let res;
     try {
       res = await fetch(BASE + path, Object.assign({}, init, {
+        signal: timer.signal,
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }
       }));
     } catch (e) {
-      throw networkError(e);
+      clearTimeout(timeout);
+      throw timedOut() ? fail('unreachable') : networkError(e);
     }
     let body = null;
     try { body = await res.json(); } catch (e) {
-      if (e && e.name === 'AbortError') throw fail('cancelled');
+      if (e && e.name === 'AbortError') throw timedOut() ? fail('unreachable') : fail('cancelled');
+    } finally {
+      clearTimeout(timeout);
     }
     if (!res.ok) throw httpError(res.status, body);
     return body || {};

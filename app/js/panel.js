@@ -173,6 +173,69 @@
     if (!open) panel.scrollTop = 0;
   }
 
+  // The sheet follows your finger and, when you let go, lands where the flick was heading.
+  // A tap still opens and closes it.
+  function wireSheetDrag() {
+    const panel = $('panel');
+    const handle = $('panel-handle');
+    let drag = null;
+    let swallowClick = false;
+    const translateY = () => {
+      const t = getComputedStyle(panel).transform;
+      return t && t !== 'none' ? new DOMMatrixReadOnly(t).m42 : 0;
+    };
+    // Past either end the sheet gives way less and less, rather than stopping dead.
+    const rubber = (over, dim) => (over * dim * 0.55) / (dim + 0.55 * Math.abs(over));
+    const project = (v) => (v / 1000) * 0.998 / (1 - 0.998);
+
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !window.matchMedia('(max-width: 900px)').matches) return;
+      const sab = Math.max(0, parseFloat(getComputedStyle(panel).paddingBottom) - 24);
+      const closed = panel.offsetHeight - handle.offsetHeight - sab;
+      const y0 = translateY(); // start from where it is on screen, even mid-flight
+      drag = { id: e.pointerId, startY: e.clientY, y0, y: y0, closed, moved: false, hist: [{ y: e.clientY, t: e.timeStamp }] };
+      handle.setPointerCapture(e.pointerId); // keep following the finger once it leaves the handle
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dy = e.clientY - drag.startY;
+      if (!drag.moved) {
+        if (Math.abs(dy) < 6) return;
+        drag.moved = true;
+        panel.classList.add('is-dragging');
+      }
+      let y = drag.y0 + dy;
+      if (y < 0) y = rubber(y, drag.closed);
+      else if (y > drag.closed) y = drag.closed + rubber(y - drag.closed, drag.closed);
+      drag.y = y;
+      panel.style.transform = 'translateY(' + y + 'px)';
+      drag.hist.push({ y: e.clientY, t: e.timeStamp });
+      if (drag.hist.length > 5) drag.hist.shift();
+    });
+    const end = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const d = drag;
+      drag = null;
+      if (!d.moved) return;
+      swallowClick = true;
+      setTimeout(() => { swallowClick = false; }, 0);
+      const a = d.hist[0], b = d.hist[d.hist.length - 1];
+      const v = b.t > a.t ? ((b.y - a.y) / (b.t - a.t)) * 1000 : 0; // px/s, down is positive
+      const open = d.y + project(v) < d.closed / 2;
+      // Settle from where it is now, quickly at first, like the flick it came from.
+      panel.style.transition = 'transform 420ms cubic-bezier(.2, .9, .25, 1)';
+      panel.classList.remove('is-dragging');
+      setSheet(open);
+      panel.style.transform = '';
+      setTimeout(() => { if (!drag) panel.style.transition = ''; }, 440);
+    };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+    handle.addEventListener('click', (e) => {
+      if (swallowClick) { e.stopImmediatePropagation(); swallowClick = false; }
+    }, true);
+  }
+
   /* ---------- Render ---------- */
   function updateAI() {
     const none = TDW.AI.status() === 'none';
@@ -431,6 +494,7 @@
       if (e.currentTarget.title) TDW.UI.toast(e.currentTarget.title);
     });
     $('panel-handle').addEventListener('click', () => setSheet(!$('panel').classList.contains('is-open')));
+    wireSheetDrag();
     $('reg-budget').addEventListener('click', openBudget);
     const form = $('budget-form');
     form.noValidate = true;

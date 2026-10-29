@@ -55,9 +55,15 @@ The app notices a phone, in the browser or from the Home Screen, and switches to
 - Settings lists typing shortcuts (`#`, `-`, `1.`, `[]`, `>`, `---`, `**bold**`) instead of keyboard shortcuts, and first-run tips say tap, not click or ⌘.
 - X threads get a **+ New post** button under the last post (there's no ⌘↩ on a phone). Typing `---` on a new line also works, even after the iPhone turns `--` into a dash.
 - Tap the dollar amount in Edit mode for the word count, characters and reading time (there's no hover).
+- In Edit mode the tools sit in a sheet at the bottom. Drag it up or flick it down, or tap its bar.
+- The No backspace switch is labelled "No ⌫" to fit.
 - Tips and messages move above the on-screen keyboard.
 - The account's Settings suggest setting up Notion and Gemini on a computer and signing in on the phone, which is quicker than copying keys on a small screen.
 - Silent mode mutes the typing sounds on an iPhone; Settings says so.
+
+## Look
+
+Settings → Look picks a skin: Typewriter, Ditto or Night desk. Turn on "Night desk when your device is in dark mode" to switch to Night desk whenever your device goes dark, and back to your skin when it goes light. The app also follows your system's reduce motion, reduce transparency and increase contrast settings.
 
 ## Budget
 

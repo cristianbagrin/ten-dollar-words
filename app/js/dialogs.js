@@ -251,7 +251,9 @@
           radio('skin', value, s.skin === value, () => update({ skin: value })),
           el('span', { class: 'skin-sample', 'aria-hidden': 'true', text: 'Aa' }),
           el('span', { class: 'skin-name' }, el('span', { class: 'skin-dot', 'aria-hidden': 'true' }), name),
-          el('span', { class: 'skin-desc', text: desc })))));
+          el('span', { class: 'skin-desc', text: desc })))),
+      switchRow('Night desk when your device is in dark mode', !!s.autoNight, (on) => update({ autoNight: on }),
+        'Your look comes back in light mode.'));
   }
 
   function soundSection(s) {

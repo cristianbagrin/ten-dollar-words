@@ -6,7 +6,7 @@
   const TDW = window.TDW = window.TDW || {};
 
   const DEFAULTS = {
-    skin: 'typewriter', sound: 'typewriter', volume: 0.35, typewriterScroll: true, textSize: 0, defaultBudget: 2000,
+    skin: 'typewriter', autoNight: false, sound: 'typewriter', volume: 0.35, typewriterScroll: true, textSize: 0, defaultBudget: 2000,
     dictionary: [], noBackspace: true, defaultFormat: 'basic',
     highlights: { spelling: true, veryHard: true, hard: true, complex: true, passive: true, adverb: true, qualifier: true }
   };
@@ -180,6 +180,8 @@
     if (cur.notionId && !incoming.notionId) for (const k of LINK_FIELDS) incoming[k] = cur[k];
     if (id === openId && isBusy()) {
       for (const k of LINK_FIELDS) cur[k] = incoming[k];
+      // Typed in another tab too: this tab's next save wins, so say so instead of losing it quietly.
+      if (incoming.text !== cur.text && incoming.textAt > cur.textAt) emit({ key: e.key, id, conflict: true });
       return;
     }
     // Text older than ours: another tab saved its copy (say, marking it synced) just after we

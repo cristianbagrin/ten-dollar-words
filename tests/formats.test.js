@@ -58,3 +58,7 @@ test('copying from Basic keeps headings, lists, bold and safe links', () => {
   assert.equal(F.toHTML('# Title\nA **b** [x](https://a.co) [y](javascript:void)\n- one\n- two\n\n> q <script>'),
     '<h1>Title</h1><p>A <strong>b</strong> <a href="https://a.co">x</a> y</p><ul><li>one</li><li>two</li></ul><blockquote>q &lt;script&gt;</blockquote>');
 });
+
+test('numbered lists count from 1 in each run, as the editor shows them', () => {
+  assert.equal(F.render('1. one\n3. three\n\n5. x', 'linkedin').text, '1. one\n2. three\n\n1. x');
+});

@@ -621,8 +621,10 @@
   }
 
   function undo() {
-    const e = history.undo.pop();
+    const e = history.undo[history.undo.length - 1];
     if (!e) return;
+    if (call('canDelete') === false) { call('onBlocked'); return; } // undo would take text away
+    history.undo.pop();
     history.redo.push(e);
     restore(e.before, 'undo');
   }
@@ -744,6 +746,8 @@
 
   function insertText(data, kind) {
     if (data == null) return;
+    // An image or other Notion block isn't text: typing into it would turn it into a paragraph.
+    if (P[vLineOf(sel.start)].blk.type === 'opaque' || P[vLineOf(sel.end)].blk.type === 'opaque') return;
     const s = String(data).replace(/\r\n?/g, '\n');
     const typedOne = kind === 'type';
     const style = sel.end > sel.start ? (() => { const i = vLineOf(sel.start), k = sel.start - vstarts[i]; const c = P[i].chars[k]; return pending || (c ? { f: c.f, link: c.link } : styleAt(sel.start)); })() : styleAt(sel.start);
@@ -876,6 +880,11 @@
     }
     // At the start of a line.
     const t = p.blk.type;
+    if (t === 'opaque') {
+      // An image or other Notion block can't join the text above; an empty line above just goes.
+      if (i > 0 && P[i - 1].blk.type === 'p' && !P[i - 1].vis) return commitLines(i - 1, i - 1, [], { line: i - 1, col: 0 }, 'delete');
+      return;
+    }
     if (t !== 'p' && t !== 'hr' && t !== 'opaque') {
       return commitLines(i, i, [{ blk: { type: 'p' }, chars: p.chars }], { line: i, col: 0 }, 'delete'); // a list item or heading becomes text
     }
@@ -1070,6 +1079,11 @@
   function syncSel() {
     if (composing || document.activeElement !== root) return;
     const s = readSel();
+    if (s && s.end > s.start) {
+      // A triple-click selects up to the start of the next line; editing it mustn't touch that line.
+      const a = vLineOf(s.start), b = vLineOf(s.end);
+      if (b > a && s.end === vstarts[b] && s.start === vstarts[a]) s.end = vstarts[b - 1] + P[b - 1].vis.length;
+    }
     if (s && (s.start !== sel.start || s.end !== sel.end)) {
       if (pending && !(expectSel && expectSel.start === s.start && expectSel.end === s.end)) pending = null;
       sel = s;
@@ -1137,8 +1151,13 @@
 
   /* ---------- Clipboard ---------- */
 
+  const MD_TYPE = 'application/x-tdw-markdown';
+
   function fromTransfer(dt) {
     if (!dt) return null;
+    let own = '';
+    try { own = dt.getData(MD_TYPE); } catch (_) { /* not ours */ }
+    if (own) return own.replace(/\r\n?/g, '\n');
     const html = dt.getData('text/html');
     if (html) {
       const md = htmlToMd(html);
@@ -1232,6 +1251,7 @@
     const c = call('clipboard', md) || { text: md };
     dt.setData('text/plain', c.text);
     if (c.html) dt.setData('text/html', c.html);
+    try { dt.setData(MD_TYPE, md); } catch (_) { /* a browser without custom types gets the rest */ }
   }
 
   /* ---------- Composition and anything else the browser typed itself ---------- */
