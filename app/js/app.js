@@ -4,7 +4,7 @@
   const TDW = window.TDW;
   const { Engine, Editor, UI, Store, Sound, Panel, Popover, Dialogs, Spell, Sync, Formats, Account } = TDW;
 
-  const APP_VERSION = '1.5.1';
+  const APP_VERSION = '1.6.0';
   const SAMPLE_TEXT = [
     'Every word you type costs ten dollars. That sounds harsh, but it is really the fastest way to learn to cut.',
     'Most people write long sentences because they are afraid that short ones will make them look simple to readers.',
@@ -228,6 +228,13 @@
   }
 
   /* ---------- Drafts ---------- */
+  // Save before leaving a draft. If storage is full, stay on it: switching would lose the text.
+  function keepUnsaved() {
+    if (saveNow()) return true;
+    UI.toast('Storage is full, so this draft stays open until it saves. Delete old drafts to make room.');
+    return false;
+  }
+
   function loadDraft(d) {
     clearTimeout(saveTimer);
     state.draft = d;
@@ -272,7 +279,7 @@
   async function openDraft(target) {
     const d = typeof target === 'string' ? Store.getDraft(target) : target;
     if (!d || state.draft === d) return;
-    saveNow();
+    if (!keepUnsaved()) return;
     dropIfEmpty(state.draft);
     const seq = ++openSeq;
     state.draft = d;
@@ -284,7 +291,7 @@
   }
 
   function newDraft(text) {
-    saveNow();
+    if (state.draft && !keepUnsaved()) return state.draft;
     openSeq++;
     const prev = state.draft;
     const f = Formats.get(state.settings.defaultFormat);

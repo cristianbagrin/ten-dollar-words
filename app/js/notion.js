@@ -100,11 +100,12 @@
     getDatabase: (id) => request('GET', '/databases/' + enc(id)),
     getDataSource: (id) => request('GET', '/data_sources/' + enc(id)),
     query: (dsId, opts) => request('POST', '/data_sources/' + enc(dsId) + '/query', {
-      sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }],
+      sorts: [(opts && opts.sort) || { timestamp: 'last_edited_time', direction: 'descending' }],
       page_size: (opts && opts.page_size) || 100,
       start_cursor: (opts && opts.start_cursor) || undefined
     }),
-    queryAll: (dsId) => paginate((cursor) => Notion.query(dsId, { page_size: 100, start_cursor: cursor })),
+    // Oldest first: an edit made while paging can't move a page out of the pages still to come.
+    queryAll: (dsId) => paginate((cursor) => Notion.query(dsId, { page_size: 100, start_cursor: cursor, sort: { timestamp: 'created_time', direction: 'ascending' } })),
     getPage: (id) => request('GET', '/pages/' + enc(id)),
     createPage: (body) => request('POST', '/pages', body),
     updatePage: (id, body) => request('PATCH', '/pages/' + enc(id), body),

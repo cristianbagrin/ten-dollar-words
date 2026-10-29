@@ -1,7 +1,7 @@
 /* Service worker: precache the app, network-first for app files, cache-first for Google Fonts.
    The account API (/api/) always goes to the network.
    Pages ask for files with ?v=…; the precache stores them without it, so offline lookups ignore the query. */
-const VERSION = 'tdw-1.5.1';
+const VERSION = 'tdw-1.6.0';
 const FONT_CACHE = 'tdw-fonts';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 const PRECACHE = [
@@ -41,8 +41,10 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(fetch(req).then((res) => {
     if (res.ok) {
       const copy = res.clone();
-      caches.open(VERSION).then((cache) => cache.put(req, copy));
+      event.waitUntil(caches.open(VERSION).then((cache) => cache.put(req, copy)));
     }
     return res;
-  }).catch(() => caches.match(req, { ignoreSearch: true }).then((hit) => hit || caches.match('./'))));
+  }).catch(() => caches.match(req) // the exact version first, then any copy of the file
+    .then((hit) => hit || caches.match(req, { ignoreSearch: true }))
+    .then((hit) => hit || caches.match('./'))));
 });
