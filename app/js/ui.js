@@ -49,7 +49,9 @@
     chevRight: svg('<path d="M6 4l4 4-4 4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'),
     chevDown: svg('<path d="M4.5 6.5l3.5 3.5 3.5-3.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'),
     trash: svg('<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2c.05.7.6 1.3 1.3 1.3h3.2c.7 0 1.25-.6 1.3-1.3l.6-8.2" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'),
-    plus: svg('<path d="M8 3.5v9M3.5 8h9" stroke-width="1.6" stroke-linecap="round"/>')
+    plus: svg('<path d="M8 3.5v9M3.5 8h9" stroke-width="1.6" stroke-linecap="round"/>'),
+    expand: svg('<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
+    shrink: svg('<path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>')
   };
 
   // Icons are static constants, so parsing them as HTML is safe.
@@ -92,17 +94,21 @@
   }
 
   let toastTimer = 0;
+  // It leaves the way it came: down and out.
   function hideToast() {
     clearTimeout(toastTimer);
     const t = document.getElementById('toast');
     if (!t) return;
-    t.hidden = true;
-    rehostToast();
+    const done = () => { t.classList.remove('is-leaving'); t.hidden = true; rehostToast(); };
+    if (t.hidden || reducedMotion()) { done(); return; }
+    t.classList.add('is-leaving');
+    toastTimer = setTimeout(done, 160);
   }
 
   function toast(msg, action) {
     const t = document.getElementById('toast');
     if (!t) return;
+    t.classList.remove('is-leaving');
     t.replaceChildren(el('span', { class: 'toast-msg', text: msg }));
     if (action) {
       t.append(el('button', {
@@ -175,7 +181,7 @@
           { transform: 'translateX(' + (lead === 'right' ? at.x : left) + 'px) scaleY(.82)', width: (right - left) + 'px', offset: 0.42, easing: 'cubic-bezier(.2,.8,.25,1)' },
           { transform: 'translateX(' + to.x + 'px) scaleY(1.07)', width: to.w + 'px', offset: 0.8, easing: 'ease-out' },
           { transform: 'translateX(' + to.x + 'px)', width: to.w + 'px' }
-        ], { duration: 480, easing: 'linear' });
+        ], { duration: 360, easing: 'linear' });
       }
       thumb.style.transform = 'translateX(' + to.x + 'px)';
       thumb.style.width = to.w + 'px';

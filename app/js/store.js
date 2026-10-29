@@ -6,7 +6,7 @@
   const TDW = window.TDW = window.TDW || {};
 
   const DEFAULTS = {
-    skin: 'typewriter', sound: 'typewriter', volume: 0.35, typewriterScroll: true, textSize: 0, defaultBudget: 2000,
+    skin: 'typewriter', autoNight: false, sound: 'typewriter', volume: 0.35, typewriterScroll: true, textSize: 0, defaultBudget: 2000,
     dictionary: [], noBackspace: true, defaultFormat: 'basic',
     highlights: { spelling: true, veryHard: true, hard: true, complex: true, passive: true, adverb: true, qualifier: true }
   };
