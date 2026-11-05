@@ -1,4 +1,6 @@
-# Writing challenges: the full list, for approval one by one
+# Writing challenges
+
+**Approved:** every challenge below except A7 (One paragraph), which is rejected and not built.
 
 **How a challenge works (common to all of them):** a **Challenge** button (in the Lab for now) has three choices: **Roll** for one random challenge, **Roll a combo** for 2 or 3 that fit together, or **Pick** one from the list. The active challenge sits in a small card with a live checklist (✓ / ✗ per rule). When every rule holds, the card stamps **Challenge met**, in the same style as the "Over budget" stamp, with the coin sound. Challenges never block typing. They only check (rule 1 of the plan: the tool marks, it doesn't stop you). They're saved per draft, and the account carries them. Ghosted text and Overflow don't count.
 
@@ -17,7 +19,6 @@ Legend for **How**:
 | A4 | **Tweet-size** | Make the point in 280 characters or fewer. | Local |
 | A5 | **Half price** | Write it, then press "Halve it". The budget drops to half your current count, and you cut to fit by hand. | Local |
 | A6 | **Inflation** | Your budget shrinks by $10 every minute you write. Finish before you're over. | Local |
-| A7 | **One paragraph** | The whole piece in a single paragraph. | Local |
 
 ## B. Sentences and rhythm
 

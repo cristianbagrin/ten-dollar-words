@@ -138,9 +138,9 @@ Each step is committed and tested on its own. Steps 3 to 7 can run as parallel w
 7. **Writing challenges** (section 11), only the ones approved.
 8. **Small things:** live count, save/open, post to X, shortcuts sheet. Then README, version 2.0.0, SW precache, full test run, drive it in the browser with Playwright, delete `video-examples/`, merge, deploy, and check the live version.
 
-## 11. Writing challenges (awaiting approval one by one)
+## 11. Writing challenges
 
-The full list is in `PLAN-v4-challenges.md`. Only the challenges the owner approves get built.
+The list is in `PLAN-v4-challenges.md`. All are approved except A7.
 
 ## Not doing (yet)
 - The M↓ and three-dot icons at top center in the demo. They're never clicked, so what they do is unknown.
