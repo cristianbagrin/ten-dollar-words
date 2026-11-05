@@ -10,6 +10,7 @@
   'use strict';
   const TDW = window.TDW = window.TDW || {};
   const Inline = TDW.Inline;
+  const Marks = TDW.Marks;
   const { MD, B, I, S, C, L } = Inline;
   const STYLE = B | I | S | C;
   const TYPES = ['spelling', 'hard', 'veryHard', 'complex', 'passive', 'adverb', 'qualifier'];
@@ -17,6 +18,7 @@
   const PREFIX = { p: '', h1: '# ', h2: '## ', h3: '### ', li: '- ', quote: '> ' };
   const PLACEHOLDER = { h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', li: 'List', ol: 'List', todo: 'To-do', quote: 'Quote' };
   const LISTY = new Set(['li', 'ol', 'todo', 'quote']);
+  const FREE_UNDO = new Set(['marks', 'stash', 'swap']); // undone even with backspace off: nothing typed is lost
 
   let root = null;       // the contenteditable
   let surface = null;    // positioned parent of root, under and aids
@@ -39,6 +41,9 @@
   let fxMarks = [];
   let sentMarks = [];
   let wordMarks = [];
+  let ann = Marks.EMPTY;  // alternatives and ghosts: they follow every edit and live in the undo history
+  let labMarks = [];      // the Lab's marks and trim's cuts: { start, end, type, id }; an edit over one drops it
+  let openAlt = null;     // the alternative the panel is working on (underlined even with one option)
   let activeId = null;
   let resizeRaf = 0;
   let reconcileTimer = 0;
@@ -215,12 +220,28 @@
     return out;
   }
   const isActive = (m) => !!m.id && m.id === activeId;
+  // Outer to inner. Each layer's marks never overlap each other.
   const OPEN = [
+    (m) => '<span class="gh">',
+    (m) => '<span class="alt alt-sentence' + (m.id === openAlt ? ' is-open' : '') + '" data-alt="' + esc(m.id) + '">',
+    (m) => '<span class="alt alt-word' + (m.id === openAlt ? ' is-open' : '') + '" data-alt="' + esc(m.id) + '">',
     (m) => '<span class="fx fx-' + m.type + '">',
+    (m) => '<span class="lab lab-' + m.type + (isActive(m) ? ' is-active' : '') + '" data-lab="' + esc(m.id) + '">',
     (m) => '<span class="hs hs-' + m.type + (isActive(m) ? ' is-active' : '') + '" data-id="' + esc(m.id) + '">',
     (m) => '<mark class="hl hl-' + m.type + (isActive(m) ? ' is-active' : '') + '" data-id="' + esc(m.id) + '">'
   ];
-  const CLOSE = ['</span>', '</span>', '</mark>'];
+  const CLOSE = ['</span>', '</span>', '</span>', '</span>', '</span>', '</span>', '</mark>'];
+  const LAYERS = OPEN.length;
+  const shownAlt = (a) => a.options.length > 1 || a.id === openAlt;
+  // Each layer's marks, in markdown offsets, from what the editor holds now.
+  function layerLists() {
+    const sen = [], word = [];
+    for (const a of ann.alts) {
+      if (!shownAlt(a)) continue;
+      if (a.kind === 'sentence') sen.push(a); else if (a.kind === 'word') word.push(a);
+    }
+    return [ann.ghosts, sen, word, fxMarks, labMarks, sentMarks, wordMarks];
+  }
 
   function styleRuns(p) {
     const out = [];
@@ -257,11 +278,11 @@
   // A line's HTML depends only on its markdown and the marks on it, so it is kept and reused:
   // typing redraws one line, not the whole draft.
   const htmlMemo = new Map();
-  function lineHTML(i, markers, fx, sm, wm) {
+  function lineHTML(i, markers, byLayer) {
     const p = P[i];
     if (p.blk.type === 'hr') return '<br>';
-    const layers = [clip(fx, i), clip(sm, i), clip(wm, i)];
-    const plain = !markers.length && !layers[0].length && !layers[1].length && !layers[2].length;
+    const layers = byLayer.map((m) => clip(m.get(i) || NONE, i));
+    const plain = !markers.length && layers.every((Ls) => !Ls.length);
     if (plain && p.html !== undefined) return p.html;
     let key = '';
     if (!plain) {
@@ -269,7 +290,7 @@
       for (const m of markers) key += m.index + m.html;
       for (const Ls of layers) {
         key += '\u0001';
-        for (const r of Ls) key += r.start + ',' + r.end + ',' + r.m.type + ',' + (r.m.id || '') + (isActive(r.m) ? '!' : '') + ';';
+        for (const r of Ls) key += r.start + ',' + r.end + ',' + r.m.type + ',' + (r.m.id || '') + (isActive(r.m) || r.m.id === openAlt ? '!' : '') + ';';
       }
       const hit = htmlMemo.get(key);
       if (hit !== undefined) return hit;
@@ -293,6 +314,7 @@
     const folds = aids && aids.folds;
     const d = drawn;
     if (d && d.text === text && d.fx === fxMarks && d.sm === sentMarks && d.wm === wordMarks && d.folds === folds &&
+      d.ann === ann && d.lab === labMarks && d.openAlt === openAlt &&
       d.active === activeId && d.thread === thread && d.rendered === rendered && root.childNodes.length === rendered.length) {
       placeAids();
       return;
@@ -304,18 +326,22 @@
       if (!byLine.has(i)) byLine.set(i, []);
       byLine.get(i).push({ index: colOf(i, f.index - starts[i]), html: '<span class="mk mk-fold" data-fold="' + f.label + '"></span>' });
     }
-    const fx = byLineOf(fxMarks), sm = byLineOf(sentMarks), wm = byLineOf(wordMarks);
+    const byLayer = layerLists().map(byLineOf);
+    const palts = new Map();
+    for (const a of ann.alts) if (a.kind === 'paragraph' && shownAlt(a)) palts.set(lineOf(a.start), a);
     const n = lines.length;
     const items = new Array(n);
     let ol = 0;
     for (let i = 0; i < n; i++) {
       ol = P[i].blk.type === 'ol' ? ol + 1 : 0;
       const a = lineAttrs(i, ol);
-      a.html = lineHTML(i, byLine.get(i) || NONE, fx.get(i) || NONE, sm.get(i) || NONE, wm.get(i) || NONE);
+      a.html = lineHTML(i, byLine.get(i) || NONE, byLayer);
+      const pa = palts.get(i);
+      if (pa) { a.cls += ' has-palt' + (pa.id === openAlt ? ' is-open' : ''); a.alt = pa.id; }
       items[i] = a;
     }
     const touched = commit(items);
-    drawn = { text, fx: fxMarks, sm: sentMarks, wm: wordMarks, folds, active: activeId, thread, rendered };
+    drawn = { text, fx: fxMarks, sm: sentMarks, wm: wordMarks, folds, active: activeId, thread, rendered, ann, lab: labMarks, openAlt };
     root.classList.toggle('is-empty', text === '');
     if (touched && document.activeElement === root) applySel();
     placeAids();
@@ -325,11 +351,12 @@
     if (node.className !== a.cls) node.className = a.cls;
     if (a.n) node.dataset.n = a.n; else delete node.dataset.n;
     if (a.ph) node.dataset.ph = a.ph; else delete node.dataset.ph;
+    if (a.alt) node.dataset.alt = a.alt; else delete node.dataset.alt;
     node.innerHTML = a.html;
   }
 
   // Reused HTML strings are the same objects, so comparing them is cheap.
-  const sameItem = (x, y) => x.html === y.html && x.cls === y.cls && x.n === y.n && x.ph === y.ph;
+  const sameItem = (x, y) => x.html === y.html && x.cls === y.cls && x.n === y.n && x.ph === y.ph && x.alt === y.alt;
 
   function commit(items) {
     const kids = root.children;
@@ -478,7 +505,7 @@
 
   /* ---------- Aids: fold ticks, X post windows ---------- */
 
-  const aidPool = { tick: [], label: [], box: [], foot: [] };
+  const aidPool = { tick: [], label: [], box: [], foot: [], pager: [] };
   function pooled(kind, host, make) {
     const list = aidPool[kind];
     return (i) => {
@@ -506,9 +533,46 @@
     return [a, b];
   }
 
+  // A pager under each alternative: one dot per option, the one on the page filled. The first
+  // dot is the original, so a filled dot further along says you're on a variation. A paragraph
+  // gets a thin line in the left margin with its dots stacked on it.
+  function placePagers(sr) {
+    const pager = pooled('pager', aidsEl, () => Object.assign(document.createElement('span'), { className: 'alt-pager' }));
+    let k = 0;
+    for (const a of ann.alts) {
+      if (!shownAlt(a)) continue;
+      let box = null, vertical = false;
+      if (a.kind === 'paragraph') {
+        const el = root.children[lineOf(a.start)];
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (!r.height) continue;
+        box = 'left:' + (r.left - sr.left - 14) + 'px;top:' + (r.top - sr.top) + 'px;height:' + r.height + 'px';
+        vertical = true;
+      } else {
+        const rects = Editor.altRects(a.id);
+        const r = rects[rects.length - 1];
+        if (!r) continue;
+        box = 'left:' + (r.right - sr.left) + 'px;top:' + (r.bottom - sr.top - 3) + 'px';
+      }
+      const p = pager(k++);
+      p.className = 'alt-pager' + (vertical ? ' is-paragraph' : '') + (a.active ? ' is-variation' : '') + (a.id === openAlt ? ' is-open' : '');
+      p.style.cssText = box;
+      const want = Math.min(a.options.length, 12);
+      if (p.childElementCount !== want || p._active !== a.active) {
+        const dots = [];
+        for (let j = 0; j < want; j++) dots.push(Object.assign(document.createElement('i'), { className: j === Math.min(a.active, want - 1) ? 'on' : '' }));
+        p.replaceChildren(...dots);
+        p._active = a.active;
+      }
+    }
+    hideFrom('pager', k);
+  }
+
   function placeAids() {
     if (!aidsEl || !root.children.length) return;
     const sr = surface.getBoundingClientRect();
+    placePagers(sr);
     const folds = [...root.querySelectorAll('.mk-fold')];
     const tick = pooled('tick', aidsEl, () => Object.assign(document.createElement('span'), { className: 'fold-tick' }));
     const label = pooled('label', aidsEl, () => Object.assign(document.createElement('span'), { className: 'fold-label margin-aid' }));
@@ -598,13 +662,13 @@
     const now = Date.now();
     const top = history.undo[history.undo.length - 1];
     const joinable = top && kind === top.kind && (kind === 'type' || kind === 'delete') && now - top.at < 1200 &&
-      top.after.text === before.text && !(kind === 'type' && /\s/.test(insert) && !/\s$/.test(top.insert || ''));
+      top.after.text === before.text && top.after.ann === before.ann && !(kind === 'type' && /\s/.test(insert) && !/\s$/.test(top.insert || ''));
     if (joinable) {
-      top.after = { text, sel: Object.assign({}, sel) };
+      top.after = { text, sel: Object.assign({}, sel), ann };
       top.at = now;
       top.insert = insert;
     } else {
-      history.undo.push({ before, after: { text, sel: Object.assign({}, sel) }, kind, at: now, insert });
+      history.undo.push({ before, after: { text, sel: Object.assign({}, sel), ann }, kind, at: now, insert });
       if (history.undo.length > 400) history.undo.shift();
     }
     history.redo.length = 0;
@@ -614,7 +678,8 @@
     setModel(state.text);
     sel = Object.assign({}, state.sel);
     pending = null;
-    fxMarks = sentMarks = wordMarks = [];
+    fxMarks = sentMarks = wordMarks = labMarks = [];
+    ann = state.ann || Marks.EMPTY;
     render();
     focus();
     call('onChange', { kind });
@@ -623,7 +688,7 @@
   function undo() {
     const e = history.undo[history.undo.length - 1];
     if (!e) return;
-    if (call('canDelete') === false) { call('onBlocked'); return; } // undo would take text away
+    if (call('canDelete') === false && e.after.text !== e.before.text && !FREE_UNDO.has(e.kind)) { call('onBlocked'); return; } // undo would take text away
     history.undo.pop();
     history.redo.push(e);
     restore(e.before, 'undo');
@@ -643,14 +708,18 @@
   // Replace markdown [start, end) with insert. selAfter: a visible selection, or a function of the
   // new model that returns one.
   function applyMd(start, end, insert, selAfter, kind, typed) {
-    const before = { text, sel: Object.assign({}, sel) };
+    const before = { text, sel: Object.assign({}, sel), ann };
     setModel(text.slice(0, start) + insert + text.slice(end));
-    fxMarks = shift(fxMarks, start, end, insert.length);
-    sentMarks = shift(sentMarks, start, end, insert.length);
-    wordMarks = shift(wordMarks, start, end, insert.length);
     const s = typeof selAfter === 'function' ? selAfter() : selAfter;
     sel = s ? { start: s.start, end: s.end, backward: false } : sel;
     if (thread) fillEmptyPosts();
+    // Whole lines get rewritten, so marks follow the one region that really changed.
+    const c = Marks.diff(before.text, text);
+    fxMarks = shift(fxMarks, c.start, c.end, c.len);
+    sentMarks = shift(sentMarks, c.start, c.end, c.len);
+    wordMarks = shift(wordMarks, c.start, c.end, c.len);
+    labMarks = shift(labMarks, c.start, c.end, c.len);
+    ann = Marks.applyChange(ann, before.text, text);
     expectSel = { start: sel.start, end: sel.end };
     if (text !== before.text) record(before, kind || 'edit', typed || insert);
     render();
@@ -1247,8 +1316,14 @@
     return out.join('\n');
   }
 
-  function putClipboard(dt, md) {
-    const c = call('clipboard', md) || { text: md };
+  // [ms, me): the markdown range being copied, so ghosted text stays out of what other apps get.
+  function putClipboard(dt, md, ms, me) {
+    let out = md;
+    if (ms != null && ann.ghosts.some((g) => g.start < me && g.end > ms) && text.slice(ms, me) === md) {
+      out = Marks.stripGhosts(md, ann.ghosts.filter((g) => g.start < me && g.end > ms)
+        .map((g) => ({ start: Math.max(0, g.start - ms), end: Math.min(md.length, g.end - ms) })));
+    }
+    const c = call('clipboard', out) || { text: out };
     dt.setData('text/plain', c.text);
     if (c.html) dt.setData('text/html', c.html);
     try { dt.setData(MD_TYPE, md); } catch (_) { /* a browser without custom types gets the rest */ }
@@ -1373,7 +1448,7 @@
         syncSel();
         if (sel.end <= sel.start) return;
         e.preventDefault();
-        putClipboard(e.clipboardData, mdOfVis(sel.start, sel.end));
+        putClipboard(e.clipboardData, mdOfVis(sel.start, sel.end), visToMd(sel.start), visToMdEnd(sel.end));
       });
       root.addEventListener('cut', (e) => {
         syncSel();
@@ -1429,14 +1504,19 @@
       const v = opts && opts.caret != null ? mdToVis(opts.caret) : vlength();
       sel = { start: v, end: v, backward: false };
       pending = null;
-      fxMarks = sentMarks = wordMarks = [];
+      fxMarks = sentMarks = wordMarks = labMarks = [];
+      ann = Marks.normalize(opts && opts.ann, text);
+      openAlt = null;
       if (!(opts && opts.keepHistory)) { history.undo.length = 0; history.redo.length = 0; }
       rendered = [];
       render();
     },
-    // A change from elsewhere (Notion, another tab): keep the caret where it was.
-    replaceText(t) {
-      if (t === text) return;
+    // A change from elsewhere (Notion, another tab): keep the caret where it was. Alternatives
+    // and ghosts are found again in the new text; the ones that can't be are returned. opts.ann:
+    // the marks that came with the text (another tab), used as they are.
+    replaceText(t, opts) {
+      if (t === text) return [];
+      const old = text;
       const s = visToMd(sel.start), e = visToMd(sel.end);
       let p = 0;
       const max = Math.min(text.length, t.length);
@@ -1447,9 +1527,62 @@
       sel = { start: mdToVis(move(s)), end: mdToVis(move(e)), backward: false };
       history.undo.length = 0;
       history.redo.length = 0;
-      fxMarks = sentMarks = wordMarks = [];
+      fxMarks = sentMarks = wordMarks = labMarks = [];
+      let lost = [];
+      if (opts && opts.ann) ann = Marks.normalize(opts.ann, text);
+      else { const r = Marks.reanchor(ann, old, text); ann = r.ann; lost = r.lost; }
+      if (openAlt && !ann.alts.some((a) => a.id === openAlt)) openAlt = null;
       render();
+      return lost;
     },
+    getAnnotations() { return ann; },
+    // Marks only, no history (loading, or another tab's copy of the same text).
+    setAnnotations(a) { ann = Marks.normalize(a, text); render(); },
+    // One undoable step: new text and/or marks together. o: { text?, ann?, sel?: { start, end } in
+    // markdown, kind? ('marks', 'swap', 'stash'…), keepFocus? }. Marks given are used as they are.
+    change(o) {
+      if (readOnly) return false;
+      const before = { text, sel: Object.assign({}, sel), ann };
+      if (o.text != null && o.text !== text) setModel(o.text);
+      ann = o.ann || (o.text != null ? Marks.applyChange(ann, before.text, text) : ann);
+      if (o.text != null && o.text !== before.text) {
+        const c = Marks.diff(before.text, text);
+        fxMarks = shift(fxMarks, c.start, c.end, c.len);
+        sentMarks = shift(sentMarks, c.start, c.end, c.len);
+        wordMarks = shift(wordMarks, c.start, c.end, c.len);
+        labMarks = shift(labMarks, c.start, c.end, c.len);
+      }
+      if (o.sel) sel = { start: mdToVis(o.sel.start), end: mdToVis(o.sel.end), backward: false };
+      else if (o.text != null) sel = { start: Math.min(sel.start, vlength()), end: Math.min(sel.end, vlength()), backward: false };
+      if (openAlt && !ann.alts.some((a) => a.id === openAlt)) openAlt = null;
+      if (text === before.text && ann === before.ann) { render(); return false; }
+      expectSel = { start: sel.start, end: sel.end };
+      record(before, o.kind || 'marks', '');
+      history.undo[history.undo.length - 1].kind = o.kind || 'marks'; // never joined with typing
+      render();
+      if (o.keepFocus !== false && document.activeElement === root) applySel();
+      call('onChange', { kind: o.kind || 'marks' });
+      return true;
+    },
+    // Markdown in at the caret, the way a paste would go (Overflow → page).
+    insertMd(md) {
+      if (readOnly) return;
+      focus();
+      pending = null;
+      insertText(String(md), 'paste');
+      focus();
+    },
+    // The alternative the panel has open: underlined while it has only the one option.
+    setOpenAlt(id) { openAlt = id || null; render(); },
+    setLab(list) { labMarks = list && list.length ? list : []; render(); },
+    getLab() { return labMarks; },
+    // Visible text of the page, and markdown <-> visible offsets, for things laid over it.
+    altRects(id) {
+      const out = [];
+      for (const n of root.querySelectorAll('[data-alt="' + CSS.escape(id) + '"]')) for (const r of n.getClientRects()) out.push(r);
+      return out;
+    },
+    rootEl() { return root; },
     getText() { return text; },
     // Markdown offsets. start sits after any opening markers' left edge, end after closing ones.
     getSelection() { return { start: visToMd(sel.start), end: sel.end > sel.start ? visToMdEnd(sel.end) : visToMd(sel.end) }; },

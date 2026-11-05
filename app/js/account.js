@@ -59,7 +59,15 @@
 
   /* ---------- This browser's values as fields ---------- */
 
-  const metaOf = (d) => ({ f: d.format, b: d.budget, i: d.intent || '', nb: typeof d.nb === 'boolean' ? d.nb : null });
+  // Alternatives go as [kind, start, end, active, [[text, by]…]]; ghosts travel through Notion (gray text).
+  const altsOf = (d) => (d.ann && d.ann.alts.length ? d.ann.alts.map((a) => [a.kind, a.start, a.end, a.active, a.options.map((o) => [o.text, o.by])]) : null);
+  const metaOf = (d) => ({ f: d.format, b: d.budget, i: d.intent || '', nb: typeof d.nb === 'boolean' ? d.nb : null, al: altsOf(d), ch: d.challenge || null });
+  function altsFrom(v) {
+    if (!Array.isArray(v)) return [];
+    return v.filter((x) => Array.isArray(x) && Array.isArray(x[4])).map((x) => ({
+      kind: x[0], start: x[1], end: x[2], active: x[3], options: x[4].filter(Array.isArray).map((o) => ({ text: o[0], by: o[1] }))
+    }));
+  }
 
   // What this browser has stored. Settings count only once they've been saved here.
   function localFields() {
@@ -146,7 +154,9 @@
       format: TDW.Formats && TDW.Formats.get(v.f).key === v.f ? v.f : null,
       budget: validBudget(v.b) ? v.b : null,
       intent: typeof v.i === 'string' ? v.i : '',
-      nb: typeof v.nb === 'boolean' ? v.nb : null
+      nb: typeof v.nb === 'boolean' ? v.nb : null,
+      alts: altsFrom(v.al),
+      challenge: v.ch && typeof v.ch === 'object' && !Array.isArray(v.ch) ? v.ch : null
     };
   }
 
@@ -193,7 +203,9 @@
         if (!n.startsWith('draft.') || !merged[n].v) continue;
         const d = Store.findByNotionId(n.slice(6));
         const m = draftMetaFrom(merged[n].v);
-        if (!d || d.localOnly || !m || Vault.same(metaOf(d), metaOf(Object.assign({}, d, m)))) continue;
+        if (!d || d.localOnly || !m) continue;
+        if (TDW.Marks) m.ann = TDW.Marks.normalize({ alts: altsFrom(merged[n].v.al), ghosts: (d.ann && d.ann.ghosts) || [] }, d.text);
+        if (Vault.same(metaOf(d), metaOf(Object.assign({}, d, m)))) continue;
         Object.assign(d, m);
         Store.saveDraft(d);
         changes.drafts.push(d);
@@ -211,6 +223,7 @@
     if (validBudget(v.b)) m.budget = v.b;
     if (typeof v.i === 'string') m.intent = v.i;
     m.nb = typeof v.nb === 'boolean' ? v.nb : null;
+    m.challenge = v.ch && typeof v.ch === 'object' && !Array.isArray(v.ch) ? v.ch : null;
     return m;
   }
 

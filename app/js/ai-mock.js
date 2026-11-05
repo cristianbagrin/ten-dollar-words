@@ -25,6 +25,10 @@
           { text: firstWords(input.sentence, 10) + '.', note: 'Cut the second half' },
           { text: 'A shorter take on the same point.', note: 'Rewritten from scratch' }
         ] };
+      case 'alternatives':
+        return { options: input.kind === 'word'
+          ? ['judgments', 'decisions', 'trade-offs', 'choices', 'bets']
+          : ['A plainer way to say it.', 'Another take, in the same voice.', 'The short version.'] };
       case 'stronger':
         return { options: [{ text: 'remarkable', note: 'Mock option' }, { text: 'striking', note: 'Mock option' }] };
       case 'activeVoice':

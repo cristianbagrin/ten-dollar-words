@@ -21,6 +21,7 @@
 
   const OPTIONS = { type: 'OBJECT', properties: { options: { type: 'ARRAY', items: { type: 'OBJECT',
     properties: { text: { type: 'STRING' }, note: { type: 'STRING' } }, required: ['text', 'note'] } } }, required: ['options'] };
+  const ALTS = { type: 'OBJECT', properties: { options: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['options'] };
   const TIGHTEN = { type: 'OBJECT', properties: { summary: { type: 'STRING' }, edits: { type: 'ARRAY', items: { type: 'OBJECT',
     properties: { find: { type: 'STRING' }, replace: { type: 'STRING' }, why: { type: 'STRING' } }, required: ['find', 'replace', 'why'] } } },
     required: ['summary', 'edits'] };
@@ -245,10 +246,32 @@
     };
   }
 
+  function checkAlts(raw) {
+    const list = raw && Array.isArray(raw.options) ? raw.options : [];
+    return { options: list.filter((o) => typeof o === 'string' && o.trim()).map((o) => o.replace(/\s*\n\s*/g, ' ').trim()).slice(0, 8) };
+  }
+
   /* ---------- Prompts ---------- */
   const block = (label, text) => label + ':\n<<<\n' + text + '\n>>>';
 
   const FEATURES = {
+    // Options that fit where the text sits: read with its sentence and paragraph, never a thesaurus.
+    alternatives: {
+      schema: ALTS, temperature: 0.9, check: checkAlts,
+      prompt: (i) => [
+        'A writer wants alternatives for one ' + i.kind + ' of their draft. Suggest ' + (i.kind === 'paragraph' ? 3 : i.kind === 'sentence' ? 4 : 5) +
+        ' different ways to write it that fit exactly where it sits: same meaning or a close one, same grammar so it can be swapped in as is, in the writer\'s own voice and tone. ' +
+        'Use the sentence and paragraph around it, so these are choices a good editor would offer in context, not dictionary synonyms.' +
+        (i.kind === 'word' ? ' A word may become a short phrase (two or three words) if that reads better.' : '') +
+        ' Keep the same markdown markers (** for bold, * for italic) if the original has them. Never repeat an option the writer already has.',
+        i.title ? block('TITLE', i.title) : '',
+        block('PARAGRAPH', i.paragraph),
+        i.kind !== 'paragraph' ? block('SENTENCE', i.sentence) : '',
+        block('THE ' + i.kind.toUpperCase() + ' TO REPLACE', i.span),
+        i.have && i.have.length ? block('OPTIONS THE WRITER ALREADY HAS', i.have.join('\n')) : '',
+        'Return just the replacement texts, best first.'
+      ].filter(Boolean).join('\n\n')
+    },
     simplify: {
       schema: OPTIONS, temperature: 0.7, check: checkOptions,
       prompt: (i) => [
@@ -350,6 +373,14 @@
       throw firstError;
     },
     simplify: (input, signal) => run('simplify', input, signal),
+    // input: { kind, span, sentence, paragraph, title, have: [option texts] } → { options: [string] }
+    alternatives: (input, signal) => run('alternatives', input, signal),
+    // Any other prompt with a JSON schema, through the same models, fallbacks and errors.
+    // mock(): what the fake AI answers in tests.
+    async ask(prompt, schema, temperature, signal, mock) {
+      if (TDW.mockAI) { await new Promise((r) => setTimeout(r, 40)); return mock ? mock() : {}; }
+      return generate(prompt, schema, temperature == null ? 0.7 : temperature, signal);
+    },
     stronger: (input, signal) => run('stronger', input, signal),
     activeVoice: (input, signal) => run('activeVoice', input, signal),
     async tighten(input, signal) {

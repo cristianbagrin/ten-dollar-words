@@ -2,7 +2,9 @@
 (function () {
   'use strict';
   const TDW = window.TDW;
-  const { Engine, Editor, UI, Store, Sound, Panel, Popover, Dialogs, Spell, Sync, Formats, Account } = TDW;
+  const { Engine, Editor, UI, Store, Sound, Panel, Popover, Dialogs, Spell, Sync, Formats, Account, Marks } = TDW;
+  // Modules that may or may not be loaded (each sets itself up from boot).
+  const opt = (name) => TDW[name] || null;
 
   const APP_VERSION = '1.6.0';
   const SAMPLE_TEXT = [
@@ -76,7 +78,7 @@
     else Editor.render();
   }
 
-  const hiddenTypes = () => TYPES.filter((t) => state.settings.highlights[t] === false);
+  const hiddenTypes = () => (state.settings.fixHighlights === false ? TYPES.slice() : TYPES.filter((t) => state.settings.highlights[t] === false));
 
   function toggleHighlight(type) {
     state.settings.highlights[type] = state.settings.highlights[type] === false;
@@ -86,6 +88,12 @@
   }
 
   const analyze = (text) => Engine.analyze(text, { isKnown: Spell.isReady() ? Spell.known : undefined });
+
+  /* ---------- Ghosts: still on the page, gone for every other purpose ---------- */
+  const ghosts = () => Editor.getAnnotations().ghosts;
+  const masked = (text) => Marks.mask(text == null ? Editor.getText() : text, ghosts());           // offsets kept
+  const publishText = (text) => Marks.stripGhosts(text == null ? Editor.getText() : text, ghosts()); // for posting, saving, copying
+  const countNow = () => Engine.countWords(masked());
 
   /* ---------- Personal dictionary ---------- */
   function addWord(word) {
@@ -128,7 +136,7 @@
     clearTimeout(saveTimer);
     if (!state.dirty || !state.draft) return true;
     const d = state.draft;
-    if (!state.loading) d.text = Editor.getText();
+    if (!state.loading) { d.text = Editor.getText(); d.ann = Editor.getAnnotations(); }
     d.updatedAt = Date.now();
     if (Store.saveDraft(d)) {
       state.dirty = false;
@@ -165,7 +173,8 @@
     const d = state.draft;
     if (!d) return;
     const f = Formats.get(d.format);
-    const text = Editor.getText();
+    const real = Editor.getText();
+    const text = masked(real);
     const edit = state.mode === 'edit';
     const fx = [];
     const folds = [];
@@ -188,7 +197,10 @@
     Editor.setFx(fx);
     Editor.setAids({
       folds,
-      post: f.thread ? (s, e) => ({ words: Engine.countWords(text.slice(s, e)), length: Formats.xPost(text, s, e, f.limit).length, limit: f.limit }) : null,
+      post: f.thread ? (s, e) => {
+        const shown = publishText(real.slice(s, e)) === real.slice(s, e) ? real.slice(s, e) : Marks.stripGhosts(real.slice(s, e), ghosts().filter((g) => g.start < e && g.end > s).map((g) => ({ start: Math.max(0, g.start - s), end: Math.min(e - s, g.end - s) })));
+        return { words: Engine.countWords(shown), length: Formats.xPost(shown, 0, shown.length, f.limit).length, limit: f.limit };
+      } : null,
       addPost: UI.device.phone
     });
   }
@@ -244,8 +256,9 @@
     Popover.hide();
     Panel.closeResults();
     Panel.closeBudget();
-    Editor.setText(d.text);
-    state.words = Engine.countWords(d.text);
+    Editor.setText(d.text, { ann: d.ann });
+    state.words = countNow();
+    each((m) => m.load && m.load(d));
     setSaveStatus('');
     applyFormat();
     updateBackspace();
@@ -345,6 +358,10 @@
   }
 
   // Every programmatic text change goes through here so undo keeps working and cuts can chime.
+  // Every module the app hands the open draft to.
+  const MODULES = ['Alts', 'Menu', 'Overflow', 'Lab', 'Challenges', 'Desk'];
+  function each(fn) { for (const n of MODULES) { const m = opt(n); if (m) try { fn(m); } catch (e) { console.error(n, e); } } }
+
   function edit(start, end, text, opts) {
     const before = state.words;
     Editor.replaceRange(start, end, text);
@@ -368,10 +385,14 @@
   }
 
   /* ---------- Changes from Notion and from other tabs ---------- */
-  function replaceText(text) {
-    if (Editor.getText() === text) return;
-    Editor.replaceText(text);
-    state.words = Engine.countWords(text);
+  // ann: the marks that came with this text (another tab); otherwise the editor finds its own
+  // again. Alternatives that can't be found have their options put in Overflow.
+  function replaceText(text, ann) {
+    if (Editor.getText() === text) { if (ann) Editor.setAnnotations(ann); return; }
+    const lost = Editor.replaceText(text, ann ? { ann } : null);
+    if (lost && lost.length && opt('Overflow') && TDW.Overflow.keepLost) TDW.Overflow.keepLost(lost);
+    state.draft.ann = Editor.getAnnotations();
+    state.words = countNow();
     Popover.hide();
     updateAids();
     if (state.mode === 'edit') refresh();
@@ -386,7 +407,7 @@
   }
 
   function onRemoteText(d) {
-    if (d === state.draft && !state.loading) replaceText(d.text);
+    if (d === state.draft && !state.loading) { replaceText(d.text, d.ann); each((m) => m.reload && m.reload(d)); }
     onList();
   }
 
@@ -417,7 +438,8 @@
       if (!ch.draft) draftDeleted(ch.id);
       else if (!state.dirty && !state.loading) {
         if (root.dataset.format !== Formats.get(d.format).key) applyFormat();
-        replaceText(d.text);
+        replaceText(d.text, d.ann);
+        each((m) => m.reload && m.reload(d));
         refreshPanel();
       }
     }
@@ -432,6 +454,8 @@
     if (ch.ai) Panel.updateAI();
     const d = state.draft;
     if (d && ch.drafts.includes(d) && !state.loading) {
+      if (d.text === Editor.getText() && !state.dirty) Editor.setAnnotations(d.ann);
+      each((m) => m.reload && m.reload(d));
       applyFormat();
       updateBackspace();
       refreshPanel();
@@ -469,7 +493,7 @@
 
   function refresh() {
     clearTimeout(analyzeTimer);
-    state.analysis = analyze(Editor.getText());
+    state.analysis = analyze(masked());
     Editor.setMarks(state.analysis.issues.filter(isSentence), state.analysis.issues.filter((i) => !isSentence(i)));
     Editor.setHidden(hiddenTypes());
     Editor.render();
@@ -520,6 +544,7 @@
       hideChrome(true);
     }
     updateBackspace();
+    each((x) => x.onMode && x.onMode(m));
     restoreAnchor(anchor);
     Editor.focus();
   }
@@ -600,10 +625,12 @@
     if (state.loading) return;
     const text = Editor.getText();
     const prev = state.words;
-    const words = Engine.countWords(text);
+    const words = countNow();
     const d = state.draft;
     state.words = words;
     d.text = text;
+    d.ann = Editor.getAnnotations();
+    each((m) => m.onText && m.onText(text));
     markDirty();
     syncEdit();
     Popover.hide();
@@ -637,11 +664,13 @@
     if (state.mode === 'edit') {
       const s = Editor.getSelection();
       if (s.start === s.end) Popover.showAt(s.end);
+      each((m) => m.onSelect && m.onSelect(s));
     } else if (state.settings.typewriterScroll && !pointerSelecting && performance.now() - lastPointerAt > 600) {
       // Only after typing or arrow keys: a click or a selection never moves the page.
       const s = Editor.getSelection();
       if (s.start === s.end) requestAnimationFrame(() => Editor.typewriterScroll());
     }
+    if (state.mode !== 'edit') each((m) => m.onSelect && m.onSelect(Editor.getSelection()));
   }
 
   // Copy: LinkedIn and X get what the post will show; Basic and Substack also get rich text.
@@ -789,7 +818,7 @@
       root: editor, surface: $('surface'), under: $('under'), aids: $('aids'),
       hooks: {
         onChange: onInput,
-        onSelect: () => { if (!pointerSelecting) onCaretMove(); },
+        onSelect: () => { if (!pointerSelecting) onCaretMove(); else each((m) => m.onSelect && m.onSelect(Editor.getSelection())); },
         canDelete: () => !noBackspace(),
         onBlocked: blocked,
         clipboard
@@ -799,6 +828,7 @@
     Panel.init();
     Popover.init();
     Dialogs.init();
+    each((m) => m.init && m.init());
     Store.setBusyCheck(() => state.dirty);
     Store.onExternal(onExternal);
     Sync.init({ onRemoteText, onRemoteDelete, onList, onStatus: updateSyncStatus, onLoading, current: () => state.draft });
@@ -834,12 +864,20 @@
     }).catch(() => {});
   }
 
+  // Insert markdown at the caret (Overflow → page), as one undoable paste.
+  function insertAtCaret(md) {
+    if (state.loading || !md) return;
+    Editor.insertMd(md);
+  }
+
   TDW.App = {
-    state, APP_VERSION, SAMPLE_TEXT,
+    state, APP_VERSION, SAMPLE_TEXT, masked, publishText, insertAtCaret, refresh, captureAnchor, restoreAnchor,
+    noBackspace: () => noBackspace(), markDirty, syncEdit, updateAids,
     setMode, saveNow, openDraft, newDraft, draftDeleted, analyze, setFormat,
     updateSettings, toggleHighlight, hiddenTypes, setBudget, setIntent, setProp, edit, cut, insertSample,
     addWord, removeWord, refreshPanel, updateSyncStatus, openSettings: (section) => Dialogs.openSettings(section),
     syncChanged() { onList(); },
+    setBackspaceOff, countNow,
     backspaceOff
   };
   boot();
