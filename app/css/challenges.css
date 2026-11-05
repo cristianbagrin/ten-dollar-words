@@ -10,7 +10,7 @@
 .ch-btn.is-on { color: var(--accent); border-color: var(--accent); border-style: solid; }
 
 .ch-card {
-  position: fixed; z-index: 60; right: 16px; top: calc(var(--chrome-h) + 10px);
+  position: fixed; z-index: 60; left: 16px; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); /* above save/open, clear of the Edit panel */
   width: min(300px, calc(100vw - 32px)); max-height: calc(100vh - var(--chrome-h) - 90px); overflow-y: auto;
   background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r);
   box-shadow: var(--shadow); padding: 10px 12px 12px; font: 400 var(--t-sm)/1.4 var(--font-ui);

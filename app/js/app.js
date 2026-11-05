@@ -6,7 +6,7 @@
   // Modules that may or may not be loaded (each sets itself up from boot).
   const opt = (name) => TDW[name] || null;
 
-  const APP_VERSION = '1.6.0';
+  const APP_VERSION = '2.0.0';
   const SAMPLE_TEXT = [
     'Every word you type costs ten dollars. That sounds harsh, but it is really the fastest way to learn to cut.',
     'Most people write long sentences because they are afraid that short ones will make them look simple to readers.',

@@ -38,3 +38,11 @@ test('applyCuts: alternatives between cuts survive', () => {
   const a = out.ann.alts[0];
   assert.equal(out.text.slice(a.start, a.end), 'tension');
 });
+
+test('place: whole words only', () => {
+  const t = 'Shouldn\'t everything be very obvious?';
+  const out = L.place(t, [{ quote: 'very' }]);
+  assert.equal(out.length, 1);
+  assert.equal(t.slice(out[0].start, out[0].end), 'very');
+  assert.equal(out[0].start, t.indexOf(' very') + 1);
+});

@@ -19,7 +19,10 @@
         const hits = [];
         for (let i = text.indexOf(q); i >= 0; i = text.indexOf(q, i + 1)) {
           const r = { start: i, end: i + q.length };
-          if (!(ghosts || []).some((g) => overlaps(g, r))) hits.push(r);
+          // Whole words only: "very" never matches inside "everything".
+          const cut = (/[\p{L}\p{N}]/u.test(q[0]) && /[\p{L}\p{N}]/u.test(text[i - 1] || '')) ||
+            (/[\p{L}\p{N}]/u.test(q[q.length - 1]) && /[\p{L}\p{N}]/u.test(text[i + q.length] || ''));
+          if (!cut && !(ghosts || []).some((g) => overlaps(g, r))) hits.push(r);
         }
         if (hits.length !== 1) continue;
         const r = hits[0];

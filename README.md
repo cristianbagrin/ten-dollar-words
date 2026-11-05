@@ -1,6 +1,6 @@
 # Ten Dollar Words
 
-A writing app where every word costs $10. Write mode shows only your text; the top bar slides in when you move the pointer to the top of the window. Edit mode shows what you've spent against a budget, a readability grade, highlighted fixes (spelling, hard sentences, wordy phrases, passive voice, adverbs, weakeners), and optional AI help from Google Gemini. Drafts can sync both ways with a Notion database. Switching between Write and Edit (⌘E) keeps the line you were on where it was on screen.
+A writing app where every word costs $10. Write mode shows only your text; the top bar slides in when you move the pointer to the top of the window. Edit mode shows what you've spent against a budget, a readability grade, highlighted fixes (spelling, hard sentences, wordy phrases, passive voice, adverbs, weakeners), and optional AI help from Google Gemini. Drafts can sync both ways with a Notion database. Switching between Write and Edit (⌘E) keeps the line you were on where it was on screen. Version 2 adds a writing desk: alternatives for any word, sentence or paragraph, Ghost it, an Overflow panel, the Lab with Trim, and writing challenges (see The writing desk).
 
 An account (Settings → Account) keeps your Notion connection, Gemini key, settings and dictionary, so every browser you sign in to is set up at once. On a phone the app speaks phone: taps instead of clicks and typing shortcuts instead of keyboard shortcuts.
 
@@ -25,6 +25,32 @@ Any word, sentence or paragraph (the title too) can carry other versions of itse
 
 ### Ghost it
 Select text and press **Ctrl+/** (or right-click → Ghost it). It fades to about a tenth and stays in the draft, so you can see the paragraph without it. **Ctrl+/** again (or right-click → Revive) brings it back. Ghosted text doesn't count: not in the words, the dollars, the readability grade, the fold, X's count, copying for a platform, saving a file or posting. It works with No backspace on, since nothing is deleted. In Notion, ghosted text is gray, and gray text from Notion comes back ghosted.
+
+### Overflow
+A panel on the right for writing you want nearby but not in the draft: cut passages, notes, links, words you like, an outline. Open it with the button at the bottom right or **Ctrl+Shift+O**.
+
+- **Stash this in Overflow** (**Ctrl+Shift+X**, or right-click) moves the selection, or the paragraph the caret is in, out of the page and onto the top of Overflow. It works with No backspace on, since nothing is lost, and ⌘Z brings it back.
+- To use something from it, put the caret on a paragraph in Overflow and press **Ctrl+Return** to insert it at the page's caret, or drag a selection into the page.
+- It doesn't count toward words or dollars and isn't spellchecked. Each draft has its own.
+- In Notion it's one collapsed toggle titled "Overflow" at the bottom of the page, synced both ways. It's never part of the post's text.
+
+### The Lab (Edit mode)
+The dashed **LAB** button at the bottom (**Ctrl+Shift+L**) lists checks that only mark text and never rewrite it: fix punctuation and typos (each mark offers its one fix when you click it), the weakest sentences, sentences that run long, convoluted sentences, words that don't fit the tone, hedges and filler, and Check the message. Click a mark to see why. Esc or Done clears the marks. Long sentences, hedges and spelling work without an AI key; the rest use Gemini.
+
+**Trim:** Slight trim (~10%), Tighten more (~20%), Even sharper (~30%) or Cut in half (~50%). The AI dims what it would cut, and only cuts; it never rewrites. The card shows the word count before and after. Click a faded passage to keep it. **Make the cuts** removes the rest in one undo step, **Walk through** goes cut by cut (Return or Y cuts, Backspace or N keeps), and **Done** or **Original** leaves the text as it was. Trim replaces "Cut the cost".
+
+The Edit-mode fix highlights stay as they were. Settings → Writing → "Highlight fixes in Edit mode" turns them all off at once.
+
+### Writing challenges
+The **Challenge** button at the bottom makes writing a game. **Roll** picks one, **Roll a combo** stacks two or three that fit together, **Pick** lists them all, and **Today's challenge** is the same all day. Easy, Medium and Hard change the numbers. A small card checks each rule live and stamps "Challenge met" when they all pass. Challenges never stop you typing; they only check.
+
+- **Length and money:** exact change (land on the budget exactly), a six-word story, a 100-word drabble, tweet size, Half price (the budget halves and you cut to fit), Inflation (the budget drops $10 a minute).
+- **Sentences:** short fuse, rhythm, a 1-word plus a short plus a long sentence, no two sentences starting the same, alphabet, questions first, two-sentence paragraphs, a hook in 8 words.
+- **Words and grade:** grade 5, plain English, no adverbs, no weasel words, active voice only, E-Prime (no "to be"), one syllable, a lipogram, no sentence starting with "I", 3 random words, earning one rare ten-dollar word.
+- **Time:** a sprint, 10 minutes with No backspace forced on, Don't stop (pause 5 seconds and your last sentence ghosts itself).
+- **Adapted to your piece, with AI:** ban the obvious words, jargon jail, surprise words, an analogy from a rolled field, write toward a given last line, start in the middle, argue the other side first, explain it to a 10-year-old, a skeptic's question after each paragraph, show don't claim, one personal story, a contrarian title, a genre swap, five hooks judged blind, and write to one person. With an empty draft, it asks what the piece is about first.
+
+A quiet streak counts the days in a row you met one. The challenge on a draft travels with it through the account; the streak and difficulty stay in this browser.
 
 ### The right-click menu
 Right-click the page for Alternatives for selection, AI alternatives for selection, Ghost it / Revive, Stash this in Overflow, plus Cut, Copy and Paste. Shift+right-click gives the browser's own menu. On a touch screen, a small ⋯ button appears by the selection.
@@ -133,7 +159,7 @@ Edit mode underlines unknown words with a red wavy line. Click one for fixes, or
 
 ```
 ./
-  PLAN.md, PLAN-v2.md, PLAN-v3.md   the build plans and design decisions
+  PLAN.md … PLAN-v4.md     the build plans and design decisions (PLAN-v4-challenges.md: the challenge list)
   README.md                this file
   netlify.toml             publishes app/ and the account function
   package.json             @netlify/blobs, for the account function
@@ -171,6 +197,15 @@ Edit mode underlines unknown words with a red wavy line. Click one for fixes, or
     js/panel.js            Edit-mode panel: register, grade, fixes, AI results
     js/popover.js          tips on highlighted text
     js/dialogs.js          Drafts drawer (with Notion properties) and Settings
+    js/marks.js            alternatives and ghosts over the text: following edits, a/an, swapping, ghosts (pure, tested)
+    js/alts.js             the alternatives panel, cycling in place, AI alternatives
+    js/menu.js             the right-click menu, Ghost it, Stash this in Overflow
+    js/overflow.js         the Overflow panel
+    js/lab.js              the Lab and Trim
+    js/challenges.js       writing challenges: the catalog and its checks (pure, tested)
+    js/challenge-ui.js     the Challenge button, picker and card
+    js/desk.js             the live count, save/open/post to X, the shortcut list
+    css/desk.css, overflow.css, lab.css, challenges.css   their styles (placeholders until the redesign)
     js/app.js              state, events, startup (loads last)
 ```
 
@@ -189,6 +224,7 @@ Not built yet, on purpose:
 - Syncing drafts to a folder (Chrome's File System Access).
 - Claude as an alternative AI provider.
 - Focus mode that dims other sentences.
+- The redesign: the look of everything above is a working placeholder.
 - A receipt or print view.
 - Custom budget presets.
 - A grammar checker.

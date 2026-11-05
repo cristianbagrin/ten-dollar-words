@@ -48,3 +48,4 @@ html[data-device="phone"] .keys-btn { display: none; }
   background: var(--card); color: var(--ink); box-shadow: var(--shadow); font: 700 16px/1 var(--font-ui);
 }
 .x-glyph { font: 600 15px/1 var(--font-ui); }
+.dock-right { padding-right: 6px; }
