@@ -147,3 +147,12 @@ test('addOptions skips duplicates and keeps provenance', () => {
   const out = M.addOptions(ann, 'a1', ['Pressure', 'friction', 'struggle'], 'ai');
   assert.deepEqual(out.alts[0].options.map((o) => o.text + ':' + o.by), ['tension:me', 'pressure:me', 'friction:ai', 'struggle:ai']);
 });
+
+test('reanchor: a word rewritten in Notion keeps the old one as an option', () => {
+  const ann = { alts: [wordAlt(TEXT, 'tension', ['pressure'])], ghosts: [] };
+  const remote = TEXT.replace('tension', 'rest');
+  const a = M.reanchor(ann, TEXT, remote).ann.alts[0];
+  assert.equal(shown(remote, a), 'rest');
+  assert.deepEqual(a.options.map((o) => o.text), ['tension', 'rest', 'pressure']);
+  assert.equal(a.active, 1);
+});

@@ -109,6 +109,18 @@
     if (oldText === newText) return { ann, lost: [] };
     const c = diff(oldText, newText);
     const shifted = shiftAll(ann, c.start, c.end, newText.slice(c.start, c.start + c.len), newText);
+    // Text rewritten somewhere else becomes the version on the page; the one it replaced stays
+    // in the list, so nothing written here is lost.
+    const was = new Map(ann.alts.map((a) => [a.id, a]));
+    shifted.alts = shifted.alts.map((a) => {
+      const old = was.get(a.id);
+      const prev = old.options[old.active].text;
+      const now = a.options[a.active].text;
+      if (prev === now || a.options.some((o, i) => i !== a.active && o.text === prev) || a.options.length >= MAX_OPTIONS) return a;
+      const options = a.options.slice();
+      options.splice(a.active, 0, Object.assign({}, old.options[old.active]));
+      return Object.assign({}, a, { options, active: a.active + 1 });
+    });
     const kept = new Set(shifted.alts.map((a) => a.id));
     const keptG = new Set(shifted.ghosts.map((g) => g.id));
     const d = c.len - (c.end - c.start);
