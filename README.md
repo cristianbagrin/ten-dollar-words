@@ -6,6 +6,35 @@ An account (Settings → Account) keeps your Notion connection, Gemini key, sett
 
 It's plain HTML, CSS, and JavaScript with no build step. The one piece that runs on a server is the account, a Netlify Function in `netlify/`.
 
+## The writing desk
+
+Version 2 adds the ideas in Jason Fried's demo of his own writing tool (`PLAN-v4.md`). The rule behind all of them: the tool marks, suggests and keeps things; it never rewrites your text unless you pick the words. Nothing you set aside is lost, and ⌘Z undoes all of it.
+
+### Alternatives
+Any word, sentence or paragraph (the title too) can carry other versions of itself.
+
+- Select some text, or put the caret on a word, and press **Ctrl+Shift+A** (or right-click → Alternatives for selection). The panel opens on the left with **Word · Sentence · Paragraph** tabs; switching tabs moves to the sentence or paragraph around the same spot. The rest of the page dims.
+- Type a new version in the empty row: the page changes as you type, so you read it in place. **Return** adds it, **Esc** closes and keeps what's on the page. **↑/↓** in the list tries each one in the sentence.
+- A small square marks your versions, a robot the AI's, and a filled dot the one on the page.
+- Type **??** as an entry (or right-click → AI alternatives for selection, **Ctrl+Shift+G**) and the AI adds more. It reads the sentence and paragraph around the text, so it's not a thesaurus. ⌘Z takes them back.
+- **Backspace** on an empty row, or **⌘⌫** on any row, removes that version. When only the original is left, the underline goes.
+- In the page, text with alternatives has a faint squiggle and a row of tiny dots under its end, one per version. The filled dot is the one showing; if it isn't the first, you're on a variation. A paragraph shows a thin line in the margin instead. Hover over it and press **↑/↓** to flip through the versions, or use **⌥↑/⌥↓** with the caret inside. Click the dots to open the list.
+- **a/an** follows the swap: "a paperclip" becomes "an eraser" (and "an hour", "a unicorn", "an FAQ").
+- The AI options in Edit-mode tips (simpler sentence, active voice, stronger word) now join the alternatives instead of replacing your text.
+- Notion only gets the version on the page. Signed in, the account carries the rest to your other devices. If an edit in Notion removes the text an alternative was on, its versions go to Overflow as one line, so nothing is lost.
+
+### Ghost it
+Select text and press **Ctrl+/** (or right-click → Ghost it). It fades to about a tenth and stays in the draft, so you can see the paragraph without it. **Ctrl+/** again (or right-click → Revive) brings it back. Ghosted text doesn't count: not in the words, the dollars, the readability grade, the fold, X's count, copying for a platform, saving a file or posting. It works with No backspace on, since nothing is deleted. In Notion, ghosted text is gray, and gray text from Notion comes back ghosted.
+
+### The right-click menu
+Right-click the page for Alternatives for selection, AI alternatives for selection, Ghost it / Revive, Stash this in Overflow, plus Cut, Copy and Paste. Shift+right-click gives the browser's own menu. On a touch screen, a small ⋯ button appears by the selection.
+
+### Around the page
+- Top left: a faint count of words and characters, or of the selection ("34 words 182 chars selected"). Ghosted text isn't counted.
+- Bottom left: **save** the draft as a Markdown file (ghosts left out, each alternative as it is on the page), **open** a `.md` or `.txt` file as a new draft, and **post to X** (**Ctrl+Shift+P**), which opens X's composer with the text the way X shows it. For a thread it opens the first post and copies the rest. There's no LinkedIn button, on purpose.
+- Top right: the keyboard icon (or **Ctrl+?**) lists every shortcut.
+- The Ctrl shortcuts are Ctrl on a Mac too, so they don't clash with ⌘. Where a browser keeps Ctrl+Shift+A for itself, Alt+Shift+A and Alt+Shift+G work too. On Windows, strikethrough is Ctrl+Shift+S only, because Ctrl+Shift+X stashes.
+
 ## Run it locally
 
 From this folder, run `node tools/dev-server.mjs` in Terminal, then open http://127.0.0.1:8765/. It serves the app and the account API; accounts live in memory until you stop it (add `--blobs some-folder` to keep them, after `npm install`).
