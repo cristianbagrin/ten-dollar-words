@@ -1,1 +1,50 @@
-/* desk styles. Working placeholders until the redesign. */
+/* The desk around the page: the live count, the dock (save/open/post · Lab/Challenge ·
+   Overflow), the shortcut list, and the right-click menu's anchor. Working placeholders until
+   the redesign. */
+.live-count {
+  position: fixed; z-index: 25; left: 18px; top: calc(14px + env(safe-area-inset-top, 0px));
+  font: var(--t-xs) var(--font-ui); color: var(--ink-3); opacity: .7; pointer-events: none; font-variant-numeric: tabular-nums;
+}
+html[data-mode="write"] .chrome.is-shown ~ .live-count, html[data-mode="edit"] .live-count { top: calc(var(--chrome-h) + 8px + env(safe-area-inset-top, 0px)); }
+
+.dock {
+  position: fixed; z-index: 24; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end;
+  padding: 0 14px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none;
+}
+.dock-slot { display: flex; gap: 4px; align-items: center; pointer-events: auto; }
+.dock-left { justify-self: start; }
+.dock-center { justify-self: center; gap: 10px; }
+.dock-right { justify-self: end; }
+@media (min-width: 901px) { html[data-mode="edit"] .dock { right: var(--panel-w); } }
+.dock-btn {
+  display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--ink-3); cursor: pointer; transition: color var(--t-fast), background var(--t-fast), opacity var(--t-fast);
+}
+.dock-btn:hover, .dock-btn:focus-visible { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+/* While you write, the desk steps back. */
+html[data-mode="write"].is-typing .dock, html[data-mode="write"].is-typing .keys-btn { opacity: 0; transition: opacity var(--t-slow); }
+html[data-mode="write"] .dock { opacity: .75; transition: opacity var(--t-med); }
+html[data-mode="write"] .dock:hover { opacity: 1; }
+@media (max-width: 600px) { .dock { padding-bottom: calc(8px + max(env(safe-area-inset-bottom, 0px), var(--kb, 0px))); } }
+
+.keys-btn { position: fixed; z-index: 25; right: 14px; top: calc(10px + env(safe-area-inset-top, 0px)); }
+html[data-mode="write"] .chrome.is-shown ~ .keys-btn, html[data-mode="edit"] .keys-btn { display: none; }
+html[data-device="phone"] .keys-btn { display: none; }
+.keys-sheet {
+  position: fixed; z-index: 70; right: 16px; top: 52px; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow-y: auto;
+  padding: 18px 22px 20px; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-lg);
+  font: var(--t-sm) var(--font-ui);
+}
+.keys-sheet h3 { margin: 14px 0 6px; font-size: var(--t-xs); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.keys-sheet h3:first-of-type { margin-top: 0; }
+.keys-sheet dl { display: grid; grid-template-columns: max-content 1fr; gap: 5px 14px; margin: 0; }
+.keys-sheet dt { font-family: var(--font-code); color: var(--ink-2); }
+.keys-sheet dd { margin: 0; }
+.keys-close { position: absolute; right: 10px; top: 10px; }
+
+.ctx-anchor { position: fixed; width: 1px; height: 1px; pointer-events: none; }
+.ctx-touch {
+  position: fixed; z-index: 46; width: 36px; height: 30px; border: 1px solid var(--line); border-radius: var(--r-pill);
+  background: var(--card); color: var(--ink); box-shadow: var(--shadow); font: 700 16px/1 var(--font-ui);
+}
+.x-glyph { font: 600 15px/1 var(--font-ui); }

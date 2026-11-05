@@ -558,6 +558,8 @@
       const p = pager(k++);
       p.className = 'alt-pager' + (vertical ? ' is-paragraph' : '') + (a.active ? ' is-variation' : '') + (a.id === openAlt ? ' is-open' : '');
       p.style.cssText = box;
+      p._alt = a.id;
+      p.title = (a.active ? 'Variation ' + (a.active + 1) : 'The original') + ' of ' + a.options.length + ' · click for the list';
       const want = Math.min(a.options.length, 12);
       if (p.childElementCount !== want || p._active !== a.active) {
         const dots = [];
@@ -1206,7 +1208,7 @@
     else if (readOnly) done = false;
     else if (key === 'b' && !e.altKey && !e.shiftKey) toggleStyle(B);
     else if (key === 'i' && !e.altKey && !e.shiftKey) toggleStyle(I);
-    else if (e.shiftKey && !e.altKey && (key === 's' || key === 'x')) toggleStyle(S);
+    else if (e.shiftKey && !e.altKey && (key === 's' || (key === 'x' && IS_MAC))) toggleStyle(S); // Ctrl+Shift+X stashes
     else if (key === 'k' && !e.altKey && !e.shiftKey) linkPrompt();
     else if (e.altKey && !e.shiftKey && /^Digit[1-3]$/.test(code)) setBlock('h' + code.slice(5));
     else if (e.altKey && !e.shiftKey && code === 'Digit0') setBlock('p');
@@ -1543,6 +1545,7 @@
     change(o) {
       if (readOnly) return false;
       const before = { text, sel: Object.assign({}, sel), ann };
+      const ms = visToMd(sel.start), me = visToMd(sel.end);
       if (o.text != null && o.text !== text) setModel(o.text);
       ann = o.ann || (o.text != null ? Marks.applyChange(ann, before.text, text) : ann);
       if (o.text != null && o.text !== before.text) {
@@ -1553,12 +1556,20 @@
         labMarks = shift(labMarks, c.start, c.end, c.len);
       }
       if (o.sel) sel = { start: mdToVis(o.sel.start), end: mdToVis(o.sel.end), backward: false };
-      else if (o.text != null) sel = { start: Math.min(sel.start, vlength()), end: Math.min(sel.end, vlength()), backward: false };
+      else if (o.text != null && text !== before.text) {
+        // The caret stays with the words around it.
+        const c = Marks.diff(before.text, text);
+        const d = c.len - (c.end - c.start);
+        const move = (x) => (x <= c.start ? x : x >= c.end ? x + d : c.start + c.len);
+        sel = { start: mdToVis(move(ms)), end: mdToVis(move(me)), backward: false };
+      }
       if (openAlt && !ann.alts.some((a) => a.id === openAlt)) openAlt = null;
       if (text === before.text && ann === before.ann) { render(); return false; }
       expectSel = { start: sel.start, end: sel.end };
-      record(before, o.kind || 'marks', '');
-      history.undo[history.undo.length - 1].kind = o.kind || 'marks'; // never joined with typing
+      if (o.history !== false) {
+        record(before, o.kind || 'marks', '');
+        history.undo[history.undo.length - 1].kind = o.kind || 'marks'; // never joined with typing
+      }
       render();
       if (o.keepFocus !== false && document.activeElement === root) applySel();
       call('onChange', { kind: o.kind || 'marks' });
@@ -1571,6 +1582,15 @@
       pending = null;
       insertText(String(md), 'paste');
       focus();
+    },
+    // A point to come back to, and one undo step from it to now (for changes made with
+    // history: false, like previews while the alternatives panel is open).
+    snapshot() { return { text, sel: Object.assign({}, sel), ann }; },
+    recordFrom(snap, kind) {
+      if (!snap || (snap.text === text && snap.ann === ann)) return false;
+      record(snap, kind || 'marks', '');
+      history.undo[history.undo.length - 1].kind = kind || 'marks';
+      return true;
     },
     // The alternative the panel has open: underlined while it has only the one option.
     setOpenAlt(id) { openAlt = id || null; render(); },
