@@ -129,6 +129,7 @@
         if (ctrl !== c) return;
         ctrl = null;
         if (!out.options.length) { showError({ code: 'bad_json' }); return; }
+        if (offerAlts(target.start, target.end, 'word', out.options.map((o) => Editor.matchCase(target.phrase, o.text)), target.phrase)) return;
         const words = Engine.countWords(target.phrase);
         slot.replaceChildren(el('div', { class: 'pop-actions' }, out.options.map((o) => {
           const word = Editor.matchCase(target.phrase, o.text);
@@ -143,6 +144,23 @@
     }
     idle();
     return slot;
+  }
+
+  // AI options become alternatives you read in place (original stays as option 0), when the
+  // alternatives panel is loaded. Returns false when it isn't, so the old chips show instead.
+  function offerAlts(start, end, kind, texts, original) {
+    const A = TDW.Alts;
+    if (!A || typeof A.offer !== 'function' || !texts.length) return false;
+    const text = Editor.getText();
+    if (text.slice(start, end) !== original) {
+      const i = text.indexOf(original);
+      if (i < 0) { toast('That sentence changed. Run it again.'); return true; }
+      start = i;
+      end = i + original.length;
+    }
+    hide();
+    A.offer({ start, end, kind, options: texts, by: 'ai' });
+    return true;
   }
 
   function applyPhrase(target, word) {
@@ -252,6 +270,7 @@
     call.then((out) => {
       if (ctrl !== c) return;
       ctrl = null;
+      if (out.options.length && offerAlts(range.start, range.end, 'sentence', out.options.map((o) => o.text), original)) return;
       if (out.options.length) renderOptions(box, out.options, { start: range.start, end: range.end, original });
       else showError({ code: 'bad_json' });
     }, (err) => {
