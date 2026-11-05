@@ -84,7 +84,8 @@ function richIn(list) {
   });
 }
 
-function blockIn(c) {
+// depth: toggles nest; Notion takes two levels of children in one request.
+function blockIn(c, depth) {
   const type = c && c.type;
   if (!type || !c[type]) throw bad('Each child needs a type and a body.');
   const now = Date.now();
@@ -92,6 +93,12 @@ function blockIn(c) {
   if (TEXT_TYPES.has(type)) {
     b.body = { rich_text: richIn(c[type].rich_text || []), color: 'default' };
     if (type === 'to_do') b.body.checked = !!c[type].checked;
+  } else if (type === 'toggle') {
+    b.body = { rich_text: richIn(c.toggle.rich_text || []), color: 'default' };
+    const kids = c.toggle.children || [];
+    if (kids.length > 100) throw bad('body.children[].toggle.children.length should be ≤ `100`.');
+    if (kids.length && (depth || 0) >= 1) throw bad('Children are nested too deep.');
+    b.children = kids.map((k) => blockIn(k, (depth || 0) + 1));
   } else if (type === 'divider') b.body = {};
   else if (type === 'image') b.body = c.image;
   else throw bad('Unsupported block type: ' + type + '.');
@@ -101,7 +108,7 @@ function blockIn(c) {
 const blockOut = (b, pageId, trashed) => ({
   object: 'block', id: b.id, parent: { type: 'page_id', page_id: pageId },
   created_time: iso(minute(b.created)), last_edited_time: iso(minute(b.edited)),
-  has_children: false, in_trash: !!trashed, type: b.type, [b.type]: b.body
+  has_children: !!(b.children && b.children.length), in_trash: !!trashed, type: b.type, [b.type]: b.body
 });
 
 function option(list, name, prefix) {
@@ -223,12 +230,25 @@ function pageById(id) {
   const k = dashless(id);
   return S.pages.find((p) => dashless(p.id) === k) || null;
 }
+// A block anywhere in a page, nested ones too: { page, list (the array holding it), index }.
 function findBlock(id) {
-  for (const page of S.pages) {
-    const index = page.blocks.findIndex((b) => b.id === id);
-    if (index >= 0) return { page, index };
-  }
+  const look = (page, list) => {
+    for (let index = 0; index < list.length; index++) {
+      if (list[index].id === id) return { page, list, index };
+      if (list[index].children) { const f = look(page, list[index].children); if (f) return f; }
+    }
+    return null;
+  };
+  for (const page of S.pages) { const f = look(page, page.blocks); if (f) return f; }
   return null;
+}
+// The children list of a page or of a block that can hold children.
+function holder(id) {
+  const p = pageById(id);
+  if (p) return { page: p, list: p.blocks };
+  const f = findBlock(id);
+  if (!f || !f.list[f.index].children) return null;
+  return { page: f.page, list: f.list[f.index].children };
 }
 const editable = (p) => { if (p.in_trash) throw bad("Can't edit block that is archived. You must unarchive the block before editing."); };
 
@@ -262,7 +282,7 @@ function route(method, parts, url, body, info) {
     const now = Date.now();
     const p = { id: uuid(), created: now, edited: now, in_trash: false, props: { Name: [], Date: null, Pillar: null, Stage: null }, blocks: [] };
     setProps(p, body.properties);
-    p.blocks = children.map(blockIn);
+    p.blocks = children.map((c) => blockIn(c, 0));
     S.pages.push(p);
     info.n = children.length;
     info.title = p.props.Name.map((r) => r.plain_text).join('');
@@ -281,15 +301,16 @@ function route(method, parts, url, body, info) {
     }
   }
   if (a === 'blocks' && sub === 'children') {
-    const p = pageById(id);
-    if (!p) throw missing('block', id);
+    const h = holder(id);
+    if (!h) throw missing('block', id);
+    const p = { blocks: h.list, id: h.page.id, in_trash: h.page.in_trash };
     if (method === 'GET') {
       const size = Math.min(100, Math.max(1, Number(url.searchParams.get('page_size')) || 100));
       const start = Number(url.searchParams.get('start_cursor')) || 0;
       return list(p.blocks.map((b) => blockOut(b, p.id)), start, size, 'block');
     }
     if (method === 'PATCH') {
-      editable(p);
+      editable(h.page);
       const children = body.children;
       if (!Array.isArray(children) || !children.length) throw bad('body.children should be a non-empty array.');
       if (children.length > 100) throw bad('body.children.length should be ≤ `100`.');
@@ -302,9 +323,9 @@ function route(method, parts, url, body, info) {
         if (i < 0) throw bad('Block ' + (pos.after_block && pos.after_block.id) + ' is not a child of this page.');
         at = i + 1;
       } else throw bad('position.type should be start, end, or after_block.');
-      const made = children.map(blockIn);
+      const made = children.map((c) => blockIn(c, h.list === h.page.blocks ? 0 : 1));
       p.blocks.splice(at, 0, ...made);
-      touch(p);
+      touch(h.page);
       info.n = children.length;
       info.after = pos.type === 'after_block' ? pos.after_block.id : pos.type;
       return list(made.map((b) => blockOut(b, p.id)), 0, made.length, 'block');
@@ -313,10 +334,10 @@ function route(method, parts, url, body, info) {
   if (a === 'blocks' && parts.length === 2) {
     const f = findBlock(id);
     if (!f) throw missing('block', id);
-    const b = f.page.blocks[f.index];
+    const b = f.list[f.index];
     editable(f.page);
     if (method === 'DELETE') {
-      f.page.blocks.splice(f.index, 1);
+      f.list.splice(f.index, 1);
       touch(f.page);
       info.type = b.type;
       return blockOut(b, f.page.id, true);
@@ -342,11 +363,14 @@ function route(method, parts, url, body, info) {
 const plainRich = (rich) => rich.map((r) => r.plain_text).join('');
 function dump() {
   return S.pages.map((p) => {
-    const blocks = p.blocks.map((b) => blockOut(b, p.id));
+    const split = NotionMap.splitPage(p.blocks.map((b) => blockOut(b, p.id)));
+    const ov = split.overflow && p.blocks.find((b) => b.id === split.overflow.id);
     return {
       id: p.id, in_trash: !!p.in_trash, last_edited_time: iso(minute(p.edited)),
       title: plainRich(p.props.Name), stage: p.props.Stage, pillar: p.props.Pillar, date: p.props.Date,
-      text: NotionMap.entriesToText(NotionMap.blocksToEntries(blocks)),
+      text: NotionMap.entriesToText(NotionMap.blocksToEntries(split.blocks)),
+      overflow: ov ? NotionMap.entriesToText(NotionMap.blocksToEntries(ov.children.map((b) => blockOut(b, p.id)))) : null,
+      ghosts: NotionMap.ghostsFromEntries(NotionMap.blocksToEntries(split.blocks)).map((g) => [g.start, g.end]),
       blocks: p.blocks.map((b) => ({
         id: b.id, type: b.type,
         rich: TEXT_TYPES.has(b.type) ? b.body.rich_text.map((r) => ({ t: r.type, text: r.plain_text, bold: r.annotations.bold || undefined })) : undefined
@@ -375,6 +399,25 @@ function admin(method, action, body) {
       b.edited = Date.now();
       touch(p);
       return { ok: true };
+    }
+    case 'gray': {
+      // Color a text block's whole text gray (or back), as if done in Notion.
+      const p = page();
+      const b = p.blocks[body.index];
+      if (!b || !TEXT_TYPES.has(b.type)) throw bad('No text block at that index.');
+      for (const r of b.body.rich_text) r.annotations.color = body.off ? 'default' : 'gray';
+      b.edited = Date.now();
+      touch(p);
+      return { ok: true };
+    }
+    case 'add-overflow': {
+      // An Overflow toggle at the bottom, as if made in Notion.
+      const p = page();
+      const b = blockIn({ type: 'toggle', toggle: { rich_text: [{ type: 'text', text: { content: 'Overflow' } }],
+        children: (body.lines || []).map((l) => ({ type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: String(l) } }] } })) } });
+      p.blocks.push(b);
+      touch(p);
+      return { ok: true, id: b.id };
     }
     case 'add-block': {
       const p = page();

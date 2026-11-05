@@ -26,7 +26,8 @@
   let trashing = null;
   let st = { state: 'off', message: '', at: 0 };
 
-  const entriesCache = new Map(); // notionId -> entries: what Notion has, line by line
+  const entriesCache = new Map(); // notionId -> entries: what Notion has, line by line (no Overflow)
+  const ovCache = new Map();      // notionId -> { id, entries } of its Overflow toggle, or null for none
   const pages = new Map();        // notionId -> the last page object seen
   const pushTimers = new Map();   // draftId -> timer
   const pushing = new Map();      // draftId -> promise
@@ -38,7 +39,12 @@
   const cfg = () => Store.getNotionConfig();
   const isConnected = () => !!Store.getNotionToken() && !!(cfg() && cfg().dataSourceId);
   const call = (name, ...args) => (typeof hooks[name] === 'function' ? hooks[name](...args) : undefined);
-  const hasContent = (d) => !!(d.text.trim() || d.title.trim());
+  const hasContent = (d) => !!(d.text.trim() || d.title.trim() || String(d.overflow || '').trim());
+  const Marks = () => TDW.Marks;
+  const ghostsOf = (d) => (d.ann && Array.isArray(d.ann.ghosts) ? d.ann.ghosts : []);
+  const masksOf = (text, d) => M.ghostMasks(text, ghostsOf(d));
+  // What a push sends, so a push can tell whether the draft changed while it ran.
+  const sentOf = (d) => JSON.stringify([d.text, d.overflow || '', ghostsOf(d).map((g) => [g.start, g.end])]);
   const alive = (d) => Store.getDraft(d.id) === d;
   const plain = (rich) => (Array.isArray(rich) ? rich : []).map((r) => r.plain_text || (r.text && r.text.content) || '').join('').trim();
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -152,6 +158,7 @@
   // one. Returns their ids.
   function leaveDatabase() {
     entriesCache.clear();
+    ovCache.clear();
     pages.clear();
     lastFull = 0;
     const left = new Set();
@@ -184,6 +191,7 @@
     // Keep only the database id, so a later connect can tell whether the database changed.
     Store.setNotionConfig(c && c.databaseId ? { databaseId: c.databaseId } : null);
     entriesCache.clear();
+    ovCache.clear();
     pages.clear();
     report('off');
     call('onList');
@@ -237,7 +245,7 @@
     clearTimeout(propTimers.get(d.id));
     propTimers.delete(d.id);
     propNames.delete(d.id);
-    if (d.notionId) { entriesCache.delete(d.notionId); pages.delete(d.notionId); }
+    if (d.notionId) { entriesCache.delete(d.notionId); ovCache.delete(d.notionId); pages.delete(d.notionId); }
     if (d.dirty) {
       // Text that never reached Notion is never thrown away: it stays here as a local copy.
       Store.unlink(d);
@@ -318,17 +326,61 @@
       Date.parse(page.last_edited_time) >= Math.floor(d.contentFetchedAt / 60000) * 60000;
   }
 
+  // The page's blocks: the draft's lines, and the Overflow toggle's lines, kept apart.
+  async function readPage(id) {
+    const { blocks, overflow } = M.splitPage(await Notion.listChildren(id));
+    const entries = M.blocksToEntries(blocks);
+    let ov = null;
+    if (overflow) ov = { id: overflow.id, entries: overflow.has_children === false ? [] : M.blocksToEntries(await Notion.listChildren(overflow.id)) };
+    entriesCache.set(id, entries);
+    ovCache.set(id, ov);
+    return { entries, ov };
+  }
+
+  // Lost alternatives keep their options in Overflow, one line each: "a / b / c".
+  function keepLost(overflow, lost) {
+    const lines = (lost || []).map((a) => a.options.map((o) => o.text).join(' / ')).filter(Boolean);
+    if (!lines.length) return overflow;
+    const cur = String(overflow || '');
+    return (cur.trim() ? cur.replace(/\s+$/, '') + '\n' : '') + lines.join('\n');
+  }
+
   async function pull(d, page) {
-    const entries = M.blocksToEntries(await Notion.listChildren(d.notionId));
-    entriesCache.set(d.notionId, entries);
+    const first = !d.contentFetchedAt;
+    const { entries, ov } = await readPage(d.notionId);
     if (!alive(d)) return;
     const text = M.entriesToText(entries);
+    const ovText = ov ? M.entriesToText(ov.entries) : '';
     d.contentFetchedAt = Date.now();
     d.contentEditedAt = page.last_edited_time || null;
-    const apply = !d.dirty && !pushing.has(d.id) && text !== d.text && !M.sameContent(entries, d.text.split('\n'));
-    if (apply) d.text = text;
+    const free = !d.dirty && !pushing.has(d.id);
+    // Same meaning (list numbers and markdown spelling aside, gray included) is no change.
+    const textChanged = free && !M.sameContent(entries, d.text.split('\n'), masksOf(d.text, d));
+    const ovLines = M.overflowLines(d.overflow);
+    const ovChanged = free && !(ov ? M.sameContent(ov.entries, ovLines) : !ovLines.length);
+    let overflow = ovChanged ? ovText : String(d.overflow || '');
+    if (textChanged) {
+      const old = d.text;
+      d.text = text;
+      const ghosts = M.ghostsFromEntries(entries);
+      const K = Marks();
+      if (K) {
+        const r = K.reanchor(d.ann || K.EMPTY, old, text);
+        let alts = r.ann.alts;
+        // A page first seen here: the account may hold alternatives another device made.
+        const meta = first && !alts.length && TDW.Account ? TDW.Account.draftMeta(d.notionId) : null;
+        if (meta && Array.isArray(meta.alts) && meta.alts.length) alts = meta.alts;
+        d.ann = K.normalize({ alts, ghosts }, text);
+        if (r.lost.length) {
+          overflow = keepLost(overflow, r.lost);
+          d.dirty = d.dirty || overflow !== ovText; // the kept options go back to Notion too
+        }
+      } else d.ann = { alts: [], ghosts };
+    }
+    d.overflow = overflow;
     Store.saveDraft(d);
-    if (apply) call('onRemoteText', d);
+    if (textChanged || ovChanged) call('onRemoteText', d);
+    if (d.dirty && leader) schedulePush(d.id);
   }
 
   async function tick() {
@@ -383,9 +435,9 @@
 
   /* ---------- Writing to Notion ---------- */
 
-  function toBlock(line) {
+  function toBlock(line, mask) {
     const spec = M.lineToSpec(line);
-    return M.blockPayload(spec, M.richFromMd(spec.text));
+    return M.blockPayload(spec, M.richFromMd(spec.text, mask || []));
   }
 
   function statusProp(c) {
@@ -417,9 +469,9 @@
     flushTrash().catch(fail);
   }
 
-  async function create(d, c, lines) {
+  async function create(d, c, lines, masks) {
     if (!hasContent(d)) return; // empty drafts are never uploaded
-    const blocks = lines.filter((l) => !M.looksOpaque(l)).map(toBlock);
+    const blocks = lines.map((l, k) => [l, k]).filter(([l]) => !M.looksOpaque(l)).map(([l, k]) => toBlock(l, masks[k]));
     const title = Store.displayTitle(d);
     const page = await Notion.createPage({
       parent: { type: 'data_source_id', data_source_id: c.dataSourceId },
@@ -444,23 +496,26 @@
         if (made.length) after = made[made.length - 1].id;
       }
     }
-    entriesCache.set(page.id, M.blocksToEntries(await Notion.listChildren(page.id)));
+    await readPage(page.id);
+    await pushOverflow(d, page.id);
   }
 
-  async function update(d, c, lines) {
+  async function update(d, c, lines, masks) {
     const id = d.notionId;
     try {
-      let entries = entriesCache.get(id) || M.blocksToEntries(await Notion.listChildren(id));
+      let entries = entriesCache.get(id) || (await readPage(id)).entries;
       try {
-        entries = await M.applyOps(id, entries, lines, M.planOps(entries, lines), Notion.api);
+        entries = await M.applyOps(id, entries, lines, M.planOps(entries, lines, masks), Notion.api, masks);
       } catch (e) {
         if (!e || !['not_found', 'validation', 'conflict'].includes(e.code)) throw e;
-        entries = M.blocksToEntries(await Notion.listChildren(id));
-        entries = await M.applyOps(id, entries, lines, M.planOps(entries, lines), Notion.api);
+        entries = (await readPage(id)).entries;
+        entries = await M.applyOps(id, entries, lines, M.planOps(entries, lines, masks), Notion.api, masks);
       }
       entriesCache.set(id, entries);
+      await pushOverflow(d, id);
     } catch (e) {
       entriesCache.delete(id); // some ops may have landed; refetch next time
+      ovCache.delete(id);
       throw e;
     }
     const title = Store.displayTitle(d);
@@ -470,14 +525,58 @@
     }
   }
 
+  // Overflow is one toggle block at the bottom of the page: made when it gets its first line,
+  // kept in step like the page, and removed when it's emptied.
+  async function syncToggle(ov, lines) {
+    ov.entries = await M.applyOps(ov.id, ov.entries, lines, M.planOps(ov.entries, lines), Notion.api);
+    return ov;
+  }
+
+  async function pushOverflow(d, id) {
+    let ov = ovCache.has(id) ? ovCache.get(id) : (await readPage(id)).ov;
+    const lines = M.overflowLines(d.overflow);
+    if (!lines.length) {
+      if (ov) {
+        try { await Notion.api.remove(ov.id); } catch (e) { if (!e || e.code !== 'not_found') throw e; }
+        ovCache.set(id, null);
+      }
+      return;
+    }
+    if (ov) {
+      try {
+        ovCache.set(id, await syncToggle(ov, lines));
+        return;
+      } catch (e) {
+        if (!e || !['not_found', 'validation', 'conflict'].includes(e.code)) throw e;
+        ov = (await readPage(id)).ov;
+        if (ov) { ovCache.set(id, await syncToggle(ov, lines)); return; }
+      }
+    }
+    const entries = entriesCache.get(id) || [];
+    const after = entries.length ? entries[entries.length - 1].id : null;
+    const made = await Notion.appendChildren(id, [M.overflowBlock(lines)], after);
+    const toggleId = made && made[0] && made[0].id;
+    if (!toggleId) { ovCache.delete(id); return; }
+    const rest = lines.filter((l) => !M.looksOpaque(l)).slice(100).map((l) => toBlock(l));
+    let last = null;
+    for (let k = 0; k < rest.length; k += 100) {
+      if (!last) { const kids = await Notion.listChildren(toggleId); last = kids.length ? kids[kids.length - 1].id : null; }
+      const more = await Notion.appendChildren(toggleId, rest.slice(k, k + 100), last);
+      if (more.length) last = more[more.length - 1].id;
+    }
+    ovCache.set(id, { id: toggleId, entries: M.blocksToEntries(await Notion.listChildren(toggleId)) });
+  }
+
   async function pushOnce(d) {
     const c = cfg();
     const text = d.text;
+    const sent = sentOf(d);
     const lines = text.split('\n');
-    if (!d.notionId) await create(d, c, lines);
-    else await update(d, c, lines);
+    const masks = masksOf(text, d);
+    if (!d.notionId) await create(d, c, lines, masks);
+    else await update(d, c, lines, masks);
     if (!alive(d)) return;
-    if (d.text === text) d.dirty = false;
+    if (sentOf(d) === sent) d.dirty = false;
     d.contentFetchedAt = Date.now();
     Store.saveDraft(d);
   }
@@ -601,6 +700,7 @@
       const done = trashing;
       Store.setNotionTrash(Store.getNotionTrash().filter((x) => x !== done));
       entriesCache.delete(done);
+      ovCache.delete(done);
       pages.delete(done);
     }
   }
@@ -655,6 +755,7 @@
     clearTimeout(claimTimer);
     // Another tab may have changed these pages since this tab last led.
     entriesCache.clear();
+    ovCache.clear();
     pages.clear();
     return new Promise((resolve) => {
       releaseLock = resolve;
