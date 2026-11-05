@@ -1632,7 +1632,7 @@
     setActive(id) {
       for (const n of root.querySelectorAll('.is-active')) n.classList.remove('is-active');
       activeId = id || null;
-      if (activeId) for (const n of root.querySelectorAll('[data-id="' + CSS.escape(activeId) + '"]')) n.classList.add('is-active');
+      if (activeId) for (const n of root.querySelectorAll('[data-id="' + CSS.escape(activeId) + '"], [data-lab="' + CSS.escape(activeId) + '"]')) n.classList.add('is-active');
     },
     render,
     placeAids,
