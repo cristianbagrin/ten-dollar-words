@@ -303,3 +303,96 @@ test('sameContent ignores list numbers and markdown spelling, not real changes',
   assert.equal(M.sameContent(entries, ['1. one', '2. two', 'bold']), false);
   assert.equal(M.sameContent(entries, ['1. one', '2. two']), false);
 });
+
+/* ---------- Ghosts as gray text, and the Overflow toggle ---------- */
+
+const rangesOf = (text, ghosts) => ghosts.map((g) => text.slice(g.start, g.end));
+const toggle = (id, title, extra) => ({ object: 'block', id, type: 'toggle', has_children: true, toggle: { rich_text: [t(title)] }, ...(extra || {}) });
+const colors = (rich) => rich.map((r) => [r.text.content, (r.annotations && r.annotations.color) || 'default']);
+
+test('gray text in Notion becomes ghost ranges, markdown markers and prefixes aside', () => {
+  const entries = M.blocksToEntries([
+    para('a', t('Keep this. '), t('Lose this.', { color: 'gray' }), t(' Keep that.')),
+    block('b', 'heading_2', [t('Head '), t('gone', { color: 'gray', bold: true })]),
+    para('c', t('Plain red', { color: 'red' }))
+  ]);
+  const text = M.entriesToText(entries);
+  assert.equal(text, 'Keep this. Lose this. Keep that.\n## Head **gone**\nPlain red');
+  assert.deepEqual(rangesOf(text, M.ghostsFromEntries(entries)), ['Lose this.', 'gone']);
+});
+
+test('ghosts go to Notion as gray, revived text loses the gray, other colors stay', () => {
+  const text = 'Keep this. Lose this. Keep that.';
+  const g = text.indexOf('Lose this.');
+  const masks = M.ghostMasks(text, [{ start: g, end: g + 10 }]);
+  assert.equal(masks[0].map((x) => (x ? 1 : 0)).join(''), '0'.repeat(11) + '1'.repeat(10) + '0'.repeat(11));
+  assert.deepEqual(colors(M.richFromMd(text, masks[0])), [['Keep this. ', 'default'], ['Lose this.', 'gray'], [' Keep that.', 'default']]);
+  const back = M.spliceRich([t('Keep this. '), t('Lose this.', { color: 'gray' }), t(' Keep that.', { color: 'red' })], text, []);
+  assert.deepEqual(colors(back), [['Keep this. Lose this.', 'default'], [' Keep that.', 'red']]);
+  assert.equal(M.spliceRich([t('Lose this.', { color: 'gray' })], 'Lose this.')[0].annotations.color, 'gray', 'no masks: colors stay');
+});
+
+test('ghosting or reviving text alone is a change planOps sends', async () => {
+  const entries = M.blocksToEntries([para('a', t('One two three'))]);
+  const text = 'One two three';
+  const masks = M.ghostMasks(text, [{ start: 4, end: 7 }]);
+  assert.equal(M.sameContent(entries, [text]), true, 'without masks nothing changed');
+  assert.equal(M.sameContent(entries, [text], masks), false);
+  const ops = M.planOps(entries, [text], masks);
+  assert.deepEqual(ops.map((o) => o.op), ['update']);
+  const api = simPage(entries);
+  const next = await M.applyOps('page', entries, [text], ops, api, masks);
+  assert.deepEqual(rangesOf(text, M.ghostsFromEntries(M.blocksToEntries(asBlocks(api.state)))), ['two']);
+  assert.equal(M.sameContent(next, [text], masks), true, 'and then it is in step');
+  assert.deepEqual(M.planOps(next, [text], M.ghostMasks(text, [])).map((o) => o.op), ['update'], 'reviving is a change too');
+});
+
+test('random ghosts survive the round trip through Notion', async () => {
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const words = ['cut', '**the**', 'word', '*costs*', 'ten', '[dollars](https://x.co)', 'draft'];
+  for (let trial = 0; trial < 150; trial++) {
+    const lines = Array.from({ length: 1 + Math.floor(rnd() * 5) }, () =>
+      ['', '# ', '- ', '> '][Math.floor(rnd() * 4)] + Array.from({ length: 1 + Math.floor(rnd() * 6) }, () => words[Math.floor(rnd() * words.length)]).join(' '));
+    const text = lines.join('\n');
+    const ghosts = [];
+    const re = /[A-Za-z]+/g;
+    let m;
+    while ((m = re.exec(text))) if (!/^https?$|^x$|^co$/.test(m[0]) && rnd() < 0.3) ghosts.push({ start: m.index, end: m.index + m[0].length });
+    const masks = M.ghostMasks(text, ghosts);
+    const api = simPage([]);
+    const next = await M.applyOps('page', [], lines, M.planOps([], lines, masks), api, masks);
+    const back = M.blocksToEntries(asBlocks(api.state));
+    assert.equal(M.entriesToText(back), text, 'trial ' + trial);
+    assert.deepEqual(rangesOf(text, M.ghostsFromEntries(back)), rangesOf(text, ghosts), 'trial ' + trial);
+    assert.equal(M.sameContent(next, lines, masks), true);
+  }
+});
+
+test('the Overflow toggle is taken out of the page; another toggle stays opaque', () => {
+  const blocks = [para('a', t('Draft text')), toggle('ov', 'Overflow'), para('z', t('After'))];
+  const { blocks: rest, overflow } = M.splitPage(blocks);
+  assert.equal(overflow.id, 'ov');
+  assert.deepEqual(M.blocksToEntries(rest).map((e) => e.line), ['Draft text', 'After']);
+  const two = M.splitPage([toggle('x', 'Notes'), toggle('o1', 'overflow'), toggle('o2', ' Overflow ')]);
+  assert.equal(two.overflow.id, 'o2', 'the last Overflow wins');
+  assert.deepEqual(M.blocksToEntries(two.blocks).map((e) => e.line), ['⟦toggle: Notes⟧', '⟦toggle: overflow⟧']);
+  assert.equal(M.splitPage([para('a', t('x'))]).overflow, null);
+});
+
+test('overflow lines: new toggle payload and edits through applyOps', async () => {
+  assert.deepEqual(M.overflowLines(''), []);
+  assert.deepEqual(M.overflowLines('  \n '), []);
+  assert.deepEqual(M.overflowLines('one\n\ntwo\n'), ['one', '', 'two']);
+  const lines = ['A spare **paragraph**', '- a list item', 'https://example.com'];
+  const blk = M.overflowBlock(lines);
+  assert.equal(blk.type, 'toggle');
+  assert.equal(blk.toggle.rich_text[0].text.content, 'Overflow');
+  assert.deepEqual(blk.toggle.children.map((c) => c.type), ['paragraph', 'bulleted_list_item', 'paragraph']);
+  const kids = M.blocksToEntries(blk.toggle.children.map((c, k) => Object.assign({ id: 'k' + k }, c)));
+  assert.deepEqual(kids.map((e) => e.line), lines);
+  const api = simPage(kids);
+  const next = ['A spare **paragraph**', 'new note', 'https://example.com'];
+  await M.applyOps('ov', kids, next, M.planOps(kids, next), api);
+  assert.deepEqual(M.blocksToEntries(asBlocks(api.state)).map((e) => e.line), next);
+});

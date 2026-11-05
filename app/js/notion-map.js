@@ -199,7 +199,10 @@
      italics, strikethrough, code and links; text the user did not touch keeps its color,
      underline, soft line breaks, and its mentions. Inserted text takes the color of the
      character before it. */
-  function spliceRich(oldRich, md) {
+  // mask (optional): one boolean per visible character of md, true where the draft has it
+  // ghosted. Given, it decides gray: ghosted text is gray, and text that was gray but isn't
+  // ghosted any more goes back to the default color. Left out, colors stay as they were.
+  function spliceRich(oldRich, md, mask) {
     const chars = mdRuns(String(md || ''));
     const newText = chars.map((c) => c.text).join('');
     const segs = (oldRich || []).map((r) => ({ r, raw: plainOf(r) }));
@@ -229,6 +232,10 @@
       } else {
         cell = Object.assign({}, c, { color: carry.color, u: carry.u, obj: -1, from: -1 });
       }
+      if (mask) {
+        if (mask[k]) cell.color = 'gray';
+        else if (cell.color === 'gray') cell.color = 'default';
+      }
       return cell;
     });
 
@@ -255,7 +262,104 @@
     return chunk(mergeText(out));
   }
 
-  const richFromMd = (md) => spliceRich([], md);
+  const richFromMd = (md, mask) => spliceRich([], md, mask);
+
+  /* ---------- Ghosts: gray text in Notion ---------- */
+
+  const NO_GHOST = Object.freeze([]);
+
+  // Markdown column of each visible character of md.
+  function visMap(md) {
+    const { flags } = Inline.parse(md, 0);
+    const out = [];
+    for (let k = 0; k < md.length; k++) if (!(flags[k] & Inline.MD)) out.push(k);
+    return out;
+  }
+
+  // One boolean per character of the block's text: is it gray? null when nothing is.
+  function grayOf(rich) {
+    const out = [];
+    let any = false;
+    for (const r of rich || []) {
+      const g = !!(r.annotations && r.annotations.color === 'gray');
+      if (g) any = true;
+      for (let k = 0; k < display(plainOf(r)).length; k++) out.push(g);
+    }
+    return any ? out : null;
+  }
+  const maskKey = (m) => (m && m.some(Boolean) ? '\u0004' + m.map((x) => (x ? 1 : 0)).join('') : '');
+
+  // Ghost ranges (markdown offsets of the whole draft) → per line, one boolean per visible
+  // character of the line's block text, or null for a line with no ghosts.
+  function ghostMasks(text, ghosts) {
+    const lines = String(text || '').split('\n');
+    const out = new Array(lines.length).fill(null);
+    if (!ghosts || !ghosts.length) return out;
+    let at = 0;
+    lines.forEach((line, i) => {
+      const ls = at;
+      at += line.length + 1;
+      const hits = ghosts.filter((g) => g.start < ls + line.length && g.end > ls);
+      if (!hits.length || looksOpaque(line)) return;
+      const spec = lineToSpec(line);
+      if (spec.type === 'divider') return;
+      const pre = line.length - spec.text.length;
+      const map = visMap(spec.text);
+      const mask = map.map((c) => { const x = ls + pre + c; return hits.some((g) => x >= g.start && x < g.end); });
+      if (mask.some(Boolean)) out[i] = mask;
+    });
+    return out;
+  }
+
+  // Gray text in Notion → ghost ranges over the draft text these entries make.
+  function ghostsFromEntries(entries) {
+    const out = [];
+    let at = 0;
+    for (const e of entries || []) {
+      const ls = at;
+      at += e.line.length + 1;
+      if (e.opaque || e.type === 'divider') continue;
+      const gray = grayOf(e.rich);
+      if (!gray) continue;
+      const spec = lineToSpec(e.line);
+      const pre = e.line.length - spec.text.length;
+      const map = visMap(spec.text);
+      if (map.length !== gray.length) continue;
+      for (let k = 0; k < map.length;) {
+        if (!gray[k]) { k++; continue; }
+        let j = k;
+        while (j + 1 < map.length && gray[j + 1]) j++;
+        out.push({ start: ls + pre + map[k], end: ls + pre + map[j] + 1 });
+        k = j + 1;
+      }
+    }
+    return out;
+  }
+
+  /* ---------- Overflow: one toggle block titled "Overflow" ---------- */
+
+  const OVERFLOW_TITLE = 'Overflow';
+  const isOverflowBlock = (b) => !!b && b.type === 'toggle' && !!b.toggle &&
+    richPlain(b.toggle.rich_text).trim().toLowerCase() === OVERFLOW_TITLE.toLowerCase();
+
+  // The page's top-level blocks, without the Overflow toggle (the last one, if several), and
+  // that toggle. The draft's text never includes it.
+  function splitPage(blocks) {
+    const list = blocks || [];
+    let k = -1;
+    for (let i = list.length - 1; i >= 0; i--) if (isOverflowBlock(list[i])) { k = i; break; }
+    if (k < 0) return { blocks: list, overflow: null };
+    return { blocks: list.slice(0, k).concat(list.slice(k + 1)), overflow: list[k] };
+  }
+
+  // The lines Overflow holds; an Overflow with nothing in it has none.
+  const overflowLines = (text) => (String(text || '').trim() ? String(text).replace(/\s+$/, '').split('\n') : []);
+
+  // The toggle block for a new Overflow, with its first lines inside (Notion takes 100 at once).
+  function overflowBlock(lines) {
+    const children = lines.filter((l) => !looksOpaque(l)).slice(0, 100).map((l) => { const sp = lineToSpec(l); return blockPayload(sp, richFromMd(sp.text)); });
+    return { object: 'block', type: 'toggle', toggle: { rich_text: richFromText(OVERFLOW_TITLE), children } };
+  }
 
   function blockPayload(spec, rich) {
     if (spec.type === 'divider') return { object: 'block', type: 'divider', divider: {} };
@@ -267,23 +371,26 @@
   /* ---------- Diff ---------- */
 
   // Compare lines by what they mean in Notion, so a renumbered list item isn't a change.
-  function keyOfEntry(e) {
+  // With masks (ghostMasks), gray counts too: ghosting or reviving text is a change.
+  function keyOfEntry(e, masks) {
     if (e.opaque) return 'opaque\u0000' + e.line;
     if (e.type === 'divider') return 'divider';
-    return e.type + '\u0000' + signature((e.rich || []).map(styleRun)) + (e.type === 'to_do' ? '\u0000' + e.checked : '');
+    return e.type + '\u0000' + signature((e.rich || []).map(styleRun)) + (e.type === 'to_do' ? '\u0000' + e.checked : '') +
+      (masks ? maskKey(grayOf(e.rich)) : '');
   }
-  function keyOfLine(line) {
+  function keyOfLine(line, mask, masks) {
     if (looksOpaque(line)) return 'opaque\u0000' + line;
     const s = lineToSpec(line);
     if (s.type === 'divider') return 'divider';
-    return s.type + '\u0000' + signature(mdRuns(s.text)) + (s.type === 'to_do' ? '\u0000' + !!s.checked : '');
+    return s.type + '\u0000' + signature(mdRuns(s.text)) + (s.type === 'to_do' ? '\u0000' + !!s.checked : '') +
+      (masks ? maskKey(mask) : '');
   }
 
   // Whether the draft's lines already say what these blocks say, list numbers and markdown
   // spelling aside. Sync leaves the draft alone then, so its undo history survives.
-  function sameContent(entries, lines) {
+  function sameContent(entries, lines, masks) {
     if (entries.length !== lines.length) return false;
-    for (let k = 0; k < lines.length; k++) if (keyOfEntry(entries[k]) !== keyOfLine(lines[k])) return false;
+    for (let k = 0; k < lines.length; k++) if (keyOfEntry(entries[k], masks) !== keyOfLine(lines[k], masks && masks[k], masks)) return false;
     return true;
   }
 
@@ -345,9 +452,9 @@
 
   /* entries: what Notion has (blocksToEntries); lines: the draft split on "\n".
      Returns ops in page order: keep | update | replace | insert | delete. */
-  function planOps(entries, lines) {
-    const a = entries.map(keyOfEntry);
-    const b = lines.map(keyOfLine);
+  function planOps(entries, lines, masks) {
+    const a = entries.map((e) => keyOfEntry(e, masks));
+    const b = lines.map((l, k) => keyOfLine(l, masks && masks[k], masks));
     let pre = 0;
     while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
     let suf = 0;
@@ -411,7 +518,9 @@
        api.append(pageId, children, afterId)   → Promise<createdBlocks[]>  (afterId null = start)
      Returns the new entries (what Notion has afterwards), aligned with the lines that exist
      in Notion. Lines that look like ⟦markers⟧ are never created as text. */
-  async function applyOps(pageId, entries, lines, ops, api) {
+  // masks (optional, from ghostMasks): which characters of each line are ghosted (gray).
+  async function applyOps(pageId, entries, lines, ops, api, masks) {
+    const maskOf = (k) => (masks ? masks[k] || NO_GHOST : undefined);
     const next = [];
     let anchor = null;
     let batch = [];
@@ -440,7 +549,7 @@
         await flush();
         const e = entries[o.old];
         const spec = lineToSpec(lines[o.line]);
-        const rich = spliceRich(e.rich, spec.text);
+        const rich = spliceRich(e.rich, spec.text, maskOf(o.line));
         await api.update(e.id, blockPayload(spec, rich));
         next.push({ line: lines[o.line], id: e.id, type: e.type, rich, checked: !!spec.checked, opaque: false });
         anchor = e.id;
@@ -450,7 +559,7 @@
       if (o.op === 'replace') await api.remove(entries[o.old].id);
       if (looksOpaque(line)) continue;
       const spec = lineToSpec(line);
-      const rich = o.op === 'replace' && !entries[o.old].opaque ? spliceRich(entries[o.old].rich, spec.text) : richFromMd(spec.text);
+      const rich = o.op === 'replace' && !entries[o.old].opaque ? spliceRich(entries[o.old].rich, spec.text, maskOf(o.line)) : richFromMd(spec.text, maskOf(o.line));
       batch.push({ lineIdx: o.line, spec, rich });
     }
     await flush();
@@ -506,6 +615,7 @@
 
   return {
     isOpaqueLine, looksOpaque, blocksToEntries, entriesToText, lineToSpec, richPlain, richToMd, spliceRich,
-    richFromText, richFromMd, blockPayload, planOps, applyOps, sameContent, propFromNotion, propToNotion, EDITABLE
+    richFromText, richFromMd, blockPayload, planOps, applyOps, sameContent, propFromNotion, propToNotion, EDITABLE,
+    ghostMasks, ghostsFromEntries, grayOf, splitPage, isOverflowBlock, overflowLines, overflowBlock, OVERFLOW_TITLE
   };
 });
