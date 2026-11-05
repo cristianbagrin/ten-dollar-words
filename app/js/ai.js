@@ -22,9 +22,10 @@
   const OPTIONS = { type: 'OBJECT', properties: { options: { type: 'ARRAY', items: { type: 'OBJECT',
     properties: { text: { type: 'STRING' }, note: { type: 'STRING' } }, required: ['text', 'note'] } } }, required: ['options'] };
   const ALTS = { type: 'OBJECT', properties: { options: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['options'] };
-  const TIGHTEN = { type: 'OBJECT', properties: { summary: { type: 'STRING' }, edits: { type: 'ARRAY', items: { type: 'OBJECT',
-    properties: { find: { type: 'STRING' }, replace: { type: 'STRING' }, why: { type: 'STRING' } }, required: ['find', 'replace', 'why'] } } },
-    required: ['summary', 'edits'] };
+  const LAB = { type: 'OBJECT', properties: { marks: { type: 'ARRAY', items: { type: 'OBJECT',
+    properties: { quote: { type: 'STRING' }, reason: { type: 'STRING' }, fix: { type: 'STRING' } }, required: ['quote', 'reason', 'fix'] } } },
+    required: ['marks'] };
+  const CUTS = { type: 'OBJECT', properties: { cuts: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['cuts'] };
   const MESSAGE = { type: 'OBJECT', properties: {
     takeaway: { type: 'STRING' }, verdict: { type: 'STRING', enum: ['clear', 'mixed', 'unclear'] },
     match: { type: 'STRING', enum: ['yes', 'partly', 'no', 'none'] }, why: { type: 'STRING' },
@@ -226,13 +227,17 @@
     };
   }
 
-  function checkEdits(raw) {
-    const list = raw && Array.isArray(raw.edits) ? raw.edits : [];
+  function checkLab(raw) {
+    const list = raw && Array.isArray(raw.marks) ? raw.marks : [];
     return {
-      summary: str(raw && raw.summary),
-      edits: list.filter((e) => e && typeof e.find === 'string' && e.find !== '')
-        .slice(0, 12).map((e) => ({ find: e.find, replace: str(e.replace), why: str(e.why) }))
+      marks: list.filter((m) => m && typeof m.quote === 'string' && m.quote.trim())
+        .slice(0, 40).map((m) => ({ quote: m.quote, reason: str(m.reason), fix: str(m.fix) }))
     };
+  }
+
+  function checkCuts(raw) {
+    const list = raw && Array.isArray(raw.cuts) ? raw.cuts : [];
+    return { cuts: list.filter((c) => typeof c === 'string' && c.trim()).slice(0, 200) };
   }
 
   function checkMessage(raw) {
@@ -253,6 +258,14 @@
 
   /* ---------- Prompts ---------- */
   const block = (label, text) => label + ':\n<<<\n' + text + '\n>>>';
+
+  const LAB_ASK = {
+    punctuation: 'Find punctuation mistakes and typos in this text: missing or wrong punctuation, doubled words, misspellings, wrong word (its/it\'s, then/than). Quote the smallest stretch that contains each mistake (1 to 6 words). Don\'t flag style choices. At most 20.',
+    weakest: 'Mark the weakest sentences in this text: up to 5 that add the least, are vague, or repeat what was already said. Quote each whole sentence.',
+    convoluted: 'Mark convoluted sentences in this text: ones that are hard to follow because of their structure (a buried subject, nested clauses, a long wind-up, a double negative), even when they are short. Quote each whole sentence. At most 8.',
+    tone: 'Work out the tone of this text in two or three words. Then mark words or short phrases (1 to 4 words) that don\'t fit that tone, such as fancy words or jargon in plain writing, or slang in formal writing. Each reason names the tone it breaks. At most 10.',
+    hedges: 'Mark hedges and filler in this text: words or short phrases (1 to 5 words) that soften, pad or clear the throat without adding meaning ("I think", "sort of", "it seems", "in order to", "basically"). At most 15.'
+  };
 
   const FEATURES = {
     // Options that fit where the text sits: read with its sentence and paragraph, never a thesaurus.
@@ -298,19 +311,33 @@
         'Give 4 options, best first. Each note gives the nuance in 2 to 5 words.'
       ].join('\n\n')
     },
-    tighten: {
-      schema: TIGHTEN, temperature: 0.3, check: checkEdits,
+    // The Lab: marks only, never rewrites. Each check returns exact quotes with a short reason.
+    lab: {
+      schema: LAB, temperature: 0.3, check: checkLab,
       prompt: (i) => [
-        "Every word in this text costs $10. Find cuts that save money without losing meaning, facts, or the writer's personality.",
+        LAB_ASK[i.check],
         'Rules:\n' +
-        '- Each edit replaces an exact quote from the text with something shorter, or deletes it (empty replace).\n' +
-        '- "find" must be copied character for character from the text, 1 to 30 words long, and must appear only once.\n' +
-        '- Go after filler, hedges, throat-clearing, repetition, and wordy phrases.\n' +
-        '- Every edited sentence must stay grammatical and mean exactly the same. Never change tense or voice, and never drop an article just to save a word.\n' +
-        '- Fewer, better edits beat more edits. Skip any cut that makes the writing worse.\n' +
-        '- Leave quotes from other people unchanged.\n' +
-        '- At most 12 edits, biggest savings first.',
+        '- "quote" must be copied character for character from the text, and must appear in it only once (quote a little more if needed to make it unique).\n' +
+        '- "reason" says why in 12 words or fewer, plainly.\n' +
+        '- "fix" is ' + (i.check === 'punctuation' ? 'the corrected version of exactly the quoted text.' : 'always "".') + '\n' +
+        '- Mark nothing you are unsure about. Fewer, better marks beat many. Leave quotes from other people alone.',
         block('TEXT', i.text)
+      ].join('\n\n')
+    },
+    // Trim: deletions only. The writer reads what would go before anything goes.
+    trim: {
+      schema: CUTS, temperature: 0.3, check: checkCuts,
+      prompt: (i) => [
+        'Every word in this text costs $10. Find words, phrases and whole sentences that could be deleted to make it about ' + i.percent +
+        '% shorter (about ' + i.target + ' of its ' + i.words + ' words), keeping its meaning, facts and the writer\'s voice.',
+        'Rules:\n' +
+        '- You may only delete. Never rewrite, reorder or add a word. Each cut must leave the sentence grammatical and natural exactly as it stands once the cut is removed (one neighboring space goes with it).\n' +
+        '- If a cut would need any other word changed to work, skip it.\n' +
+        '- Each cut is copied character for character from the text and appears in it only once. Cuts never overlap.\n' +
+        '- Go first for filler, hedges, throat-clearing, repetition and asides; ' + (i.percent >= 30 ? 'then whole sentences that add least.' : 'cut whole sentences only when they add nothing.') + '\n' +
+        '- Never cut headings or quotes from other people.',
+        block('TEXT', i.text),
+        'Return the cuts in the order they appear.'
       ].join('\n\n')
     },
     messageCheck: {
@@ -383,10 +410,15 @@
     },
     stronger: (input, signal) => run('stronger', input, signal),
     activeVoice: (input, signal) => run('activeVoice', input, signal),
-    async tighten(input, signal) {
+    // input: { check: 'punctuation' | 'weakest' | 'convoluted' | 'tone' | 'hedges', text } → { marks: [{ quote, reason, fix }] }
+    lab: (input, signal) => run('lab', { check: input.check, text: String(input.text || '').slice(0, MAX_TIGHTEN) }, signal),
+    // input: { text, percent } → { cuts: [quote] }, deletions only.
+    async trim(input, signal) {
       const text = String(input.text || '');
       const truncated = text.length > MAX_TIGHTEN;
-      const out = await run('tighten', { text: truncated ? text.slice(0, MAX_TIGHTEN) : text }, signal);
+      const t = truncated ? text.slice(0, MAX_TIGHTEN) : text;
+      const words = TDW.Engine.countWords(t);
+      const out = await run('trim', { text: t, percent: input.percent, words, target: Math.max(1, Math.round(words * input.percent / 100)) }, signal);
       out.truncated = truncated;
       return out;
     },

@@ -18,6 +18,40 @@
     return r ? text.slice(r.start, r.end) : '';
   }
 
+  const once = (text, q) => !!q && text.indexOf(q) >= 0 && text.indexOf(q) === text.lastIndexOf(q);
+  const sentences = (text) => TDW.Engine.splitSentences(text).map((r) => text.slice(r.start, r.end)).filter((q) => !/^#/.test(q));
+
+  function labMarks(input) {
+    const t = String(input.text || '');
+    const out = [];
+    const add = (quote, reason, fix) => { if (once(t, quote) && !out.some((m) => m.quote === quote)) out.push({ quote, reason, fix: fix || '' }); };
+    if (input.check === 'punctuation') {
+      for (const m of t.matchAll(/\b(\w+) \1\b/g)) add(m[0], 'Doubled word', m[1]);
+      for (const m of t.matchAll(/ ,/g)) add(t.slice(Math.max(0, m.index - 5), m.index + 2).trim(), 'Space before a comma', t.slice(Math.max(0, m.index - 5), m.index + 2).trim().replace(' ,', ','));
+      for (const m of t.matchAll(/\bteh\b/g)) add('teh', 'Typo', 'the');
+    } else if (input.check === 'tone') {
+      for (const w of ['utilize', 'leverage', 'synergy', 'paradigm']) add(w, 'Too formal for a plain, direct tone');
+    } else if (input.check === 'hedges') {
+      for (const w of ['I think', 'sort of', 'basically', 'in order to', 'it seems']) add(w, 'Softens without adding meaning');
+    } else {
+      const list = sentences(t).sort((x, y) => y.length - x.length).slice(0, input.check === 'weakest' ? 2 : 1);
+      for (const q of list) add(q, input.check === 'weakest' ? 'Adds little the reader needs' : 'Hard to follow: too many turns');
+    }
+    return out;
+  }
+
+  function trimCuts(input) {
+    const t = String(input.text || '');
+    const target = input.target || 1;
+    const cuts = [];
+    let n = 0;
+    const add = (q) => { if (once(t, q) && !cuts.some((c) => c.includes(q) || q.includes(c))) { cuts.push(q); n += TDW.Engine.countWords(q); } };
+    for (const w of ['really ', 'very ', 'just ', 'basically ', 'I think ', 'quite ']) { if (n >= target) break; add(w.trim()); }
+    const list = sentences(t);
+    for (let k = list.length - 1; k > 0 && n < target; k--) add(list[k]);
+    return cuts.sort((a, b) => t.indexOf(a) - t.indexOf(b));
+  }
+
   function answer(feature, input) {
     switch (feature) {
       case 'simplify':
@@ -33,14 +67,8 @@
         return { options: [{ text: 'remarkable', note: 'Mock option' }, { text: 'striking', note: 'Mock option' }] };
       case 'activeVoice':
         return { options: [{ text: 'The team wrote it.', note: 'Doer comes first' }] };
-      case 'tighten': {
-        const edits = [];
-        for (const find of [' really', ' very', ' just', 'in order to', 'I think ']) {
-          if (edits.length >= 4) break;
-          if (input.text.includes(find)) edits.push({ find, replace: find === 'in order to' ? 'to' : '', why: 'Filler' });
-        }
-        return { summary: 'Mock edits: filler words.', edits };
-      }
+      case 'lab': return { marks: labMarks(input) };
+      case 'trim': return { cuts: trimCuts(input) };
       case 'messageCheck':
         return {
           takeaway: 'Cut words and your writing gets clearer.',

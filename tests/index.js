@@ -2,6 +2,7 @@
 // argument as a module path. Older versions find the *.test.js files themselves.
 require('./engine.test.js');
 require('./marks.test.js');
+require('./lab.test.js');
 require('./notion-map.test.js');
 require('./spell.test.js');
 require('./inline.test.js');

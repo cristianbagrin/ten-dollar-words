@@ -241,7 +241,6 @@
     const none = TDW.AI.status() === 'none';
     $('ai-note').textContent = none ? 'Connect Gemini in Settings to use AI help.' : '';
     const blocked = !none && (app().state.aiBusy || !Editor.getText().trim());
-    $('ai-tighten').disabled = blocked;
     $('ai-message').disabled = blocked;
   }
 
@@ -342,90 +341,12 @@
     });
   }
 
-  function startTighten() {
-    if (TDW.AI.status() === 'none') { app().openSettings('ai'); return; }
-    const text = Editor.getText();
-    const s = Editor.getSelection();
-    const input = s.end - s.start > 20 ? text.slice(s.start, s.end) : text;
-    if (!input.trim()) return;
-    openResults();
-    runAI((signal) => TDW.AI.tighten({ text: input }, signal), renderTighten, startTighten);
-  }
-
-  // Cut or replace one AI edit in the live text. Returns false when the quote is gone.
-  function applyEdit(ed) {
-    if (ed.done) return false;
-    ed.done = true;
-    ed.row.classList.add('is-done');
-    const text = Editor.getText();
-    const idx = text.indexOf(ed.find);
-    if (idx === -1) {
-      ed.btn.replaceWith(el('span', { class: 'edit-note', text: 'Text changed. Skipped.' }));
-      return false;
-    }
-    if (ed.replace === '') {
-      let a = idx, b = idx + ed.find.length;
-      while (a < b && /\s/.test(text[a])) a++;
-      while (b > a && /\s/.test(text[b - 1])) b--;
-      const sentence = Engine.analyze(text).sentenceList.find((r) => r.start <= a && a < r.end);
-      app().cut(a, b, sentence ? sentence.start : -1, { silent: true });
-    } else {
-      app().edit(idx, idx + ed.find.length, ed.replace, { silent: true });
-    }
-    ed.btn.textContent = 'Applied';
-    ed.btn.disabled = true;
-    return true;
-  }
-
-  function renderTighten(out) {
-    const edits = out.edits
-      .map((e) => Object.assign({}, e, { save: (Engine.countWords(e.find) - Engine.countWords(e.replace)) * 10 }))
-      .filter((e) => e.save > 0);
-    const block = el('div', { class: 'ai-block' });
-    if (out.truncated) block.append(el('p', { class: 'hint', text: 'Only the first 60,000 characters were checked.' }));
-    if (!edits.length) {
-      block.append(el('p', { text: "Nothing to cut. It's tight already." }));
-      show(block);
-      return;
-    }
-    if (out.summary) block.append(el('p', { text: out.summary }));
-
-    const allBtn = el('button', { type: 'button', class: 'btn' });
-    const syncAll = () => {
-      const left = edits.filter((e) => !e.done);
-      allBtn.textContent = 'Apply all · saves ' + money(left.reduce((sum, e) => sum + e.save, 0));
-      allBtn.hidden = !left.length;
-    };
-    const coin = () => { if (app().state.mode === 'edit') TDW.Sound.play('coin'); };
-
-    const list = el('ul', { class: 'edit-list' });
-    for (const ed of edits) {
-      ed.btn = el('button', { type: 'button', class: 'btn-outline btn-sm', text: 'Apply' });
-      ed.row = el('li', { class: 'edit-row' },
-        el('div', { class: 'edit-change' },
-          el('s', { class: 'edit-find', text: ed.find }), ' → ',
-          ed.replace ? el('span', { text: ed.replace }) : el('span', { class: 'edit-cut', text: 'cut' })),
-        ed.why ? el('p', { class: 'edit-why', text: ed.why }) : null,
-        el('div', { class: 'edit-foot' }, el('span', { class: 'save-badge', text: '−' + money(ed.save) }), ed.btn));
-      ed.btn.addEventListener('click', () => { if (applyEdit(ed)) coin(); syncAll(); });
-      list.append(ed.row);
-    }
-    allBtn.addEventListener('click', () => {
-      let any = false;
-      for (const ed of edits) if (applyEdit(ed)) any = true;
-      if (any) coin();
-      syncAll();
-    });
-    syncAll();
-    block.append(allBtn, list);
-    show(block);
-  }
-
   function startMessage() {
     if (TDW.AI.status() === 'none') { app().openSettings('ai'); return; }
     if (!Editor.getText().trim()) return;
     stopAI();
     openResults();
+    setSheet(true);
     const area = el('textarea', { id: 'msg-intent', class: 'field', rows: '3' });
     area.value = (current.draft && current.draft.intent) || '';
     const form = el('form', { class: 'msg-form' },
@@ -501,7 +422,6 @@
     form.addEventListener('submit', submitBudget);
     $('budget-cancel').addEventListener('click', () => closeBudget(true));
     $('btn-sample').addEventListener('click', () => app().insertSample());
-    $('ai-tighten').addEventListener('click', startTighten);
     $('ai-message').addEventListener('click', startMessage);
     $('ai-back').addEventListener('click', closeResults);
   }
@@ -512,6 +432,7 @@
     refund,
     updateAI,
     closeResults,
+    startMessage,
     closeBudget,
     isBudgetOpen() { return !$('budget-form').hidden; },
     closeSheet() { setSheet(false); },

@@ -306,6 +306,8 @@
     return el('section', { class: 'set-sec', 'aria-labelledby': 'set-writing' },
       el('h3', { id: 'set-writing', class: 'label', text: 'Writing' }),
       switchRow("Keep the line you're typing in the middle", !!s.typewriterScroll, (on) => update({ typewriterScroll: on }), 'Write mode'),
+      switchRow('Highlight fixes in Edit mode', s.fixHighlights !== false, (on) => { update({ fixHighlights: on }); if (app().state.mode === 'edit') app().refresh(); },
+        'Spelling, hard sentences, wordy phrases and the rest. The eye on each fix in Edit mode hides just that kind.'),
       switchRow('Turn off backspace when the stage says “no backspace”', !!s.noBackspace, (on) => update({ noBackspace: on }),
         'The No backspace switch in the top bar can override it for any draft.'),
       el('div', { class: 'set-field' },
