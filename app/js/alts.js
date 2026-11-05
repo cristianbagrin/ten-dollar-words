@@ -356,7 +356,12 @@
     return got.id;
   }
 
-  function open(kind) { return openFor(target(kind)); }
+  // open(): what's selected or at the caret. open('sentence'): that kind. open(id): that alternative.
+  function open(kind) {
+    const a = kind && !KINDS.includes(kind) ? altOf(kind) : null;
+    if (a) return openFor({ kind: a.kind, start: a.start, end: a.end });
+    return openFor(target(KINDS.includes(kind) ? kind : undefined));
+  }
 
   // Switching tabs: the sentence or paragraph around the same spot.
   function retarget(kind) {

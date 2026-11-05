@@ -3,6 +3,7 @@
 require('./engine.test.js');
 require('./marks.test.js');
 require('./lab.test.js');
+require('./challenges.test.js');
 require('./notion-map.test.js');
 require('./spell.test.js');
 require('./inline.test.js');
