@@ -57,7 +57,7 @@ draft.overflow = '';                              // markdown, same line rules a
 - Select text, then right-click **Ghost it** (Ctrl+/). The text drops to about 10% opacity and stays in the document and editable. Right-click on ghosted text gives **Revive**. Ctrl+/ toggles.
 - Ghosted text is **left out of** the word count, the $ spent, readability, spelling, the LinkedIn fold and X counts, copying for a platform, Save, and Post to X. It's the same as cut for every purpose except your eyes.
 - **No backspace mode:** Ghost it still works when deleting is blocked. It fits that rule: you can't delete, but you can set aside.
-- **Notion:** ghosted text goes to Notion as **gray-colored text**. `notion-map.js` already keeps color per character, so gray text coming back from Notion is read as a ghost. Ghosts then survive a round trip and show up in Notion. (Option: leave ghosted text out of Notion altogether. See open questions.)
+- **Notion:** ghosted text goes to Notion as **gray-colored text**. `notion-map.js` already keeps color per character, so gray text coming back from Notion is read as a ghost. Ghosts then survive a round trip and show up in Notion.
 
 ## 4. Overflow (right panel)
 
@@ -66,7 +66,7 @@ draft.overflow = '';                              // markdown, same line rules a
 - **Stash this in Overflow** (Ctrl+Shift+X, context menu): moves the selection out of the page and onto the top of Overflow. This is one undo step, and it works in No backspace mode, because the text isn't lost.
 - **Use it:** put the caret on an Overflow paragraph and press **Ctrl+Return**, and it's inserted at the page's caret. Drag a paragraph into the page. Copy and paste works too. The panel footer says "ctrl+return or drag into the page to use".
 - It doesn't count toward words or $, and it isn't spellchecked.
-- Not sent to Notion by default (it isn't part of the post). The account carries it. See open questions.
+- **Notion:** Overflow syncs both ways as one collapsed **toggle block titled "Overflow"** at the bottom of the page. Its children are Overflow's lines. `notion-map.js` takes that toggle out of the draft text and hands it to `draft.overflow`. The post's text never includes it. A page with no Overflow gets no toggle, and an empty Overflow removes the toggle. The account carries it too, for drafts that aren't in Notion.
 
 ## 5. AI alternatives
 
@@ -121,21 +121,26 @@ Under the list: **Original · Slight trim ~10% · Tighten more ~20% · Even shar
 
 - **"Cut the cost"** (AI rewrites in a list) → **Trim** (dims, deletions only).
 - **AI options that replace text in tips** → they feed **alternatives** (section 5).
-- **The Edit-mode fix list** (spelling, hard sentences, wordy phrases, passive, adverbs, weakeners always highlighted) → these become **Lab items you turn on when you want them**, rather than highlights that are always on. Spelling stays always on.
+- **The Edit-mode fix highlights stay as they are.** Settings → Writing gets one master switch, "Highlight fixes in Edit mode" (on by default), above the per-type switches it already has. When it's off, Edit mode shows no fix highlights or fix list, and the Lab's local items (long sentences, hedges) still mark text when you ask.
 - **Kept:** the $ budget (the app's identity), formats, Notion sync, accounts, sounds, skins, No backspace, Check the message (it judges and doesn't rewrite, so it moves into the Lab as its last item).
 - Write vs Edit mode: alternatives, ghosts and Overflow work in **both** modes. The Lab and the $ register stay in Edit mode until the redesign decides whether two modes survive.
 
 ## 10. Order of work
 
-Each step is committed and tested on its own. Steps 3 to 6 can run as parallel worktrees once step 1 lands, because they touch separate files.
+Each step is committed and tested on its own. Steps 3 to 7 can run as parallel worktrees once step 1 lands, because they touch separate files.
 
 1. **Annotations core:** data model, shift, undo, store, account, Notion re-anchoring, tests. (`editor.js`, `store.js`, `account.js`, `sync.js`)
 2. **Alternatives without AI:** pager rendering, cycling, the panel, a/an, delete/undo, phone sheet. (new `alts.js`, `editor.js` render layer)
 3. **Ghost and context menu:** gray in Notion, counts that leave ghosts out, copy/export without ghosts. (new `menu.js`, `engine.js` input, `formats.js`, `notion-map.js`)
-4. **Overflow.** (new `overflow.js`)
+4. **Overflow**, including the Notion toggle block. (new `overflow.js`, `notion-map.js`, `sync.js`)
 5. **AI alternatives:** the `??` feature, tips feeding alternatives, the mock. (`ai.js`, `ai-mock.js`, `popover.js`)
-6. **The Lab and Trim.** (new `lab.js`, `ai.js`, retire the fix list and Cut the cost in `panel.js`)
-7. **Small things:** live count, save/open, post to X, shortcuts sheet. Then README, version 2.0.0, SW precache, full test run, drive it in the browser with Playwright, delete `video-examples/`, merge, deploy, and check the live version.
+6. **The Lab and Trim.** (new `lab.js`, `ai.js`, retire Cut the cost in `panel.js`, add the fix-highlight master switch)
+7. **Writing challenges** (section 11), only the ones approved.
+8. **Small things:** live count, save/open, post to X, shortcuts sheet. Then README, version 2.0.0, SW precache, full test run, drive it in the browser with Playwright, delete `video-examples/`, merge, deploy, and check the live version.
+
+## 11. Writing challenges (awaiting approval one by one)
+
+The full list is in `PLAN-v4-challenges.md`. Only the challenges the owner approves get built.
 
 ## Not doing (yet)
 - The M↓ and three-dot icons at top center in the demo. They're never clicked, so what they do is unknown.
