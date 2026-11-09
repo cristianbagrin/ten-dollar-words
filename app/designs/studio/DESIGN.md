@@ -214,10 +214,36 @@ Old stored settings map without a crash: `skin: typewriter` → Typewriter font 
 with no stored settings starts on Serif + Match system (light on a light system).
 
 ## Pebbles fixed
-(Filled in as they're done; see the end of this file.)
+- Fix rows: real kind swatches (a wash chip, a dotted line, a wavy line), short names, counts in
+  a right-aligned tabular column, eye toggles that dim the row; the long sentence moved into the
+  selected fix and the row's accessible name.
+- The tip that covered its own text is now the fix expanded under its row, with ‹ › stepping.
+- Selection bar: 12 controls → Ask AI, Alternatives, Note, Bold, Italic, Link, More.
+- Menus draw a check column only when something can be checked; "The Lab guide…" is gone.
+- Middle-dot strings removed ("return adds · esc closes", "112 → 86 words · −23%").
+- The count, the spend and the budget live in the toolbar in every mode; save status shows only
+  when saving fails.
+- Settings opens on Writing, not a sign-in form; Account is last. Theme and writing font are
+  separate.
+- No backspace is a pen toggle that pulses (and brings the faint toolbar back) when blocked,
+  instead of a toast.
+- First run: an empty draft, the library showing it, the caret ready, no instructional toast.
+- Toasts only confirm: Deleted (Undo), Copied for LinkedIn, Moved to Overflow (Show), Cut (Undo).
 
 ## Removed, and why
-(Filled in as they're done; see the end of this file.)
+- The dock (save/open/X, LAB, CHALLENGE, Notes, Overflow links) and its dashed placeholders:
+  every item has a pane or menu now.
+- The full-screen button: the browser and OS already have one.
+- The keyboard icon in the corner: shortcuts are in Settings → Writing and Ctrl+?.
+- Teaching toasts (first-run hint, X thread hint, Backspace is on/off).
+- The Ditto and Night desk palettes: old skins map to Theme + Writing font.
+- Floating note card, Lab popover and tip, challenge card, Overflow and Notes side panels: all in
+  inspector tabs.
 
 ## Review of the plan against the brief
-(See the end of this file.)
+- Caught: a gear icon that read as a sun; replaced with sliders. A stats row ("117 words · 639
+  chars · 1 min") was the middle-dot tell; it became a three-column label/value row.
+- Caught: one radius everywhere; radius now steps by size (3/6/8/12).
+- Caught: "cards with soft shadows" creeping into the inspector; panes and sections use tone and
+  hairlines, and only the selected thing (a fix, a mark, a note) gets a white inset.
+- Kept the boldness in one place (the plum money rule); everything else is sage, white and ink.
