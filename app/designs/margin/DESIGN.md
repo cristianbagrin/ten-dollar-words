@@ -204,3 +204,11 @@ never on whether the review is on.
   the new word in blue, instead of an arrow.
 - Kept the boldness to one place, the margin and its two pencils; the spine, palette and
   sheets are quiet system UI.
+
+## For the owner to decide
+
+- ⌘K opens the command palette; with words selected it still links them.
+- Typewriter (Courier Prime) is a writing-font option; the default page is Source Serif.
+- Only the open draft's Notion properties are editable in the switcher.
+- No backspace blocks deleting only while writing; reviewing can always delete (as before).
+- New shortcuts: ⌘O drafts, ⌘⌥N new draft, ⌘, settings.

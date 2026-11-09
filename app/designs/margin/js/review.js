@@ -293,7 +293,7 @@
     node.classList.add('is-open');
     setHover(n.id);
     keepInView(node);
-    if (pin) { const f = more.querySelector('button'); if (f) f.focus({ preventScroll: true }); }
+
   }
 
   function closeNote(refocus) {

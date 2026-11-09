@@ -510,6 +510,7 @@
 
   function showAll() {
     cardFrom = undefined;
+    closeCard(true);
     if (M().isNarrow()) {
       closeCard(true);
       const wrap = UI.el('div', { class: 'notes-list-wrap' });
@@ -524,7 +525,7 @@
   }
 
   function togglePanel() {
-    if (M().view() === 'notes' || M().sheetOpen('notes')) {
+    if ((M().view() === 'notes' && !card) || M().sheetOpen('notes')) {
       closeCard(true);
       if (M().sheetOpen('notes')) M().closeSheet();
       else M().setView(app().state.mode === 'edit' ? 'review' : null);
