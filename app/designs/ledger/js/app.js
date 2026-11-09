@@ -23,13 +23,11 @@
     phone: 'On a phone, LinkedIn shows everything before this mark. The rest hides behind “…see more”.',
     desktop: 'On a computer, LinkedIn shows everything before this mark. The rest hides behind “…see more”.'
   };
-  const CHROME_SHOW = 60;  // the bar slides in when the pointer is this close to the top
-  const CHROME_HIDE = 84;  // and leaves as soon as it moves below this
+  const PAPER_NOTE = { basic: '', linkedin: '52 a line', x: '280 a post', substack: '70 a line' };
 
   const $ = (id) => document.getElementById(id);
   const root = document.documentElement;
   const editor = $('editor');
-  const chrome = $('chrome');
 
   const state = {
     mode: 'write', draft: null, analysis: null, words: 0, dirty: false,
@@ -39,30 +37,56 @@
 
   /* ---------- Settings and theme ---------- */
   function setThemeColor() {
-    const v = getComputedStyle(root).getPropertyValue(state.mode === 'edit' ? '--desk' : '--paper').trim();
+    const v = getComputedStyle(root).getPropertyValue('--desk').trim();
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta && v) meta.setAttribute('content', v);
   }
 
   const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
-  const skinOf = (s) => (s.autoNight && darkScheme.matches ? 'night' : s.skin);
+  // Ledger's look is a theme (light, dark, automatic) and a writing face. The old skins map on:
+  // Night desk is dark, "Night desk in dark mode" is automatic, Ditto is the serif face.
+  const THEMES = ['light', 'dark', 'auto'];
+  const FACES = ['typewriter', 'serif', 'sans'];
+  function lookOf(s) {
+    const theme = THEMES.includes(s.theme) ? s.theme : s.skin === 'night' && !s.autoNight ? 'dark' : 'auto';
+    const face = FACES.includes(s.face) ? s.face : s.skin === 'ditto' ? 'serif' : 'typewriter';
+    return { theme, face };
+  }
+  const themeNow = (s) => { const t = lookOf(s).theme; return t === 'auto' ? (darkScheme.matches ? 'dark' : 'light') : t; };
 
   function applySettings() {
     const s = state.settings;
-    root.dataset.skin = skinOf(s);
+    root.dataset.theme = themeNow(s);
+    root.dataset.face = lookOf(s).face;
     root.style.setProperty('--text-offset', s.textSize + 'px');
     root.classList.toggle('tw-scroll', !!s.typewriterScroll);
     setThemeColor();
   }
 
   function updateSettings(patch) {
+    patch = Object.assign({}, patch);
+    // Old callers speak skins; new ones speak theme and face. Keep both sets of keys true.
+    if (!('theme' in patch) && ('autoNight' in patch || 'skin' in patch)) {
+      const next = Object.assign({}, state.settings, patch);
+      const was = lookOf(state.settings).theme;
+      patch.theme = next.autoNight ? 'auto' : next.skin === 'night' ? 'dark' : was === 'dark' || was === 'auto' ? 'light' : was;
+      if ('skin' in patch && !('face' in patch)) patch.face = patch.skin === 'ditto' ? 'serif' : patch.skin === 'night' ? lookOf(state.settings).face : 'typewriter';
+    }
+    if ('theme' in patch || 'face' in patch) {
+      const L = lookOf(Object.assign({}, state.settings, patch));
+      patch.autoNight = L.theme === 'auto';
+      patch.skin = L.theme === 'dark' ? 'night' : L.face === 'serif' ? 'ditto' : 'typewriter';
+    }
     Object.assign(state.settings, patch);
     Store.saveSettings(state.settings);
     applySettings();
     if ('sound' in patch) Sound.setProfile(patch.sound);
     if ('volume' in patch) Sound.setVolume(patch.volume);
     if ('noBackspace' in patch) updateBackspace();
-    if ('skin' in patch || 'textSize' in patch || 'autoNight' in patch) Editor.render();
+    if ('skin' in patch || 'textSize' in patch || 'autoNight' in patch || 'face' in patch || 'theme' in patch) {
+      Editor.render();
+      document.fonts.ready.then(() => Editor.render());
+    }
   }
 
   // Settings changed outside this tab: in another tab, or on another device (through the account).
@@ -118,6 +142,15 @@
   let saveTimer = 0;
   let statusTimer = 0;
   let saveFailed = false;
+
+  function setTitle() {
+    const d = state.draft;
+    const t = $('mh-title');
+    const has = !!(d && (d.text.trim() || String(d.title || '').trim()));
+    t.textContent = d ? Store.displayTitle(d) : '';
+    t.classList.toggle('is-untitled', !has);
+    document.title = (has ? Store.displayTitle(d) + ' – ' : '') + 'Ten Dollar Words';
+  }
 
   function setSaveStatus(text, ms) {
     clearTimeout(statusTimer);
@@ -208,19 +241,13 @@
   function applyFormat() {
     const f = Formats.get(state.draft.format);
     root.dataset.format = f.key;
-    if (controls.format) controls.format.set(f.key, false);
-    if (controls.formatBtn) controls.formatBtn.firstChild.textContent = f.label;
+    $('paper-label').textContent = f.label;
     updateAids();
     Editor.render();
   }
 
-  function threadHint(f) {
-    if (!f.thread || Store.threadHintShown()) return;
-    Store.setThreadHintShown();
-    UI.toast(UI.device.phone
-      ? 'Each window is one post. Tap “New post” (or type --- on a new line) to start the next; backspace at the top of a post joins it to the one above.'
-      : 'Each window is one post. ' + UI.keys('⌘↩') + ' starts the next; backspace at the top of a post joins it to the one above.');
-  }
+  // No teaching toasts: the X paper's menu note and each post's own footer say how threads work.
+  function threadHint() {}
 
   function setFormat(key) {
     const d = state.draft;
@@ -260,8 +287,10 @@
     state.words = countNow();
     each((m) => m.load && m.load(d));
     setSaveStatus('');
+    setTitle();
     applyFormat();
     updateBackspace();
+    Panel.renderBalance(d, state.words);
     if (state.mode === 'edit') refresh();
     if (Dialogs.isDraftsOpen()) Dialogs.renderDraftList();
   }
@@ -335,6 +364,7 @@
     markDirty();
     saveNow();
     Account.noteDraft(state.draft);
+    Panel.renderBalance(state.draft, state.words);
     refreshPanel();
   }
 
@@ -394,6 +424,8 @@
     state.draft.ann = Editor.getAnnotations();
     state.words = countNow();
     Popover.hide();
+    setTitle();
+    Panel.renderBalance(state.draft, state.words);
     updateAids();
     if (state.mode === 'edit') refresh();
     else Editor.render();
@@ -524,7 +556,7 @@
   }
 
   function setMode(m) {
-    if (m === 'edit' && firstHint) { UI.hideToast(); firstHint = false; } // it's done its job
+    m = m === 'edit' ? 'edit' : 'write';
     const anchor = captureAnchor();
     state.mode = m;
     root.dataset.mode = m;
@@ -538,11 +570,11 @@
       Editor.setMarks([], []);
       Editor.render();
       Popover.hide();
-      Panel.closeSheet();
       Panel.closeResults();
       Panel.closeBudget();
-      hideChrome(true);
     }
+    if (TDW.Tape) TDW.Tape.onMode(m);
+    $('reg-main').title = m === 'edit' ? '' : 'Show the tape (' + UI.keys('⌘E') + ')';
     updateBackspace();
     each((x) => x.onMode && x.onMode(m));
     restoreAnchor(anchor);
@@ -578,6 +610,7 @@
   }
 
   function setBackspaceOff(on) {
+    on = !!on;
     const d = state.draft;
     if (!d) return;
     d.nb = on === (state.settings.noBackspace && stageSaysNo(d)) ? null : on;
@@ -596,30 +629,11 @@
     UI.toast('Backspace is off');
   }
 
-  /* ---------- Top bar in Write mode: only when the pointer is near it ---------- */
-  let chromeTimer = 0;
   const canHover = window.matchMedia('(hover: hover) and (pointer: fine)');
-
-  function showChrome() {
-    clearTimeout(chromeTimer);
-    chrome.classList.add('is-shown');
-  }
-
-  function hideChrome(now) {
-    clearTimeout(chromeTimer);
-    const go = () => {
-      if (!now && (chrome.matches(':hover') || chrome.contains(document.activeElement) || UI.menuOpen())) {
-        chromeTimer = setTimeout(go, 500);
-        return;
-      }
-      chrome.classList.remove('is-shown');
-    };
-    if (now) go();
-    else chromeTimer = setTimeout(go, 350);
-  }
 
   /* ---------- Editor events ---------- */
   let writeRaf = 0;
+  let titleRaf = 0;
 
   function onInput() {
     if (state.loading) return;
@@ -631,6 +645,8 @@
     d.text = text;
     d.ann = Editor.getAnnotations();
     each((m) => m.onText && m.onText(text));
+    Panel.renderBalance(d, words);
+    if (!titleRaf) titleRaf = requestAnimationFrame(() => { titleRaf = 0; setTitle(); });
     markDirty();
     syncEdit();
     Popover.hide();
@@ -691,16 +707,15 @@
       e.preventDefault();
       state.dirty = state.dirty || !!state.draft;
       if (saveNow()) UI.toast('Saved');
-    } else if (e.key === 'Escape' && !dialogOpen && !UI.menuOpen()) {
+    } else if (e.key === 'Escape' && !dialogOpen && !UI.menuOpen() && !e.defaultPrevented) {
       if (Popover.isOpen()) Popover.hide();
       else if (Panel.isBudgetOpen()) Panel.closeBudget(true);
-      else if (Panel.isSheetOpen()) Panel.closeSheet();
+      else if (TDW.Tape && TDW.Tape.escape()) Editor.focus();
     }
   }
 
   let pointerSelecting = false;
   let lastPointerAt = 0;
-  let firstHint = false;
 
   function wire() {
     editor.addEventListener('keydown', (e) => {
@@ -712,10 +727,7 @@
         e.preventDefault();
         Editor.insertSeparator();
       }
-      if (state.mode === 'write') {
-        hideChrome(true);
-        root.classList.add('is-typing');
-      }
+      if (state.mode === 'write') root.classList.add('is-typing');
     });
     editor.addEventListener('beforeinput', (e) => {
       if (!e.inputType || !e.inputType.startsWith('insert') || e.inputType === 'insertCompositionText') return;
@@ -736,16 +748,12 @@
       if (last && Math.hypot(e.clientX - last.x, e.clientY - last.y) <= 3) return;
       last = { x: e.clientX, y: e.clientY };
       root.classList.remove('is-typing');
-      if (state.mode !== 'write' || !canHover.matches) return;
-      if (e.clientY <= CHROME_SHOW || chrome.contains(e.target)) showChrome();
-      else if (e.clientY > CHROME_HIDE && chrome.classList.contains('is-shown') && !UI.menuOpen()) hideChrome(true);
     });
-    // Leaving the window through the top keeps the bar (you overshot it); leaving any other way hides it.
-    document.documentElement.addEventListener('mouseleave', (e) => {
-      if (state.mode !== 'write' || !canHover.matches || UI.menuOpen()) return;
-      if (e.clientY < CHROME_SHOW) showChrome();
-      else hideChrome(true);
-    });
+    let scrolled = false;
+    window.addEventListener('scroll', () => {
+      const s = window.scrollY > 4;
+      if (s !== scrolled) { scrolled = s; root.classList.toggle('is-scrolled', s); }
+    }, { passive: true });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); });
     window.addEventListener('pagehide', saveNow);
     // Closing now would lose text that couldn't be saved: let the browser ask first.
@@ -758,20 +766,24 @@
     $('btn-settings').addEventListener('click', () => Dialogs.openSettings());
     $('sync-status').addEventListener('click', syncToast);
 
-    const fs = $('btn-fullscreen');
-    fs.hidden = !document.fullscreenEnabled;
-    const fsLabel = () => {
-      const on = !!document.fullscreenElement;
-      fs.replaceChildren(UI.icon(on ? 'shrink' : 'expand'));
-      fs.setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen');
-      fs.title = on ? 'Exit full screen' : 'Full screen';
-    };
-    fsLabel();
-    fs.addEventListener('click', () => {
-      const p = document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen();
-      if (p && p.catch) p.catch(() => {});
-    });
-    document.addEventListener('fullscreenchange', fsLabel);
+  }
+
+  function menuButton(btn, items, onPick) {
+    btn.setAttribute('aria-expanded', 'true');
+    UI.menu(btn, items, onPick, null, () => btn.setAttribute('aria-expanded', 'false'));
+  }
+
+  function paperItems() {
+    const cur = state.draft && Formats.get(state.draft.format).key;
+    return [{ type: 'head', label: 'Paper' }]
+      .concat(Formats.LIST.map((f) => ({ label: f.label, value: 'f:' + f.key, checked: f.key === cur, note: PAPER_NOTE[f.key] || null })))
+      .concat([{ type: 'sep' }, { label: 'No backspace', value: 'nb', checked: backspaceOff(state.draft), note: 'in Write mode' }]);
+  }
+
+  function pickPaper(it) {
+    if (it.value === 'nb') { setBackspaceOff(!backspaceOff(state.draft)); return false; }
+    if (it.value.startsWith('f:')) setFormat(it.value.slice(2));
+    return false;
   }
 
   function buildControls() {
@@ -779,29 +791,25 @@
       label: 'Mode', value: 'write', class: 'seg-mode',
       options: [
         { value: 'write', label: 'Write', title: UI.device.phone ? null : 'Write (' + UI.keys('⌘E') + ')' },
-        { value: 'edit', label: 'Edit', title: UI.device.phone ? null : 'Edit (' + UI.keys('⌘E') + ')' }
+        { value: 'edit', label: 'Edit', title: UI.device.phone ? null : 'Edit: the tape and its refunds (' + UI.keys('⌘E') + ')' }
       ],
       onChange: (v) => setMode(v)
     });
     $('mode-slot').append(controls.mode);
-
-    controls.format = UI.segmented({
-      label: 'Format', value: 'basic', class: 'seg-format',
-      options: Formats.LIST.map((f) => ({ value: f.key, label: f.label })),
-      onChange: (v) => setFormat(v)
+    for (const n of document.querySelectorAll('[data-icon]')) n.append(UI.icon(n.dataset.icon));
+    $('btn-paper').addEventListener('click', () => menuButton($('btn-paper'), paperItems(), pickPaper));
+    $('btn-more').addEventListener('click', () => {
+      const D = TDW.Desk;
+      const items = paperItems().concat([{ type: 'sep' }, { type: 'head', label: 'Share' },
+        { label: 'Save as a Markdown file', value: 'save' }, { label: 'Open a file', value: 'open' }, { label: 'Post to X', value: 'x' }]);
+      menuButton($('btn-more'), items, (it) => {
+        if (it.value === 'save') D.save(); else if (it.value === 'open') D.openFile(); else if (it.value === 'x') D.postToX();
+        else return pickPaper(it);
+        return false;
+      });
     });
-    const btn = UI.el('button', { type: 'button', class: 'btn-quiet format-btn', 'aria-label': 'Format' }, 'Basic', UI.icon('chevDown'));
-    btn.addEventListener('click', () => {
-      const cur = state.draft && state.draft.format;
-      UI.menu(btn, Formats.LIST.map((f) => ({ label: f.label, value: f.key, checked: f.key === cur })), (it) => { setFormat(it.value); });
-    });
-    controls.formatBtn = btn;
-    $('format-slot').append(controls.format, btn);
-
-    controls.nb = UI.toggle({ label: 'No backspace', title: 'No backspace in Write mode', onChange: setBackspaceOff });
-    $('nb-slot').append(UI.el('span', { class: 'nb-label', 'aria-hidden': 'true' },
-      UI.el('span', { class: 'nb-long', text: 'No backspace' }), UI.el('span', { class: 'nb-short', text: 'No ⌫' })), controls.nb);
-    $('nb-slot').querySelector('.nb-label').addEventListener('click', () => controls.nb.click());
+    // No backspace has no switch on screen: the Paper menu and Settings hold it.
+    controls.nb = { set() {} };
   }
 
   /* ---------- Boot ---------- */
@@ -812,7 +820,6 @@
     applySettings();
     Sound.init(state.settings);
 
-    $('btn-settings').append(UI.icon('sliders'));
     buildControls();
     Editor.init({
       root: editor, surface: $('surface'), under: $('under'), aids: $('aids'),
@@ -845,11 +852,6 @@
     if (Sync.isConnected()) Sync.start();
     updateSyncStatus();
 
-    if (!Store.isMemoryOnly() && !Store.hintShown()) {
-      UI.toast(UI.device.touch || !canHover.matches ? 'Tap Edit to see your spend and fixes.' : 'Press ' + UI.keys('⌘E') + ' or click Edit to see your spend and fixes.');
-      Store.setHintShown();
-      firstHint = true;
-    }
     // PREVIEW: no service worker while this direction lives in app/designs/ (the root app's
     // worker serves these files network-first). Remove the `false &&` when it becomes app/.
     if (false && location.protocol === 'https:' && 'serviceWorker' in navigator) {
@@ -857,7 +859,7 @@
     }
     document.fonts.ready.then(() => Editor.render());
     darkScheme.addEventListener('change', () => {
-      if (!state.settings.autoNight) return;
+      if (lookOf(state.settings).theme !== 'auto') return;
       applySettings();
       Editor.render();
     });
@@ -881,7 +883,7 @@
     addWord, removeWord, refreshPanel, updateSyncStatus, openSettings: (section) => Dialogs.openSettings(section),
     syncChanged() { onList(); },
     setBackspaceOff, countNow,
-    backspaceOff
+    backspaceOff, lookOf, setTitle
   };
   boot();
 })();

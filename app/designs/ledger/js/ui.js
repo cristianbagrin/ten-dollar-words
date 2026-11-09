@@ -40,18 +40,25 @@
   const EYE = '<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="currentColor" stroke="none"/>';
 
   TDW.icons = {
-    close: svg('<path d="M4 4l8 8M12 4l-8 8" stroke-width="1.6" stroke-linecap="round"/>'),
-    sliders: svg('<path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7" stroke-width="1.5" stroke-linecap="round"/><circle cx="10.5" cy="4.5" r="1.6" stroke-width="1.5"/><circle cx="5.5" cy="11.5" r="1.6" stroke-width="1.5"/>'),
+    close: svg('<path d="M4 4l8 8M12 4l-8 8" stroke-width="1.5" stroke-linecap="round"/>'),
+    sliders: svg('<path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7" stroke-width="1.4" stroke-linecap="round"/><circle cx="10.5" cy="4.5" r="1.6" stroke-width="1.4"/><circle cx="5.5" cy="11.5" r="1.6" stroke-width="1.4"/>'),
     eye: svg(EYE),
     eyeOff: svg(EYE + '<path d="M2.5 13.5l11-11" stroke-width="1.4" stroke-linecap="round"/>'),
-    chevUp: svg('<path d="M4 10l4-4 4 4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'),
-    chevLeft: svg('<path d="M10 4l-4 4 4 4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'),
-    chevRight: svg('<path d="M6 4l4 4-4 4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'),
-    chevDown: svg('<path d="M4.5 6.5l3.5 3.5 3.5-3.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'),
-    trash: svg('<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2c.05.7.6 1.3 1.3 1.3h3.2c.7 0 1.25-.6 1.3-1.3l.6-8.2" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'),
-    plus: svg('<path d="M8 3.5v9M3.5 8h9" stroke-width="1.6" stroke-linecap="round"/>'),
-    expand: svg('<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
-    shrink: svg('<path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>')
+    chevUp: svg('<path d="M4 10l4-4 4 4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
+    chevLeft: svg('<path d="M10 4l-4 4 4 4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
+    chevRight: svg('<path d="M6 4l4 4-4 4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
+    chevDown: svg('<path d="M4.5 6.5l3.5 3.5 3.5-3.5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'),
+    trash: svg('<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2c.05.7.6 1.3 1.3 1.3h3.2c.7 0 1.25-.6 1.3-1.3l.6-8.2" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>'),
+    plus: svg('<path d="M8 3.5v9M3.5 8h9" stroke-width="1.5" stroke-linecap="round"/>'),
+    book: svg('<path d="M2.5 3.2c1.9-.6 3.8-.4 5.5.8 1.7-1.2 3.6-1.4 5.5-.8v9.6c-1.9-.6-3.8-.4-5.5.8-1.7-1.2-3.6-1.4-5.5-.8z" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 4v9.6" stroke-width="1.3"/>'),
+    share: svg('<path d="M8 2.5v8M5 5.3L8 2.5l3 2.8" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 7.5H3.5v6h9v-6h-1" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'),
+    more: svg('<g fill="currentColor" stroke="none"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></g>'),
+    check: svg('<path d="M3.5 8.4l2.9 2.8 6.1-6.4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'),
+    keyboard: svg('<rect x="1.5" y="4" width="13" height="8" rx="1.5" stroke-width="1.2"/><path d="M4 6.5h.01M6.5 6.5h.01M9 6.5h.01M11.5 6.5h.01M4.5 9.5h7" stroke-width="1.3" stroke-linecap="round"/>'),
+    spark: svg('<path d="M8 2l1.3 3.7L13 7l-3.7 1.3L8 12l-1.3-3.7L3 7l3.7-1.3z" stroke-width="1.2" stroke-linejoin="round"/>'),
+    note: svg('<path d="M3 3.5h10v7H7.5L4.5 13v-2.5H3z" stroke-width="1.3" stroke-linejoin="round"/>'),
+    alts: svg('<path d="M2.5 5h8M8 2.5L10.5 5 8 7.5M13.5 11h-8M8 8.5L5.5 11 8 13.5" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>'),
+    link: svg('<path d="M6.8 9.2l2.4-2.4M7.6 4.9l.9-.9a2.4 2.4 0 013.4 3.4l-.9.9M8.4 11.1l-.9.9a2.4 2.4 0 01-3.4-3.4l.9-.9" stroke-width="1.4" stroke-linecap="round"/>')
   };
 
   // Icons are static constants, so parsing them as HTML is safe.
@@ -247,7 +254,8 @@
   function menu(anchor, items, onPick, extra, onClose) {
     closeMenu();
     const host = anchor.closest('dialog') || document.body;
-    const node = el('div', { class: 'menu', role: 'menu' });
+    const checks = items.some((it) => it && it.checked != null);
+    const node = el('div', { class: 'menu' + (checks ? ' has-checks' : ''), role: 'menu' });
     const buttons = [];
     for (const it of items) {
       if (it.type === 'sep') { node.append(el('div', { class: 'menu-sep', role: 'separator' })); continue; }
@@ -255,9 +263,9 @@
       const b = el('button', {
         type: 'button', class: 'menu-item' + (it.danger ? ' danger' : ''),
         role: it.checked != null ? 'menuitemcheckbox' : 'menuitem',
-        'aria-checked': it.checked != null ? String(!!it.checked) : null
+        'aria-checked': it.checked != null ? String(!!it.checked) : null, disabled: !!it.disabled
       },
-      el('span', { class: 'menu-check', 'aria-hidden': 'true' }),
+      checks ? el('span', { class: 'menu-check', 'aria-hidden': 'true' }) : null,
       el('span', { class: 'menu-label', text: it.label }),
       it.note ? el('span', { class: 'menu-note', text: it.note }) : null);
       b.addEventListener('click', () => {
@@ -267,15 +275,20 @@
       buttons.push(b);
       node.append(b);
     }
-    if (extra) node.append(extra);
+    if (extra && extra.nodeType) node.append(extra);
     host.append(node);
     const r = anchor.getBoundingClientRect();
     const w = node.offsetWidth, h = node.offsetHeight;
-    let left = Math.min(r.left, window.innerWidth - w - 12);
+    const alignEnd = !!(extra && extra.alignEnd) || anchor.dataset && anchor.dataset.menuAlign === 'end';
+    let left = alignEnd ? r.right - w : r.left;
+    left = Math.max(12, Math.min(left, window.innerWidth - w - 12));
     let top = r.bottom + 6;
-    if (top + h > window.innerHeight - 12) top = Math.max(12, r.top - h - 6);
-    node.style.left = Math.max(12, left) + 'px';
+    const bottom = visibleBottom();
+    const up = top + h > bottom - 12;
+    if (up) top = Math.max(12, r.top - h - 6);
+    node.style.left = left + 'px';
     node.style.top = top + 'px';
+    node.style.transformOrigin = (alignEnd ? 'right' : 'left') + (up ? ' bottom' : ' top');
     const onDown = (e) => { if (!node.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) closeMenu(); };
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); openMenu.returnFocus = true; closeMenu(); return; }
@@ -358,9 +371,55 @@
     return node;
   }
 
+  /* ---------- Spring: Apple's response / damping, mass 1, from the current value ---------- */
+  function spring(o) {
+    const response = o.response || 0.32;
+    const damping = o.damping == null ? 1 : o.damping;
+    const k = Math.pow(2 * Math.PI / response, 2);
+    const c = 4 * Math.PI * damping / response;
+    let x = o.from - o.to, v = o.velocity || 0, raf = 0, last = 0;
+    const to = o.to;
+    if (reducedMotion()) { o.onUpdate(to); if (o.onDone) o.onDone(); return { stop() {}, value: () => to, velocity: () => 0 }; }
+    const step = (now) => {
+      const dt = last ? Math.min(0.034, (now - last) / 1000) : 1 / 60;
+      last = now;
+      for (let i = 0; i < 6; i++) { const a = -k * x - c * v; v += a * dt / 6; x += v * dt / 6; }
+      if (Math.abs(x) < 0.25 && Math.abs(v) < 4) { x = 0; v = 0; o.onUpdate(to); if (o.onDone) o.onDone(); raf = 0; return; }
+      o.onUpdate(to + x);
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return { stop() { cancelAnimationFrame(raf); raf = 0; }, value: () => to + x, velocity: () => v, running: () => !!raf };
+  }
+
+  /* ---------- Money that rolls: each digit is a strip that ticks to its new value ---------- */
+  function odometer(node) {
+    let shown = null;
+    const strip = (d) => el('span', { class: 'odo-d', 'aria-hidden': 'true' },
+      el('span', { class: 'odo-s', style: 'transform:translateY(' + (-d * 10) + '%)' }, '0123456789'.split('').map((n) => el('span', { text: n }))));
+    function set(str, animate) {
+      if (str === shown) return;
+      const prev = shown;
+      shown = str;
+      node.setAttribute('aria-label', str);
+      const same = prev != null && prev.length === str.length && animate && !reducedMotion() &&
+        [...str].every((ch, i) => /\d/.test(ch) === /\d/.test(prev[i]));
+      if (!same) {
+        node.replaceChildren(...[...str].map((ch) => (/\d/.test(ch) ? strip(+ch) : el('span', { class: 'odo-c', 'aria-hidden': 'true', text: ch }))));
+        return;
+      }
+      [...str].forEach((ch, i) => {
+        const n = node.children[i];
+        if (/\d/.test(ch)) n.firstChild.style.transform = 'translateY(' + (-ch * 10) + '%)';
+        else n.textContent = ch;
+      });
+    }
+    return { set, get: () => shown };
+  }
+
   TDW.UI = {
     device, keys, visibleBottom,
     el, icon, toast, hideToast, rehostToast, money, plural, costNote, relTime, reducedMotion,
-    segmented, toggle, menu, closeMenu, calendar, menuOpen: () => !!openMenu
+    segmented, toggle, menu, closeMenu, calendar, menuOpen: () => !!openMenu, spring, odometer
   };
 })();

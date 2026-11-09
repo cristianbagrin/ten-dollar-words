@@ -1,4 +1,5 @@
-/* Tips on highlighted text: quick fixes and AI rewrites. */
+/* The fix behind each refund: quick fixes and AI rewrites. Ledger never opens it over the
+   text: it unfolds inside its refund line on the tape (Panel.mountDetail). */
 (function () {
   'use strict';
   const TDW = window.TDW = window.TDW || {};
@@ -19,43 +20,26 @@
   const NEXT_WORD = /^[ \t ]+([A-Za-z'’-]+)/;
   const isSentence = (t) => t === 'hard' || t === 'veryHard';
 
-  let pop = null;
+  let pop = null;          // the open detail node (inside the tape)
   let current = null;
   let ctrl = null;
-  let raf = 0;
+  let typedAt = 0;
 
   function stopAI() {
     if (ctrl) { ctrl.abort(); ctrl = null; }
   }
 
   function position() {
-    if (!current || pop.hidden) return;
-    const rect = Editor.markRect(current.id);
-    if (!rect) { hide(); return; }
-    const w = pop.offsetWidth;
-    const h = pop.offsetHeight;
-    let top = rect.bottom + 8;
-    if (top + h > TDW.UI.visibleBottom()) top = rect.top - h - 8; // above the word when the keyboard is in the way
-    // On wide screens keep the tip inside the writing area, clear of the side panel.
-    const pr = document.getElementById('panel').getBoundingClientRect();
-    const edge = window.innerWidth > 900 && pr.width > 0 ? pr.left : window.innerWidth;
-    const left = Math.min(Math.max(rect.left, 16), edge - w - 16);
-    pop.style.top = Math.round(top) + 'px';
-    pop.style.left = Math.round(left) + 'px';
-  }
-
-  function schedule() {
-    if (!pop || pop.hidden || raf) return;
-    raf = requestAnimationFrame(() => { raf = 0; position(); });
+    if (pop && pop.isConnected && TDW.Tape) TDW.Tape.reveal(pop.parentNode);
   }
 
   function hide() {
     stopAI();
+    const was = !!current;
     current = null;
-    if (!pop || pop.hidden) return;
-    pop.hidden = true;
-    pop.replaceChildren();
-    Editor.setActive(null);
+    pop = null;
+    if (TDW.Panel && TDW.Panel.closeIssue) TDW.Panel.closeIssue();
+    if (was) Editor.setActive(null);
   }
 
   function sentenceOf(index) {
@@ -83,22 +67,28 @@
     app().edit(issue.start, issue.end, word);
   }
 
-  const cutButton = (issue, amount) =>
-    el('button', { type: 'button', class: 'btn', text: 'Cut it · saves ' + money(amount), onclick: () => cutRange(issue, issue.start, issue.end) });
+  // The money a change makes or costs, as the receipt prints it.
+  const credit = (savedWords) => el('span', {
+    class: 'chip-note' + (savedWords < 0 ? ' is-cost' : savedWords === 0 ? ' is-even' : ''),
+    text: savedWords > 0 ? '+' + money(savedWords * 10) : savedWords < 0 ? '−' + money(-savedWords * 10) : 'same price'
+  });
 
-  // A word chip with its money effect: "exhausted · saves $10".
+  const cutButton = (issue, amount) =>
+    el('button', { type: 'button', class: 'btn credit', 'aria-label': 'Cut it, refund ' + money(amount), onclick: () => cutRange(issue, issue.start, issue.end) },
+      'Cut it', el('span', { class: 'btn-fig', text: '+' + money(amount) }));
+
+  // A word chip with its money effect: "exhausted +$10".
   const chip = (word, savedWords, onclick, note) =>
-    el('button', { type: 'button', class: 'chip', title: note || null, onclick }, word,
-      el('span', { class: 'chip-note', text: ' · ' + costNote(savedWords) }));
+    el('button', { type: 'button', class: 'chip', title: note || null, onclick, 'aria-label': word + ', ' + costNote(savedWords) }, word, credit(savedWords));
 
   function aiButton(issue, box) {
     const off = TDW.AI.status() === 'none';
     box.append(el('button', {
       type: 'button', class: 'btn', disabled: off,
-      text: issue.type === 'passive' ? 'Rewrite with AI' : 'Simplify with AI',
+      text: issue.type === 'passive' ? 'Rewrite it with AI' : 'Simplify it with AI',
       onclick: () => runAI(issue, box)
     }));
-    if (off) box.append(el('p', { class: 'pop-note', text: 'Connect Gemini in Settings' }));
+    if (off) box.append(el('p', { class: 'pop-note' }, 'Needs a Gemini key. ', el('button', { type: 'button', class: 'link', text: 'Add one in Settings', onclick: () => app().openSettings('ai') })));
   }
 
   // "More options (AI)" / "Stronger word (AI)": AI swaps for a weak phrase, shown as chips.
@@ -187,9 +177,8 @@
       }
       const weak = issue.text.slice(0, issue.cut.end - issue.cut.start);
       box.append(el('button', {
-        type: 'button', class: 'btn-outline', text: 'Cut ‘' + weak + '’ · saves ' + money(Engine.countWords(weak) * 10),
-        onclick: () => cutRange(issue, issue.cut.start, issue.cut.end)
-      }));
+        type: 'button', class: 'chip', onclick: () => cutRange(issue, issue.cut.start, issue.cut.end)
+      }, 'Cut ‘' + weak + '’', credit(Engine.countWords(weak))));
       box.append(strongerSlot({ start: issue.start, end: issue.end, phrase: issue.text }, 'More options (AI)'));
       return 'Try one strong word:';
     }
@@ -236,7 +225,7 @@
       return el('li', { class: 'opt' },
         el('p', { class: 'opt-text', text: o.text }),
         el('div', { class: 'opt-foot' },
-          el('span', { class: 'opt-meta', text: n + ' ' + plural(n, 'word', 'words') + ' · ' + costNote(before - n) }),
+          el('span', { class: 'opt-meta' }, n + ' ' + plural(n, 'word', 'words') + ', ', credit(before - n)),
           el('button', { type: 'button', class: 'btn-outline btn-sm', text: 'Use this', onclick: () => useOption(target, o.text) })));
     })));
     position();
@@ -280,26 +269,25 @@
     });
   }
 
+  const HIDE = { spelling: 'Hide spelling', veryHard: 'Hide very hard sentences', hard: 'Hide hard sentences', complex: 'Hide wordy phrases', passive: 'Hide passive voice', adverb: 'Hide adverbs', qualifier: 'Hide weakeners' };
+
   function show(issue) {
+    if (app().state.mode !== 'edit') return;
     stopAI();
     current = issue;
     const [title, msg] = INFO[issue.type];
     const actions = el('div', { class: 'pop-actions' });
     const message = fillActions(issue, actions) || msg;
-    pop.replaceChildren(
-      el('div', { class: 'pop-head' },
-        el('span', { class: 'swatch sw-' + issue.type, 'aria-hidden': 'true' }),
-        el('span', { class: 'pop-title', text: title }),
-        el('button', { type: 'button', class: 'btn-icon', 'aria-label': 'Close', onclick: hide }, icon('close'))),
-      el('p', { class: 'pop-msg', text: message }),
-      actions);
-    pop.setAttribute('aria-label', title);
-    pop.hidden = false;
+    const foot = el('div', { class: 'pop-foot' },
+      el('button', { type: 'button', class: 'btn-quiet btn-sm', text: HIDE[issue.type], title: 'Hide this kind of fix on the page and the tape', onclick: () => { hide(); app().toggleHighlight(issue.type); app().refresh(); } }));
+    pop = el('div', { class: 'refund-detail', role: 'group', 'aria-label': title },
+      el('p', { class: 'pop-msg', text: message }), actions, foot);
     Editor.setActive(issue.id);
-    position();
+    if (!TDW.Panel.mountDetail(issue, pop)) { pop = null; current = null; return; }
   }
 
   function showAt(index) {
+    if (performance.now() - typedAt < 700) return; // typing inside a mark doesn't open it
     const a = app().state.analysis;
     if (!a) { hide(); return; }
     const hidden = app().hiddenTypes();
@@ -311,23 +299,17 @@
     }
     if (!best) best = a.issues.find((i) => isSentence(i.type) && inside(i)) || null;
     if (!best) { hide(); return; }
-    if (current && current.id === best.id && !pop.hidden) { position(); return; }
+    if (current && current.id === best.id && pop) { position(); return; }
     show(best);
   }
 
   TDW.Popover = {
     init() {
-      pop = document.getElementById('popover');
-      window.addEventListener('scroll', schedule, { passive: true });
-      window.addEventListener('resize', schedule);
-      document.addEventListener('pointerdown', (e) => {
-        if (pop.hidden || pop.contains(e.target) || document.getElementById('editor').contains(e.target)) return;
-        hide();
-      });
+      Editor.rootEl().addEventListener('beforeinput', () => { typedAt = performance.now(); });
     },
     show,
     showAt,
     hide,
-    isOpen() { return !!pop && !pop.hidden; }
+    isOpen() { return !!current; }
   };
 })();
