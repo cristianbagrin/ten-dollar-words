@@ -1,4 +1,4 @@
-/* Drafts drawer and Settings dialog. */
+/* The ledger book (drafts, by month, with what each one spent) and Settings (in sections). */
 (function () {
   'use strict';
   const TDW = window.TDW = window.TDW || {};
@@ -6,11 +6,8 @@
   const { Store, Sync, Account } = TDW;
   const app = () => TDW.App;
 
-  const SKINS = [
-    ['typewriter', 'Typewriter', 'Putty and ribbon ink.'],
-    ['ditto', 'Ditto', 'Purple ink on lilac, like old school handouts.'],
-    ['night', 'Night desk', 'Dark navy with mustard light.']
-  ];
+  const FACES = [['typewriter', 'Typewriter', 'Courier Prime'], ['serif', 'Serif', 'Newsreader'], ['sans', 'Sans', 'Public Sans']];
+  const SECTIONS = [['writing', 'Writing'], ['look', 'Look'], ['sound', 'Sound'], ['ai', 'AI help'], ['notion', 'Notion'], ['account', 'Account'], ['keys', 'Keys']];
   const SOUNDS = [['typewriter', 'Typewriter'], ['soft', 'Soft keys'], ['off', 'Off']];
   const STEPS = [
     'Create an internal integration and copy its secret.',
@@ -25,6 +22,7 @@
   let footNote = null;
   let aiStatus = { text: '', error: false };
   let accountRefresh = null; // redraws the account status in an open Settings
+  let section = 'writing';
 
   function wireDialog(dlg) {
     dlg.addEventListener('click', (e) => {
@@ -51,58 +49,84 @@
   const closeButton = (dlg) =>
     el('button', { type: 'button', class: 'btn-icon', 'aria-label': 'Close', onclick: () => closeDialog(dlg) }, icon('close'));
 
-  /* ---------- Drafts drawer ---------- */
+  /* ---------- The ledger book ---------- */
   function buildDrafts() {
-    listEl = el('ul', { class: 'draft-list' });
-    footNote = el('p', { class: 'hint' });
+    listEl = el('ol', { class: 'book-list', 'aria-label': 'Drafts by month' });
+    footNote = el('p', { class: 'book-foot' });
     draftsDlg.append(
-      el('div', { class: 'dlg-head' }, el('h2', { id: 'drafts-title', text: 'Drafts', tabindex: '-1', autofocus: true }), closeButton(draftsDlg)),
-      el('div', { class: 'drawer-new' },
-        el('button', { type: 'button', class: 'btn', onclick: newDraft }, icon('plus'), 'New draft')),
-      listEl,
-      el('div', { class: 'drawer-foot' }, footNote)
-    );
+      el('div', { class: 'book-head' },
+        el('h2', { id: 'drafts-title', text: 'Drafts', tabindex: '-1', autofocus: true }),
+        el('button', { type: 'button', class: 'btn', onclick: newDraft }, icon('plus'), 'New draft'),
+        closeButton(draftsDlg)),
+      el('div', { class: 'book-cols', 'aria-hidden': 'true' },
+        el('span', { text: 'Date' }), el('span', { text: 'Entry' }), el('span', { class: 'num', text: 'Words' }), el('span', { class: 'num', text: 'Spent' }), el('span')),
+      listEl, footNote);
     wireDialog(draftsDlg);
   }
+
+  const monthOf = (ts) => new Date(ts).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const dayOf = (ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   function renderDraftList() {
     if (!listEl) return;
     const cur = app().state.draft;
     const focusKey = document.activeElement && listEl.contains(document.activeElement) ? document.activeElement.dataset.key : null;
-    listEl.replaceChildren(...Store.listDrafts().map((d) => draftRow(d, !!cur && cur.id === d.id)));
+    const drafts = Store.listDrafts();
+    const rows = [];
+    let month = null, head = null, sum = 0, n = 0;
+    const close = () => { if (head) head.querySelector('.book-month-sum').replaceChildren(n + ' ' + plural(n, 'entry', 'entries'), el('b', { text: money(sum) })); };
+    for (const d of drafts) {
+      const m = monthOf(d.updatedAt);
+      if (m !== month) {
+        close();
+        month = m; sum = 0; n = 0;
+        head = el('li', { class: 'book-month' }, el('h3', { text: m }), el('span', { class: 'book-month-sum' }));
+        rows.push(head);
+      }
+      const fetched = !(d.notionId && !d.contentFetchedAt && !d.text);
+      if (fetched) sum += Store.countWords(d.text) * 10;
+      n++;
+      rows.push(draftRow(d, !!cur && cur.id === d.id, fetched));
+    }
+    close();
+    if (!drafts.length) rows.push(el('li', { class: 'book-empty', text: 'No drafts yet.' }));
+    listEl.replaceChildren(...rows);
     if (focusKey) {
       const again = listEl.querySelector('[data-key="' + CSS.escape(focusKey) + '"]');
       if (again) again.focus({ preventScroll: true });
     }
     const c = Sync.config();
-    footNote.textContent = c ? 'Synced with ' + c.dbTitle : 'Drafts live in this browser only. Connect Notion in Settings to sync them.';
+    footNote.textContent = c ? 'Synced with ' + c.dbTitle + '. Click a title to open its page in Notion.' : 'Drafts live in this browser only. Connect Notion in Settings to sync them.';
   }
 
-  function draftRow(d, isCurrent) {
-    const fetched = !(d.notionId && !d.contentFetchedAt && !d.text);
+  function draftRow(d, isCurrent, fetched) {
     const words = Store.countWords(d.text);
-    const meta = relTime(d.updatedAt) + (fetched ? ' · ' + words + ' ' + plural(words, 'word', 'words') + ' · ' + money(words * 10) : '');
+    const spent = words * 10;
+    const over = spent > d.budget;
     const title = Store.displayTitle(d);
     const open = () => { closeDialog(draftsDlg); app().openDraft(d.id); };
     const linked = !!(d.url && /^https?:\/\//.test(d.url));
-    // The title opens the page in Notion; the rest of the row opens the draft here.
     const titleEl = linked
-      ? el('a', { class: 'draft-title is-link', href: d.url, target: '_blank', rel: 'noopener', title: 'Open in Notion', text: title, onclick: (e) => e.stopPropagation() })
-      : el('span', { class: 'draft-title', text: title });
-    return el('li', { class: 'draft-row' + (isCurrent ? ' is-current' : '') },
-      el('div', { class: 'draft-top' },
-        el('div', {
-          class: 'draft-open', role: 'button', tabindex: '0', 'aria-current': isCurrent ? 'true' : null, dataset: { key: 'open:' + d.id },
-          'aria-label': 'Open “' + title + '”', onclick: open,
-          onkeydown: (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); open(); } }
-        },
-        titleEl,
-        el('span', { class: 'draft-meta', text: meta })),
-        el('button', {
-          type: 'button', class: 'btn-icon draft-del', 'aria-label': 'Delete “' + title + '”', title: 'Delete',
-          dataset: { key: 'del:' + d.id }, onclick: () => deleteDraft(d.id)
-        }, icon('trash'))),
-      propChips(d));
+      ? el('a', { class: 'e-title', href: d.url, target: '_blank', rel: 'noopener', title: 'Open in Notion', text: title, onclick: (e) => e.stopPropagation() })
+      : el('span', { class: 'e-title', text: title });
+    const li = el('li', {
+      class: 'entry' + (isCurrent ? ' is-current' : ''), role: 'button', tabindex: '0', 'aria-current': isCurrent ? 'true' : null,
+      dataset: { key: 'open:' + d.id }, 'aria-label': 'Open “' + title + '”' + (fetched ? ', ' + words + ' words, ' + money(spent) + ' of ' + money(d.budget) : ''),
+      onclick: (e) => { if (!e.target.closest('button, a')) open(); },
+      onkeydown: (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); open(); } }
+    },
+    el('span', { class: 'e-date', title: relTime(d.updatedAt), text: dayOf(d.updatedAt) }),
+    el('div', { class: 'e-entry' }, titleEl, propChips(d)),
+    el('span', { class: 'e-words', text: fetched ? String(words) : '–' }),
+    el('div', { class: 'e-spent' },
+      el('span', { class: 'e-amt' + (over ? ' is-over' : ''), text: fetched ? money(spent) : '–' }),
+      fetched ? el('span', { class: 'e-bar' + (over ? ' is-over' : ''), 'aria-hidden': 'true' }, el('i', { style: 'width:' + Math.min(100, spent / d.budget * 100) + '%' })) : null,
+      el('span', { class: 'e-of', text: 'of ' + money(d.budget) })),
+    el('button', {
+      type: 'button', class: 'btn-icon e-del', 'aria-label': 'Delete “' + title + '”', title: 'Delete',
+      dataset: { key: 'del:' + d.id }, onclick: () => deleteDraft(d.id)
+    }, icon('trash')));
+    return li;
   }
 
   /* ---------- Notion properties as chips ---------- */
@@ -113,7 +137,7 @@
     const names = Object.keys(c.schema).filter((n) => n !== c.titleProp && CHIP_TYPES.has(c.schema[n].type))
       .sort((x, y) => rank(c.schema[x].type) - rank(c.schema[y].type));
     if (!names.length) return null;
-    return el('div', { class: 'draft-props' }, names.map((n) => propChip(d, n, c.schema[n])));
+    return el('div', { class: 'e-props' }, names.map((n) => propChip(d, n, c.schema[n])));
   }
 
   function showValue(s, v) {
@@ -244,16 +268,29 @@
   }
 
   function lookSection(s) {
+    const look = app().lookOf(s);
+    const size = el('input', {
+      type: 'range', id: 'set-size', min: '-2', max: '4', step: '1', value: String(s.textSize),
+      oninput: () => update({ textSize: Number(size.value) })
+    });
     return el('section', { class: 'set-sec', 'aria-labelledby': 'set-look' },
       el('h3', { id: 'set-look', class: 'label', text: 'Look' }),
-      el('div', { class: 'skins', role: 'radiogroup', 'aria-labelledby': 'set-look' },
-        SKINS.map(([value, name, desc]) => el('label', { class: 'skin-card', 'data-skin': value },
-          radio('skin', value, s.skin === value, () => update({ skin: value })),
-          el('span', { class: 'skin-sample', 'aria-hidden': 'true', text: 'Aa' }),
-          el('span', { class: 'skin-name' }, el('span', { class: 'skin-dot', 'aria-hidden': 'true' }), name),
-          el('span', { class: 'skin-desc', text: desc })))),
-      switchRow('Night desk when your device is in dark mode', !!s.autoNight, (on) => update({ autoNight: on }),
-        'Your look comes back in light mode.'));
+      el('div', { class: 'set-field' },
+        el('span', { class: 'set-sub', text: 'Theme' }),
+        segmented({
+          label: 'Theme', value: look.theme, class: 'is-soft',
+          options: [{ value: 'auto', label: 'Automatic' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }],
+          onChange: (v) => update({ theme: v })
+        }),
+        el('p', { class: 'hint', text: 'Automatic follows your device: banknote paper by day, the night note in dark mode.' })),
+      el('div', { class: 'set-field' },
+        el('span', { class: 'set-sub', id: 'set-face-l', text: 'Writing face' }),
+        el('div', { class: 'faces', role: 'radiogroup', 'aria-labelledby': 'set-face-l' },
+          FACES.map(([value, name, font]) => el('label', { class: 'face-card', 'data-face': value },
+            radio('face', value, look.face === value, () => update({ face: value })),
+            el('span', { class: 'face-sample', style: 'font-family:var(--font-write)', text: 'Every word' }),
+            el('span', { class: 'face-name', text: name + ', ' + font }))))),
+      field('Text size', size));
   }
 
   function soundSection(s) {
@@ -299,52 +336,46 @@
   }
 
   function writingSection(s) {
-    const size = el('input', {
-      type: 'range', id: 'set-size', min: '-2', max: '4', step: '1', value: String(s.textSize),
-      oninput: () => update({ textSize: Number(size.value) })
+    const budget = el('input', {
+      type: 'number', id: 'set-budget', min: '10', step: '10', inputmode: 'numeric', value: String(s.defaultBudget),
+      onchange: () => {
+        const n = Math.round(Number(budget.value) / 10) * 10;
+        if (n >= 10) update({ defaultBudget: n });
+        budget.value = String(app().state.settings.defaultBudget);
+      }
     });
     return el('section', { class: 'set-sec', 'aria-labelledby': 'set-writing' },
       el('h3', { id: 'set-writing', class: 'label', text: 'Writing' }),
-      switchRow("Keep the line you're typing in the middle", !!s.typewriterScroll, (on) => update({ typewriterScroll: on }), 'Write mode'),
-      switchRow('Highlight fixes in Edit mode', s.fixHighlights !== false, (on) => { update({ fixHighlights: on }); if (app().state.mode === 'edit') app().refresh(); },
-        'Spelling, hard sentences, wordy phrases and the rest. The eye on each fix in Edit mode hides just that kind.'),
-      switchRow('Turn off backspace when the stage says “no backspace”', !!s.noBackspace, (on) => update({ noBackspace: on }),
-        'The No backspace switch in the top bar can override it for any draft.'),
+      el('div', { class: 'set-group' },
+        switchRow("Keep the line you're typing in the middle", !!s.typewriterScroll, (on) => update({ typewriterScroll: on }), 'In Write mode.'),
+        switchRow('Highlight fixes in Edit mode', s.fixHighlights !== false, (on) => { update({ fixHighlights: on }); if (app().state.mode === 'edit') app().refresh(); },
+          'Spelling, hard sentences, wordy phrases and the rest. Each refund on the tape can hide just its kind.'),
+        switchRow('Turn off backspace when the stage says “no backspace”', !!s.noBackspace, (on) => update({ noBackspace: on }),
+          'The Paper menu’s No backspace overrides it for any draft.')),
       el('div', { class: 'set-field' },
         el('span', { class: 'set-sub', text: 'New drafts use' }),
         segmented({
-          label: 'New drafts use', value: TDW.Formats.get(s.defaultFormat).key,
+          label: 'New drafts use', value: TDW.Formats.get(s.defaultFormat).key, class: 'is-soft',
           options: TDW.Formats.LIST.map((f) => ({ value: f.key, label: f.label })),
           onChange: (v) => update({ defaultFormat: v })
         })),
-      field('Text size', size),
+      el('div', { class: 'set-field' },
+        el('label', { for: 'set-budget', class: 'set-sub', text: 'Budget for a new Basic draft' }),
+        el('div', { class: 'money-input', style: 'max-width:160px' }, el('span', { text: '$' }), budget),
+        el('p', { class: 'hint', text: 'LinkedIn starts at $2,000, X at $500, Substack at $8,000. Change any draft’s budget on its tape.' })),
       dictionaryField(),
-      el('p', { class: 'hint', text: shortcutsText() }));
+      device.phone ? el('p', { class: 'hint', text: shortcutsText() }) : null);
   }
 
   function shortcutsText() {
-    if (device.phone) {
-      return 'Formatting as you type: # and a space makes a heading, - a bullet, 1. a numbered list, [] a checkbox, > a quote, ' +
-        '--- a divider (in X, a new post). **Two stars** around words make them bold, *one* makes them italic.';
-    }
-    return 'Shortcuts: ' + keys('⌘E') + ' switches Write and Edit. ' + keys('⌘B') + ' bold, ' + keys('⌘I') + ' italic, ' +
-      keys('⌘⇧S') + ' strike, ' + keys('⌘K') + ' link, ' + keys('⌘⌥1') + '–3 headings. In X, ' + keys('⌘↩') + ' starts a new post.';
+    return 'Formatting as you type: # and a space makes a heading, - a bullet, 1. a numbered list, [] a checkbox, > a quote, ' +
+      '--- a divider (in X, a new post). **Two stars** around words make them bold, *one* makes them italic.';
   }
 
-  function budgetSection(s) {
-    const input = el('input', {
-      type: 'number', id: 'set-budget', min: '10', step: '10', inputmode: 'numeric', value: String(s.defaultBudget),
-      onchange: () => {
-        const n = Math.round(Number(input.value) / 10) * 10;
-        if (n >= 10) update({ defaultBudget: n });
-        input.value = String(app().state.settings.defaultBudget);
-      }
-    });
-    return el('section', { class: 'set-sec', 'aria-labelledby': 'set-budget-title' },
-      el('h3', { id: 'set-budget-title', class: 'label', text: 'Budget' }),
-      el('div', { class: 'set-field' },
-        el('label', { for: 'set-budget', class: 'set-sub', text: 'Default budget for Basic drafts' }),
-        el('div', { class: 'money-input' }, el('span', { text: '$' }), input)));
+  function keysSection() {
+    return el('section', { class: 'set-sec', 'aria-labelledby': 'set-keys' },
+      el('h3', { id: 'set-keys', class: 'label', text: 'Keys' }),
+      device.phone ? el('p', { class: 'hint', text: shortcutsText() }) : TDW.Desk.shortcutList());
   }
 
   function notionSection() {
@@ -642,35 +673,67 @@
     return sec;
   }
 
-  // Something outside a section changed what it shows (signing in or out, another device). The
-  // account section stays as it is, and so does any section you're typing in.
-  function refreshSettings() {
-    if (!settingsDlg || !settingsDlg.open) return;
-    const body = settingsDlg.querySelector('.settings-body');
-    if (!body) return;
-    const active = document.activeElement;
+  function sectionNode(name) {
     const s = app().state.settings;
-    const next = [lookSection(s), writingSection(s), soundSection(s), budgetSection(s), notionSection(), aiSection()];
-    [...body.children].slice(1).forEach((old, k) => {
-      if (!(active && old.contains(active) && active.matches('input, textarea, select'))) old.replaceWith(next[k]);
-    });
+    switch (name) {
+      case 'look': return lookSection(s);
+      case 'sound': return soundSection(s);
+      case 'ai': return aiSection();
+      case 'notion': return notionSection();
+      case 'account': return accountSection();
+      case 'keys': return keysSection();
+      default: return writingSection(s);
+    }
   }
 
-  function openSettings(section) {
-    const s = app().state.settings;
-    settingsDlg.replaceChildren(
-      el('div', { class: 'dlg-head' }, el('h2', { id: 'settings-title', text: 'Settings', tabindex: '-1', autofocus: true }), closeButton(settingsDlg)),
-      el('div', { class: 'settings-body' },
-        accountSection(), lookSection(s), writingSection(s), soundSection(s), budgetSection(s), notionSection(), aiSection()),
-      el('p', { class: 'set-foot', text: 'Ten Dollar Words · version ' + app().APP_VERSION }));
-    settingsDlg.showModal();
-    if (section === 'ai') {
-      document.getElementById('set-ai').scrollIntoView({ block: 'start' });
-      document.getElementById('set-key').focus({ preventScroll: true });
-    } else if (section === 'account') {
-      const first = document.getElementById('acct-email');
-      if (first) first.focus({ preventScroll: true });
+  function showSection(name, focusTab) {
+    section = SECTIONS.some((x) => x[0] === name) ? name : 'writing';
+    const nav = settingsDlg.querySelector('.set-nav');
+    for (const b of nav.querySelectorAll('.set-tab')) {
+      const on = b.dataset.sec === section;
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+      if (on && focusTab) b.focus();
     }
+    settingsDlg.querySelector('.set-head h3').textContent = SECTIONS.find((x) => x[0] === section)[1];
+    const body = settingsDlg.querySelector('.set-body');
+    body.replaceChildren(sectionNode(section));
+    body.scrollTop = 0;
+  }
+
+  // Something outside the section changed what it shows (signing in or out, another device).
+  // The account section redraws itself; a section you're typing in stays as it is.
+  function refreshSettings() {
+    if (!settingsDlg || !settingsDlg.open || section === 'account') return;
+    const body = settingsDlg.querySelector('.set-body');
+    const active = document.activeElement;
+    if (active && body.contains(active) && active.matches('input, textarea, select')) return;
+    body.replaceChildren(sectionNode(section));
+  }
+
+  function openSettings(name) {
+    const visible = SECTIONS.filter((x) => !(device.phone && x[0] === 'keys'));
+    const tabs = visible.map(([k, label]) => el('button', {
+      type: 'button', role: 'tab', class: 'set-tab', text: label, dataset: { sec: k }, onclick: () => showSection(k)
+    }));
+    const nav = el('nav', { class: 'set-nav', role: 'tablist', 'aria-orientation': device.phone ? 'horizontal' : 'vertical', 'aria-label': 'Settings sections' },
+      el('h2', { id: 'settings-title', text: 'Settings', tabindex: '-1' }), ...tabs,
+      el('p', { class: 'set-ver', text: 'Ten Dollar Words ' + app().APP_VERSION }));
+    nav.addEventListener('keydown', (e) => {
+      const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d || !e.target.classList.contains('set-tab')) return;
+      e.preventDefault();
+      const i = tabs.indexOf(e.target);
+      showSection(tabs[(i + d + tabs.length) % tabs.length].dataset.sec, true);
+    });
+    settingsDlg.replaceChildren(nav,
+      el('div', { class: 'set-main' },
+        el('div', { class: 'set-head' }, el('h3', { 'aria-live': 'polite' }), closeButton(settingsDlg)),
+        el('div', { class: 'set-body', role: 'tabpanel' })));
+    if (!settingsDlg.open) settingsDlg.showModal();
+    showSection(name || 'writing', true);
+    if (name === 'ai') { const k = document.getElementById('set-key'); if (k) k.focus({ preventScroll: true }); }
+    else if (name === 'account') { const f = document.getElementById('acct-email'); if (f) f.focus({ preventScroll: true }); }
   }
 
   TDW.Dialogs = {
