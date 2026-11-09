@@ -7,7 +7,7 @@
 :root {
   --font-ui: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-code: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --lib-w: 264px; --insp-w: 336px; --tb-h: 48px;
+  --lib-w: 264px; --insp-w: 352px; --tb-h: 48px;
   --lib: 1; --insp: 0; --push: 1; --spend: 0; --kb: 0px; --sheet-cover: 0px;
   --text-offset: 0px;
   --t-cap: 11px; --t-sm: 12px; --t-ui: 13px; --t-md: 15px; --t-lg: 20px; --t-xl: 28px;
@@ -389,7 +389,7 @@ dialog .toast { position: fixed; }
 .tb-btn .icon { width: 12px; height: 12px; color: var(--ink-2); }
 .tb-btn:hover, .tb-btn[aria-expanded="true"] { background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .spend-chip {
-  position: relative; display: inline-flex; align-items: baseline; height: 28px; padding: 6px 8px 0; border: 0; border-radius: var(--r-sm);
+  position: relative; display: inline-flex; align-items: baseline; gap: 4px; height: 28px; padding: 6px 8px 0; border: 0; border-radius: var(--r-sm);
   background: transparent; color: var(--ink-2); font: 500 var(--t-ui)/1 var(--font-ui); white-space: nowrap;
   transition: background-color var(--t-fast), color var(--t-fast), transform var(--t-fast) var(--ease);
 }
@@ -454,7 +454,7 @@ html.tw-scroll.is-focus .page { padding-bottom: 60vh; }
   transform: translate3d(calc((1 - var(--insp)) * var(--insp-w)), 0, 0);
 }
 .insp-tabs {
-  flex: none; display: flex; align-items: stretch; gap: 14px; height: var(--tb-h); padding: 0 16px;
+  flex: none; display: flex; align-items: stretch; gap: 13px; height: var(--tb-h); padding: 0 16px;
   border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; padding-top: var(--safe-t); box-sizing: content-box;
 }
 .insp-tabs::-webkit-scrollbar { display: none; }
@@ -543,7 +543,7 @@ html.tw-scroll.is-focus .page { padding-bottom: 60vh; }
   .page {
     z-index: 11; min-height: 100dvh;
     padding: calc(var(--tb-h) + var(--safe-t) + 28px) 22px calc(max(56px + var(--safe-b) + var(--kb), var(--sheet-cover)) + 42vh);
-    box-shadow: -1px 0 0 var(--line), -12px 0 32px -12px rgba(0, 0, 0, calc((1 - var(--push)) * .4));
+    box-shadow: -1px 0 0 var(--line), -12px 0 32px -12px rgba(0, 0, 0, calc((1 - var(--push)) * var(--push) * 1.4));
   }
   html.is-swiping .page, html.is-swiping .toolbar, html.is-swiping .phone-bar { will-change: transform; }
   .sheet { max-width: 100%; }

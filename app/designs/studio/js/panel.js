@@ -121,7 +121,7 @@
     root.style.setProperty('--spend', frac.toFixed(4));
     root.classList.toggle('is-over', over);
     const chip = $('spend-chip');
-    chip.replaceChildren(el('span', { class: 'chip-spent', text: money(spent) }), el('span', { class: 'chip-budget', text: ' of ' + money(budget) }));
+    chip.replaceChildren(el('span', { class: 'chip-spent', text: money(spent) }), el('span', { class: 'chip-budget', text: 'of ' + money(budget) }));
     chip.setAttribute('aria-label', 'Spent ' + money(spent) + ' of a ' + money(budget) + ' budget' + (over ? ', over budget' : '') + '. Change the budget');
     tip(chip, over ? 'Over budget by ' + money(spent - budget) : money(budget - spent) + ' left');
     $('pb-review') && $('pb-review').style.setProperty('--spend', frac.toFixed(4));

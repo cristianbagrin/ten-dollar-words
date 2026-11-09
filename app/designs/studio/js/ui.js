@@ -48,6 +48,7 @@
 
   TDW.icons = {
     close: svg('<path d="M4 4l8 8M12 4l-8 8"/>'),
+    sliders: svg('<path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"/><circle cx="10.5" cy="4.5" r="1.6"/><circle cx="5.5" cy="11.5" r="1.6"/>'),
     gear: svg('<circle cx="8" cy="8" r="2"/><path d="M8 1.8v1.6M8 12.6v1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M1.8 8h1.6M12.6 8h1.6M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/>'),
     eye: svg(EYE),
     eyeOff: svg(EYE + '<path d="M2.5 13.5l11-11"/>'),

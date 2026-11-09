@@ -3,6 +3,15 @@ export const steps = {
   'D16-challenge-picker': async (page) => {
     await page.evaluate(() => TDW.Challenges.open());
     await page.waitForTimeout(500);
+  },
+  // Writing a note already opens the Notes tab, so the panel is shown, not toggled.
+  'D18-notes': async (page, t) => {
+    await t.mode(page, 'write');
+    await t.select(page, 'afraid that short ones');
+    await page.evaluate(() => TDW.Notes.compose()); await page.waitForTimeout(300);
+    await page.keyboard.type('Is "afraid" too strong here?', { delay: 10 });
+    await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+    await page.evaluate(() => TDW.App.openTab('notes')); await page.waitForTimeout(500);
   }
 };
 

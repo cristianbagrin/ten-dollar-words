@@ -573,7 +573,7 @@
   // Both side panes need room: on a narrow computer screen, opening one folds the other.
   function fitPanes(priority) {
     if (isNarrow()) return;
-    const room = window.innerWidth - (Library.isOpen() ? 264 : 0) - (Inspector.isOpen() ? 336 : 0);
+    const room = window.innerWidth - (Library.isOpen() ? 264 : 0) - (Inspector.isOpen() ? 352 : 0);
     if (room >= 620) return;
     if (priority === 'library' && Inspector.isOpen()) setMode('write', { keepLibrary: true });
     else if (Library.isOpen()) { libraryBeforeFocus = true; Library.hide({ transient: true }); }

@@ -462,8 +462,8 @@
     folded = new Set(readJSON(FOLD_KEY, []));
     $('lib-new').append(icon('compose'));
     $('lib-new-phone').append(icon('compose'));
-    $('btn-settings').append(icon('gear'));
-    $('lib-settings-phone').append(icon('gear'));
+    $('btn-settings').append(icon('sliders'));
+    $('lib-settings-phone').append(icon('sliders'));
     $('btn-lib').append(icon('library'));
     document.querySelector('.lib-search-icon').append(icon('search'));
     document.querySelector('.tb-back-icon').append(icon('chevLeft'));

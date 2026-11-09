@@ -414,7 +414,7 @@
     else showSection(k || section);
     if (which === 'ai') { const n = document.getElementById('set-key'); if (n) n.focus({ preventScroll: true }); }
     else if (which === 'account') { const n = document.getElementById('acct-email'); if (n) n.focus({ preventScroll: true }); }
-    else if (!isNarrow()) { const n = navEl.querySelector('[data-section="' + section + '"]'); if (n) n.focus({ preventScroll: true }); }
+    else if (!isNarrow()) titleEl.focus({ preventScroll: true });
   }
 
   // Something changed outside the window (another device, signing in): redraw the section unless you're typing in it.
