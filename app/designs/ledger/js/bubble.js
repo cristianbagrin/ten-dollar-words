@@ -1,5 +1,5 @@
-/* The bar that floats over a selection, like Notion's:
-   ✦ Ask AI · A/B (alternatives) · Turn into ▾ · B I S <> link · A (color) · speech mark (note) · ⋯
+/* The bar that floats over a selection: Ask AI, Alternatives, Note, then Bold, Italic, Link, and
+   More (turn into, strikethrough, code, color, ghost, stash, AI alternatives).
    It shows once you let go of the mouse (or stop extending the selection with the keyboard),
    and steps aside while you type. Esc hides it. */
 (function () {
@@ -10,7 +10,7 @@
   const IS_MAC = UI.device.apple;
   const k = (mac, pc) => (IS_MAC ? mac : pc);
 
-  let bar = null, turnBtn = null, colorBtn = null;
+  let bar = null;
   let pointerDown = false;
   let timer = 0;
   let dismissedAt = null; // the selection Esc hid it for
@@ -31,37 +31,55 @@
   }
 
   function build() {
-    bar = UI.el('div', { class: 'bubble', role: 'toolbar', 'aria-label': 'Format the selection', hidden: true });
-    const ai = button('bub-ai', '✦ Ask AI', 'Ask AI about this (' + k('⌃J', 'Ctrl+J') + ')', null, () => { hide(); TDW.Notes.compose({ ai: true }); });
-    ai.innerHTML = '<span class="bub-spark">✦</span> Ask AI';
-    const ab = button('bub-ab', 'A/B', 'Alternatives: other versions to try in place (' + k('⌃⇧A', 'Ctrl+Shift+A') + ')', null, () => { hide(); TDW.Alts && TDW.Alts.open(); });
-    turnBtn = button('bub-turn', 'Text', 'Turn into', null, () => turnMenu());
+    bar = UI.el('div', { class: 'bubble', role: 'toolbar', 'aria-label': 'Selection', hidden: true });
+    const ai = button('bub-ai', 'Ask AI', 'Ask AI about this (' + k('⌃J', 'Ctrl+J') + ')', null, () => { hide(); TDW.Notes.compose({ ai: true }); });
+    ai.replaceChildren(UI.icon('spark'), UI.el('span', { class: 'bub-label', text: 'Ask AI' }));
+    const ab = button('bub-ab', 'Alternatives', 'Alternatives: other versions to try in place (' + k('⌃⇧A', 'Ctrl+Shift+A') + ')', null, () => { hide(); TDW.Alts && TDW.Alts.open(); });
+    ab.replaceChildren(UI.icon('alts'), UI.el('span', { class: 'bub-label', text: 'Alternatives' }));
+    const N = button('bub-note', 'Note', 'Add a note (' + k('⌃⇧M', 'Ctrl+Shift+M') + ')', null, () => { hide(); TDW.Notes.compose({ ai: false }); });
+    N.replaceChildren(UI.icon('note'), UI.el('span', { class: 'bub-label', text: 'Note' }));
     const B = button('bub-b', 'Bold', 'Bold (' + k('⌘B', 'Ctrl+B') + ')', '<b>B</b>', () => { Editor.toggleStyle('bold'); later(); });
     const I = button('bub-i', 'Italic', 'Italic (' + k('⌘I', 'Ctrl+I') + ')', '<i>i</i>', () => { Editor.toggleStyle('italic'); later(); });
-    const S = button('bub-s', 'Strikethrough', 'Strikethrough (' + k('⌘⇧S', 'Ctrl+Shift+S') + ')', '<s>S</s>', () => { Editor.toggleStyle('strike'); later(); });
-    const C = button('bub-c', 'Code', 'Code', '<code>&lt;/&gt;</code>', () => { Editor.toggleStyle('code'); later(); });
-    const L = button('bub-l', 'Link', 'Link (' + k('⌘K', 'Ctrl+K') + ')', ICON.link, () => { hide(); Editor.link(); });
-    colorBtn = button('bub-color', 'Color', 'Text color or highlight (' + k('⌃⇧H', 'Ctrl+Shift+H') + ' repeats the last)', '<span class="bub-a">A</span><span class="bub-caret">▾</span>', (e, b) => {
-      const s = Editor.getSelection();
-      TDW.Notes.colorMenu(b, s.start, s.end);
-    });
-    const N = button('bub-note', 'Note', 'Add a note (' + k('⌃⇧M', 'Ctrl+Shift+M') + ')', ICON.note, () => { hide(); TDW.Notes.compose({ ai: false }); });
-    const M = button('bub-more', 'More', 'Ghost it, Stash, and more', ICON.more, (e, b) => { const r = b.getBoundingClientRect(); TDW.Menu && TDW.Menu.openAt(r.left, r.bottom); });
+    const L = button('bub-l', 'Link', 'Link (' + k('⌘K', 'Ctrl+K') + ')', null, () => { hide(); Editor.link(); });
+    L.replaceChildren(UI.icon('link'));
+    const M = button('bub-more', 'More', 'Turn into, color, ghost, stash and more', null, (e, b) => moreMenu(b));
+    M.replaceChildren(UI.icon('more'));
     const sep = () => UI.el('span', { class: 'bub-sep', 'aria-hidden': 'true' });
-    bar.append(ai, ab, sep(), turnBtn, sep(), B, I, S, C, L, sep(), colorBtn, N, M);
+    bar.append(ai, ab, N, sep(), B, I, L, sep(), M);
     bar.addEventListener('pointerdown', (e) => e.preventDefault());
     document.body.append(bar);
   }
 
+  function moreMenu(b) {
+    const [a, z] = Editor.selLines();
+    const cur = Editor.block(a).type;
+    const s = Editor.getSelection();
+    const items = [
+      { label: 'Turn into…', value: 'turn', note: (TDW.Blocks.TYPES.find((x) => x.type === cur) || { label: 'Text' }).label },
+      { label: 'Color…', value: 'color', note: k('⌃⇧H', 'Ctrl+Shift+H') },
+      { label: 'Strikethrough', value: 'strike', note: k('⌘⇧S', 'Ctrl+Shift+S') },
+      { label: 'Code', value: 'code' },
+      { type: 'sep' },
+      { label: 'AI alternatives', value: 'aialts', note: k('⌃⇧G', 'Ctrl+Shift+G') },
+      { label: 'Ghost it', value: 'ghost', note: k('⌃/', 'Ctrl+/') },
+      { label: 'Stash in Overflow', value: 'stash', note: k('⌃⇧X', 'Ctrl+Shift+X') }
+    ];
+    UI.menu(b, items, (it) => {
+      if (it.value === 'turn') {
+        setTimeout(() => UI.menu(b, TDW.Blocks.TYPES.map((t) => ({ label: t.label, note: t.hint, value: t.type, checked: t.type === cur })),
+          (x) => { Editor.turnInto(a, z, x.value); later(); return false; }), 0);
+      } else if (it.value === 'color') setTimeout(() => TDW.Notes.colorMenu(b, s.start, s.end), 0);
+      else if (it.value === 'strike') { Editor.toggleStyle('strike'); later(); }
+      else if (it.value === 'code') { Editor.toggleStyle('code'); later(); }
+      else if (it.value === 'aialts') { hide(); TDW.Alts && TDW.Alts.aiForSelection(); }
+      else if (it.value === 'ghost') { hide(); TDW.Menu.toggleGhost(); }
+      else if (it.value === 'stash') { hide(); TDW.Menu.stash(); }
+      return false;
+    });
+  }
+
   // After a format change the selection is redrawn; put the bar back over it.
   function later() { requestAnimationFrame(() => show(true)); }
-
-  function turnMenu() {
-    const [a, b] = Editor.selLines();
-    const cur = Editor.block(a).type;
-    const items = TDW.Blocks.TYPES.map((t) => ({ label: t.label, note: t.hint, value: t.type, checked: t.type === cur }));
-    UI.menu(turnBtn, items, (it) => { Editor.turnInto(a, b, it.value); later(); return false; });
-  }
 
   function canShow() {
     if (!bar || pointerDown || app().state.loading) return false;
@@ -79,13 +97,6 @@
   function show(force) {
     if (!canShow()) { hide(); return; }
     const s = Editor.getSelection();
-    const [a, b] = Editor.selLines();
-    const t = Editor.block(a).type;
-    const label = (TDW.Blocks.TYPES.find((x) => x.type === t) || { label: 'Text' }).label;
-    turnBtn.innerHTML = '';
-    turnBtn.append(document.createTextNode(b > a && Editor.block(b).type !== t ? 'Mixed' : label), UI.el('span', { class: 'bub-caret', text: '▾' }));
-    const c = Marks.colorAt(Editor.getAnnotations(), s.start, s.end);
-    colorBtn.querySelector('.bub-a').className = 'bub-a sw-' + (c || 'default');
     const r1 = Editor.rectAt(s.start);
     const r2 = Editor.rectAt(s.end);
     if (!r1) { hide(); return; }

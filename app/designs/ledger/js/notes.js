@@ -3,7 +3,7 @@
      menu's Color, or "/red", "/yellow background"). In Notion it's the same color.
    - Notes for future you: select text and add a note (Ctrl+Shift+M, the bubble's speech mark,
      or "/note"). The words get a faint underline and a mark in the margin. A note can be a
-     to-do: tick it off when it's done. The Notes panel (bottom right) lists them all.
+     to-do: tick it off when it's done. The Notes tab on the tape lists them all.
    - Ask AI: a note you write to the AI (the bubble's ✦, Ctrl+J, or "/ai"). Ask for "a punchier
      version" or "is this clear?" and it answers in the thread, like a comment in a design tool.
      Versions it suggests join the text's alternatives, so you flip through them in place
@@ -129,30 +129,18 @@
   let card = null; // { node, id, draft: bool, range }
   let aiCtrl = null;
 
-  function rectOf(start, end) {
-    const a = Editor.rectAt(start), b = Editor.rectAt(Math.max(start, end));
-    if (!a) return null;
-    const top = a.lineTop, bottom = (b || a).lineTop + (b || a).lh;
-    return { left: a.left, right: b ? b.left : a.left, top, bottom };
+  // The card lives at the top of the tape's Notes tab, above the list.
+  function mount(node) {
+    TDW.Tape.setView('notes');
+    cardSlot.replaceChildren(node);
+    requestAnimationFrame(() => TDW.Tape.reveal(node));
   }
 
-  // Beside the page if there's room on the right, else under the text.
-  function placeCard(start, end) {
-    if (!card) return;
-    const r = rectOf(start, end);
-    const sheet = document.getElementById('sheet').getBoundingClientRect();
-    const n = card.node;
-    const w = n.offsetWidth, h = n.offsetHeight;
-    const vh = UI.visibleBottom ? UI.visibleBottom() : window.innerHeight;
-    if (!r) return;
-    const roomRight = window.innerWidth - sheet.right - 40 >= w && !document.documentElement.classList.contains('overflow-open') && !document.documentElement.classList.contains('notes-open');
-    let left, top;
-    if (roomRight) { left = sheet.right + 32; top = r.top - 8; }
-    else { left = Math.max(8, Math.min(r.left - 12, window.innerWidth - w - 8)); top = r.bottom + 10; if (top + h > vh - 8) top = Math.max(8, r.top - h - 10); }
-    top = Math.max(8, Math.min(top, vh - Math.min(h, vh - 16) - 8));
-    n.style.left = left + 'px';
-    n.style.top = top + 'px';
-    n.classList.toggle('is-beside', roomRight);
+  function flashRow(id) {
+    requestAnimationFrame(() => {
+      const row = listEl && listEl.querySelector('[data-id="' + CSS.escape(id) + '"]');
+      if (row) { row.classList.add('is-new'); TDW.Tape.reveal(row); }
+    });
   }
 
   // New: a note (or a message to the AI) on the selection.
@@ -167,9 +155,10 @@
       UI.toast('Add your Gemini key in Settings to ask the AI.', { label: 'Settings', run: () => app().openSettings('ai') });
       return;
     }
-    closeCard(true);
+    const transient = card ? card.transient : !TDW.Tape.isOpen();
+    closeCard(true, true);
     TDW.Bubble && TDW.Bubble.hide();
-    const node = UI.el('div', { class: 'note-card is-new' + (ai ? ' is-ai' : ''), role: 'dialog', 'aria-label': ai ? 'Ask AI' : 'New note' });
+    const node = UI.el('div', { class: 'note-card is-new' + (ai ? ' is-ai' : ''), role: 'group', 'aria-label': ai ? 'Ask AI' : 'New note' });
     const quote = UI.el('div', { class: 'note-quote', text: TDW.Inline.plain(text().slice(r.start, r.end)).slice(0, 160) });
     const input = UI.el('textarea', { class: 'note-input', rows: '2', placeholder: ai ? 'Ask AI to rewrite, shorten, judge…' : 'A note for later: a to-do, an idea, a question…', 'aria-label': ai ? 'Message to the AI' : 'Note' });
     const chips = ai ? UI.el('div', { class: 'note-chips' }, ['Other ways to say this', 'Make it punchier', 'Shorter', 'Simpler words', 'Is this clear?'].map((q) =>
@@ -177,9 +166,11 @@
     const save = UI.el('button', { type: 'button', class: 'btn btn-sm', text: ai ? 'Ask' : 'Add note' });
     const swap = UI.el('button', { type: 'button', class: 'btn-quiet btn-sm note-swap', text: ai ? 'Just a note' : '✦ Ask AI instead' });
     const foot = UI.el('div', { class: 'note-foot' }, UI.el('span', { class: 'note-spacer' }), swap, save);
+    const cancel = UI.el('button', { type: 'button', class: 'btn-quiet btn-sm', text: 'Cancel', onclick: () => closeCard() });
+    foot.prepend(cancel);
     node.append(quote, input, chips, foot);
-    document.body.append(node);
-    card = { node, id: null, range: r, ai, marked: false };
+    card = { node, id: null, range: r, ai, marked: false, transient };
+    mount(node);
     Editor.setOpenNote(null);
     // Show what the note is on while you write it (unless the Lab's marks are showing).
     if (!Editor.getLab().length && r.end > r.start) { Editor.setLab([{ start: r.start, end: r.end, type: 'note-target', id: 'note-target' }]); card.marked = true; }
@@ -193,9 +184,11 @@
       if (card && card.marked) { Editor.setLab([]); card.marked = false; }
       Editor.change({ ann: got.ann, kind: 'marks', keepFocus: false });
       const id = got.id;
-      closeCard(true);
-      openNote(id);
-      if (ai) askAI(id, msg);
+      const back = card && card.transient && !ai;
+      closeCard(true, true);
+      if (ai) { openNote(id, transient); askAI(id, msg); }
+      else if (back) { TDW.Tape.fold(); Editor.focus(); UI.toast('Note added.'); }
+      else flashRow(id);
       refreshPanel();
     };
     save.addEventListener('click', send);
@@ -205,7 +198,6 @@
       else if (e.key === 'Escape') { e.preventDefault(); closeCard(); }
     });
     autosize(input);
-    placeCard(r.start, r.end);
     input.focus({ preventScroll: true });
   }
 
@@ -216,16 +208,16 @@
   }
 
   // An existing note: its words, its body (editable), the thread, a reply box.
-  function openNote(id) {
+  function openNote(id, transient) {
     const n = noteOf(id);
     if (!n) return;
-    closeCard(true);
-    const node = UI.el('div', { class: 'note-card' + (n.ai ? ' is-ai' : '') + (n.done ? ' is-done' : ''), role: 'dialog', 'aria-label': n.ai ? 'Conversation with the AI' : 'Note' });
-    card = { node, id, range: { start: n.start, end: n.end }, ai: n.ai };
+    const tr = transient != null ? transient : card ? card.transient : !TDW.Tape.isOpen();
+    closeCard(true, true);
+    const node = UI.el('div', { class: 'note-card' + (n.ai ? ' is-ai' : '') + (n.done ? ' is-done' : ''), role: 'group', 'aria-label': n.ai ? 'Conversation with the AI' : 'Note' });
+    card = { node, id, range: { start: n.start, end: n.end }, ai: n.ai, transient: tr };
     Editor.setOpenNote(id);
     drawCard();
-    document.body.append(node);
-    placeCard(n.start, n.end);
+    mount(node);
     const input = node.querySelector('.note-reply');
     if (input && n.ai) input.focus({ preventScroll: true });
   }
@@ -373,8 +365,10 @@
     UI.toast('Note deleted.', { label: 'Undo', run: () => Editor.undo() });
   }
 
-  function closeCard(silent) {
+  // keepTape: another card takes this one's place, so the tape stays as it is.
+  function closeCard(silent, keepTape) {
     if (!card) return;
+    const tr = card.transient;
     if (card.id) {
       const body = card.node.querySelector('.note-body');
       const n = noteOf(card.id);
@@ -383,6 +377,8 @@
     card.node.remove();
     card = null;
     Editor.setOpenNote(null);
+    if (!keepTape && tr && TDW.Tape.view() === 'notes') TDW.Tape.fold();
+    refreshPanel();
     if (!silent) Editor.focus();
   }
 
@@ -434,70 +430,57 @@
     } catch (err) {
       if (!err || err.code !== 'cancelled') UI.toast(TDW.AI.errorMessage(err));
     } finally {
-      if (card && card.id === id) { card.busy = false; drawCard(); placeCard(card.range.start, card.range.end); }
+      if (card && card.id === id) { card.busy = false; drawCard(); }
       refreshPanel();
     }
   }
 
   /* ---------- The Notes panel ---------- */
 
-  let panel = null, listEl = null, btn = null, filter = 'open';
+  let panel = null, listEl = null, cardSlot = null, filterSeg = null, filter = 'open';
 
   function buildPanel() {
-    panel = UI.el('aside', { id: 'notes-panel', class: 'notes-panel', 'aria-label': 'Notes', hidden: true });
-    const tabs = UI.el('div', { class: 'notes-tabs', role: 'tablist' });
-    for (const [k, label] of [['open', 'Open'], ['done', 'Done'], ['all', 'All']]) {
-      const b = UI.el('button', { type: 'button', role: 'tab', class: 'notes-tab', text: label, dataset: { f: k } });
-      b.addEventListener('click', () => { filter = k; refreshPanel(); });
-      tabs.append(b);
-    }
-    const close = UI.el('button', { type: 'button', class: 'btn-icon', 'aria-label': 'Close notes', title: 'Close (Ctrl+Shift+M)' }, UI.icon('close'));
-    close.addEventListener('click', () => setPanel(false, true));
+    panel = document.getElementById('tab-notes');
+    filterSeg = UI.segmented({
+      label: 'Show notes', value: filter, class: 'is-soft',
+      options: [{ value: 'open', label: 'Open' }, { value: 'done', label: 'Done' }, { value: 'all', label: 'All' }],
+      onChange: (v) => { filter = v; refreshPanel(); }
+    });
+    const add = UI.el('button', { type: 'button', class: 'btn-quiet btn-sm', title: 'Select some words first (' + (IS_MAC ? '⌃⇧M' : 'Ctrl+Shift+M') + ')', onclick: () => compose({ ai: false }) }, UI.icon('plus'), 'Note');
+    cardSlot = UI.el('div', { class: 'note-slot' });
     listEl = UI.el('ol', { class: 'notes-list' });
-    panel.append(UI.el('div', { class: 'ov-head' }, UI.el('h2', { class: 'ov-title', text: 'Notes' }), close), tabs, listEl,
-      UI.el('p', { class: 'ov-foot', text: 'select text · ' + (IS_MAC ? '⌃⇧M' : 'Ctrl+Shift+M') + ' adds a note · ' + (IS_MAC ? '⌃J' : 'Ctrl+J') + ' asks the AI' }));
-    document.body.append(panel);
-    btn = UI.el('button', { type: 'button', class: 'dock-btn notes-toggle', title: 'Notes (Ctrl+Shift+M with nothing selected)', 'aria-controls': 'notes-panel', 'aria-expanded': 'false' });
-    btn.addEventListener('mousedown', (e) => e.preventDefault());
-    btn.addEventListener('click', () => setPanel(!isPanelOpen()));
-    const slot = document.getElementById('dock-right');
-    if (slot) slot.prepend(btn);
+    panel.append(UI.el('div', { class: 'notes-head' }, filterSeg, add), cardSlot, listEl,
+      UI.el('p', { class: 'tape-note', text: 'Select words and press ' + (IS_MAC ? '⌃⇧M' : 'Ctrl+Shift+M') + ' for a note, ' + (IS_MAC ? '⌃J' : 'Ctrl+J') + ' to ask the AI. Notes stay out of the post and the bill.' }));
   }
 
-  const isPanelOpen = () => !!panel && !panel.hidden;
+  const isPanelOpen = () => !!(TDW.Tape && TDW.Tape.view() === 'notes');
   function setPanel(on, focusPage) {
-    if (!panel) buildPanel();
-    if (on && TDW.Overflow && TDW.Overflow.isOpen()) TDW.Overflow.close();
-    panel.hidden = !on;
-    document.documentElement.classList.toggle('notes-open', !!on);
-    btn.setAttribute('aria-expanded', String(!!on));
-    btn.classList.toggle('is-on', !!on);
+    if (on) TDW.Tape.setView('notes');
+    else if (isPanelOpen()) { closeCard(true, true); if (app().state.mode === 'edit') TDW.Tape.setView('receipt'); else TDW.Tape.fold(); }
     if (on) refreshPanel();
     if (!on && focusPage) Editor.focus();
     requestAnimationFrame(() => Editor.placeAids());
   }
 
   function refreshPanel() {
-    if (!btn) return;
+    if (!listEl) return;
     const notes = (ann().notes || []);
     const open = notes.filter((n) => !n.done).length;
-    btn.textContent = open ? 'Notes ' + open : 'Notes';
-    btn.hidden = !notes.length && !isPanelOpen();
-    if (!isPanelOpen()) return;
-    for (const b of panel.querySelectorAll('.notes-tab')) b.classList.toggle('is-on', b.dataset.f === filter);
+    const count = document.getElementById('notes-count');
+    if (count) count.textContent = open ? String(open) : '';
+    filterSeg.set(filter, false);
     const t = text();
     const shown = notes.filter((n) => filter === 'all' || (filter === 'done' ? n.done : !n.done));
     const rows = shown.map((n) => {
       const q = n.end > n.start ? TDW.Inline.plain(t.slice(n.start, n.end)) : '';
       const last = n.thread.length ? n.thread[n.thread.length - 1] : null;
-      const li = UI.el('li', { class: 'notes-row' + (n.done ? ' is-done' : '') + (n.ai ? ' is-ai' : '') },
+      return UI.el('li', { class: 'notes-row' + (n.done ? ' is-done' : '') + (n.ai ? ' is-ai' : '') + (card && card.id === n.id ? ' is-on' : ''), dataset: { id: n.id } },
         UI.el('input', { type: 'checkbox', checked: !!n.done, 'aria-label': 'Done', onchange: (e) => setNote(n.id, { done: e.target.checked }) }),
-        UI.el('button', { type: 'button', class: 'notes-open', onclick: () => { Editor.scrollToIndex(n.start, 0.35, true); setTimeout(() => openNote(n.id), 200); } },
-          UI.el('span', { class: 'notes-quote', text: q ? '“' + q.slice(0, 90) + (q.length > 90 ? '…' : '') + '”' : '(deleted text)' }),
+        UI.el('button', { type: 'button', class: 'notes-open', onclick: () => { Editor.scrollToIndex(n.start, 0.35, true); openNote(n.id); } },
+          UI.el('span', { class: 'notes-quote', text: q ? '“' + q.slice(0, 90) + (q.length > 90 ? '…' : '') + '”' : '(the words were deleted)' }),
           UI.el('span', { class: 'notes-body', text: n.ai ? '✦ ' + (last ? last.text : '') : n.body || '' })));
-      return li;
     });
-    if (!rows.length) rows.push(UI.el('li', { class: 'notes-empty', text: filter === 'done' ? 'Nothing done yet.' : 'No notes. Select some words and add one.' }));
+    if (!rows.length) rows.push(UI.el('li', { class: 'notes-empty', text: filter === 'done' ? 'Nothing done yet.' : 'No notes yet.' }));
     listEl.replaceChildren(...rows);
   }
 
@@ -534,13 +517,7 @@
       if (s.end > s.start) return;
       openNote(el.dataset.note);
     });
-    window.addEventListener('resize', () => { if (card) placeCard(card.range.start, card.range.end); });
-    document.addEventListener('pointerdown', (e) => {
-      if (!card || card.node.contains(e.target)) return;
-      if (e.target.closest && (e.target.closest('.note-pin') || e.target.closest('[data-note]') || e.target.closest('.bubble'))) return;
-      closeCard(true);
-    }, true);
-    window.addEventListener('scroll', () => { if (card) { const n = card.id ? noteOf(card.id) : null; const r = n || card.range; placeCard(r.start, r.end); } }, { passive: true });
+
   }
 
   TDW.Notes = {
@@ -548,7 +525,7 @@
     load() { closeCard(true); closeColor(); refreshPanel(); },
     reload() { if (card && card.id && !noteOf(card.id)) closeCard(true); else drawCard(); refreshPanel(); },
     onText() { if (card && card.id) { const n = noteOf(card.id); if (n) card.range = { start: n.start, end: n.end }; } refreshPanel(); },
-    onMode() { closeCard(true); },
+    onMode() { if (card && !card.id) closeCard(true); },
     // From the margin pins: one note opens; several open the panel.
     openPins(ids) {
       if (!ids || !ids.length) return;
