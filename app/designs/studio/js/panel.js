@@ -1,87 +1,95 @@
-/* Edit-mode panel: register, details, grade, fixes, and AI results. */
+/* The money and the Review tab. The money shows everywhere: the toolbar chip and the rule under
+   the toolbar (its hairline fills with plum as you spend). The Review tab holds the spend in
+   detail, the readability grade, the fixes (one row per kind, a swatch that looks like its
+   highlight, a count in its own column, an eye), the selected fix, and the AI message check. */
 (function () {
   'use strict';
   const TDW = window.TDW = window.TDW || {};
-  const { el, icon, money, plural, reducedMotion } = TDW.UI;
+  const { el, icon, money, plural, reducedMotion, menu, closeMenu, tip } = TDW.UI;
   const { Engine, Editor } = TDW;
   const app = () => TDW.App;
   const $ = (id) => document.getElementById(id);
 
   const ORDER = ['spelling', 'veryHard', 'hard', 'complex', 'passive', 'adverb', 'qualifier'];
   const NAMES = {
-    spelling: 'spelling mistakes', veryHard: 'very hard sentences', hard: 'hard sentences', complex: 'wordy phrases',
-    passive: 'passive voice', adverb: 'adverbs', qualifier: 'weakeners'
+    spelling: 'Spelling', veryHard: 'Very hard sentences', hard: 'Hard sentences', complex: 'Wordy phrases',
+    passive: 'Passive voice', adverb: 'Adverbs', qualifier: 'Weakeners'
   };
   const VERDICT = { clear: ['Clear', 'good'], mixed: ['Mixed', 'ok'], unclear: ['Unclear', 'bad'] };
   const MATCH = { yes: 'Yes', partly: 'Partly', no: 'No' };
   const GRADE_CLASS = { Good: 'good', OK: 'ok', Hard: 'bad' };
+  // Words × $10: an X post, a short and a typical LinkedIn post, a long post or thread, a
+  // newsletter, a long essay.
+  const PRESETS = [[500, 'An X post'], [1000, 'A short LinkedIn post'], [2000, 'A LinkedIn post'], [3000, 'A long post or a thread'], [8000, 'A newsletter'], [15000, 'A long essay']];
 
   const rows = {};
   let shownSpent = null;
   let tweenRaf = 0;
-  let refundEl = null;
-  let refundTotal = 0;
-  let lastDropAt = 0;
   let aiCtrl = null;
-  let current = { draft: null };
+  let current = { draft: null, words: 0, analysis: null };
+  let budgetOpen = false;
 
   /* ---------- Fix rows ---------- */
-  function rowCopy(type, n, a) {
-    const b = (x) => el('b', { text: String(x) });
+  // The longer sentence each row stands for, read out with its count and shown when selected.
+  function sentence(type, n, a) {
     const total = a ? a.sentences : 0;
     const t = a ? a.targets : { adverb: 0, passive: 0 };
     switch (type) {
-      case 'spelling': return n === 0 ? ['No spelling mistakes.'] : [b(n), n === 1 ? ' spelling mistake.' : ' spelling mistakes.'];
-      case 'veryHard': return n === 0 ? ['No very hard sentences.'] : [b(n), ' of ' + total + ' sentences ' + (n === 1 ? 'is' : 'are') + ' very hard to read.'];
-      case 'hard': return n === 0 ? ['No hard sentences.'] : [b(n), ' of ' + total + ' sentences ' + (n === 1 ? 'is' : 'are') + ' hard to read.'];
-      case 'complex': return n === 0 ? ['No wordy phrases.'] : n === 1 ? [b(1), ' phrase has a simpler option.'] : [b(n), ' phrases have simpler options.'];
-      case 'passive': return n === 0 ? ['No passive voice.'] : [b(n), (n === 1 ? ' use' : ' uses') + ' of passive voice. Aim for ' + t.passive + ' or fewer.'];
-      case 'adverb': return n === 0 ? ['No adverbs.'] : [b(n), (n === 1 ? ' adverb' : ' adverbs') + '. Aim for ' + t.adverb + ' or fewer.'];
-      default: return n === 0 ? ['No weakeners.'] : n === 1 ? [b(1), ' weakener. Cut it to sound sure.'] : [b(n), ' weakeners. Cut them to sound sure.'];
+      case 'spelling': return n === 1 ? '1 word isn’t in the dictionary.' : n + ' words aren’t in the dictionary.';
+      case 'veryHard': return n + ' of ' + total + ' sentences ' + (n === 1 ? 'is' : 'are') + ' very hard to read.';
+      case 'hard': return n + ' of ' + total + ' sentences ' + (n === 1 ? 'is' : 'are') + ' hard to read.';
+      case 'complex': return n === 1 ? '1 phrase has a simpler option.' : n + ' phrases have simpler options.';
+      case 'passive': return n + (n === 1 ? ' use' : ' uses') + ' of passive voice. Aim for ' + t.passive + ' or fewer.';
+      case 'adverb': return n + (n === 1 ? ' adverb' : ' adverbs') + '. Aim for ' + t.adverb + ' or fewer.';
+      default: return n === 1 ? '1 weakener. Cut it to sound sure.' : n + ' weakeners. Cut them to sound sure.';
     }
   }
 
   function buildRows() {
     const list = $('issue-list');
     for (const type of ORDER) {
-      const text = el('span', { class: 'issue-text' });
+      const count = el('span', { class: 'issue-count' });
       const jump = el('button', { type: 'button', class: 'issue-jump', onclick: () => jumpTo(type) },
-        el('span', { class: 'swatch sw-' + type, 'aria-hidden': 'true' }), text);
-      const eye = el('button', {
-        type: 'button', class: 'issue-eye',
-        onclick: () => { app().toggleHighlight(type); updateEye(type); }
-      });
-      const li = el('li', { class: 'issue-row', dataset: { type } }, jump, eye);
-      rows[type] = { li, jump, text, eye, on: null };
+        el('span', { class: 'kind-swatch ks-' + type, 'aria-hidden': 'true' }),
+        el('span', { class: 'issue-name', text: NAMES[type] }), count);
+      const eye = el('button', { type: 'button', class: 'icon-btn icon-btn-sm issue-eye', onclick: () => { app().toggleHighlight(type); updateEye(type); } });
+      const detail = el('div', { class: 'issue-detail', hidden: true });
+      const li = el('li', { class: 'issue-row', dataset: { type } }, el('div', { class: 'issue-line' }, jump, eye), detail);
+      rows[type] = { li, jump, count, eye, detail, on: null };
       list.append(li);
     }
   }
 
   function updateEye(type) {
-    const on = app().state.settings.highlights[type] !== false;
+    const on = app().state.settings.highlights[type] !== false && app().state.settings.fixHighlights !== false;
     const r = rows[type];
     if (r.on === on) return;
     r.on = on;
     r.eye.setAttribute('aria-pressed', String(on));
-    r.eye.setAttribute('aria-label', (on ? 'Hide ' : 'Show ') + NAMES[type]);
+    r.eye.setAttribute('aria-label', (on ? 'Hide ' : 'Show ') + NAMES[type].toLowerCase() + ' on the page');
     r.eye.replaceChildren(icon(on ? 'eye' : 'eyeOff'));
+    r.li.classList.toggle('is-hidden', !on);
   }
 
-  function jumpTo(type) {
+  // The next fix of this kind after the caret; again for the one after that.
+  function jumpTo(type, dir) {
     const a = app().state.analysis;
     if (!a) return;
     const list = a.issues.filter((i) => i.type === type);
     if (!list.length) return;
-    const caret = Editor.caretIndex();
-    let index = list.findIndex((i) => i.start > caret);
-    if (index < 0) index = 0;
+    const cyc = app().state.cycle;
+    let index;
+    if (dir && cyc.type === type) index = (cyc.index + dir + list.length) % list.length;
+    else if (cyc.type === type && TDW.Popover.isOpen()) index = (cyc.index + 1) % list.length;
+    else { const caret = Editor.caretIndex(); index = list.findIndex((i) => i.start > caret); if (index < 0) index = 0; }
     const issue = list[index];
     app().state.cycle = { type, index };
+    if (app().state.settings.highlights[type] === false) app().toggleHighlight(type);
     Editor.select(issue.start, issue.end);
-    TDW.Popover.show(issue);
+    TDW.Popover.show(issue, { index, total: list.length });
   }
 
-  /* ---------- Register ---------- */
+  /* ---------- The money: chip, rule, register ---------- */
   function tweenTo(to) {
     const node = $('reg-spent');
     cancelAnimationFrame(tweenRaf);
@@ -93,7 +101,7 @@
     const from = shownSpent;
     const t0 = performance.now();
     const step = (now) => {
-      const k = Math.min(1, (now - t0) / 250);
+      const k = Math.min(1, (now - t0) / 240);
       shownSpent = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
       node.textContent = shownSpent.toLocaleString('en-US');
       if (k < 1) tweenRaf = requestAnimationFrame(step);
@@ -101,157 +109,89 @@
     tweenRaf = requestAnimationFrame(step);
   }
 
-  function renderRegister(draft, words) {
+  function renderMoney(draft, words) {
+    if (!draft) return;
+    current.draft = draft;
+    current.words = words;
     const spent = words * 10;
     const budget = draft.budget;
     const over = spent > budget;
+    const frac = budget ? Math.min(spent / budget, 1) : 0;
+    const root = document.documentElement;
+    root.style.setProperty('--spend', frac.toFixed(4));
+    root.classList.toggle('is-over', over);
+    const chip = $('spend-chip');
+    chip.replaceChildren(el('span', { class: 'chip-spent', text: money(spent) }), el('span', { class: 'chip-budget', text: ' of ' + money(budget) }));
+    chip.setAttribute('aria-label', 'Spent ' + money(spent) + ' of a ' + money(budget) + ' budget' + (over ? ', over budget' : '') + '. Change the budget');
+    tip(chip, over ? 'Over budget by ' + money(spent - budget) : money(budget - spent) + ' left');
+    $('pb-review') && $('pb-review').style.setProperty('--spend', frac.toFixed(4));
+    // The register in the Review tab.
     tweenTo(spent);
-    $('reg-fill').style.width = Math.min(spent / budget, 1) * 100 + '%';
     $('register').classList.toggle('is-over', over);
     $('reg-stamp').hidden = !over;
     $('reg-budget').textContent = money(budget);
   }
 
+  function renderStats(a, words) {
+    const chars = app().publishText().replace(/\s+/g, ' ').trim().length;
+    const min = a ? Math.max(1, Math.round(a.readingTimeSec / 60)) : 0;
+    const stat = (k, v) => [el('dt', { text: k }), el('dd', { text: v })];
+    $('reg-stats').replaceChildren(...stat('Words', words.toLocaleString('en-US')), ...stat('Characters', chars.toLocaleString('en-US')),
+      ...stat('Reading', words ? min + ' min' : '—'));
+  }
+
+  // A word or two disappeared: the chip shows what came back, briefly.
+  let refundEl = null, refundTotal = 0, lastDropAt = 0;
   function refund(droppedWords) {
     const now = Date.now();
     refundTotal = (refundEl && now - lastDropAt < 700 ? refundTotal : 0) + droppedWords * 10;
     lastDropAt = now;
     if (refundEl) refundEl.remove();
-    const spent = $('reg-spent');
-    const chip = el('div', { class: 'refund', 'aria-hidden': 'true', text: '+' + money(refundTotal) });
-    chip.style.left = spent.offsetLeft + spent.offsetWidth + 10 + 'px';
-    chip.style.top = spent.offsetTop + 4 + 'px';
-    $('register').append(chip);
-    refundEl = chip;
-    setTimeout(() => {
-      chip.remove();
-      if (refundEl === chip) refundEl = null;
-    }, 900);
+    const chip = $('spend-chip');
+    const node = el('span', { class: 'refund', 'aria-hidden': 'true', text: '−' + money(refundTotal) });
+    chip.append(node);
+    refundEl = node;
+    setTimeout(() => { node.remove(); if (refundEl === node) refundEl = null; }, 900);
   }
 
-  // Words × $10: an X post, a short and a typical LinkedIn post, a long post or thread,
-  // a newsletter, a long essay.
-  const PRESETS = [500, 1000, 2000, 3000, 8000, 15000];
-
-  function renderPresets() {
-    const cur = current.draft ? current.draft.budget : 0;
-    $('budget-presets').replaceChildren(...PRESETS.map((v) => el('button', {
-      type: 'button', class: 'preset' + (v === cur ? ' is-on' : ''), 'aria-pressed': String(v === cur), text: money(v),
-      onclick: () => { app().setBudget(v); closeBudget(true); }
-    })));
-  }
-
-  function openBudget() {
-    const input = $('budget-input');
-    input.value = String(current.draft ? current.draft.budget : 2000);
-    renderPresets();
-    $('budget-form').hidden = false;
-    input.focus();
-    input.select();
-  }
-
-  function closeBudget(focusLink) {
-    if ($('budget-form').hidden) return;
-    $('budget-form').hidden = true;
-    if (focusLink) $('reg-budget').focus();
-  }
-
-  function submitBudget(e) {
-    e.preventDefault();
-    const input = $('budget-input');
-    const v = Math.round(Number(input.value) / 10) * 10;
-    if (!(v >= 10)) { input.focus(); return; }
-    app().setBudget(v);
-    closeBudget(true);
-  }
-
-  /* ---------- Mobile sheet ---------- */
-  function setSheet(open) {
-    const panel = $('panel');
-    panel.classList.toggle('is-open', open);
-    $('panel-handle').setAttribute('aria-expanded', String(open));
-    if (!open) panel.scrollTop = 0;
-  }
-
-  // The sheet follows your finger and, when you let go, lands where the flick was heading.
-  // A tap still opens and closes it.
-  function wireSheetDrag() {
-    const panel = $('panel');
-    const handle = $('panel-handle');
-    let drag = null;
-    let swallowClick = false;
-    const translateY = () => {
-      const t = getComputedStyle(panel).transform;
-      return t && t !== 'none' ? new DOMMatrixReadOnly(t).m42 : 0;
-    };
-    // Past either end the sheet gives way less and less, rather than stopping dead.
-    const rubber = (over, dim) => (over * dim * 0.55) / (dim + 0.55 * Math.abs(over));
-    const project = (v) => (v / 1000) * 0.998 / (1 - 0.998);
-
-    handle.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || !window.matchMedia('(max-width: 900px)').matches) return;
-      const sab = Math.max(0, parseFloat(getComputedStyle(panel).paddingBottom) - 24);
-      const closed = panel.offsetHeight - handle.offsetHeight - sab;
-      const y0 = translateY(); // start from where it is on screen, even mid-flight
-      drag = { id: e.pointerId, startY: e.clientY, y0, y: y0, closed, moved: false, hist: [{ y: e.clientY, t: e.timeStamp }] };
-      handle.setPointerCapture(e.pointerId); // keep following the finger once it leaves the handle
+  /* ---------- Budget: a small menu under the chip ---------- */
+  function openBudget(anchor) {
+    const d = current.draft || app().state.draft;
+    if (!d) return;
+    const input = el('input', { type: 'number', min: '10', step: '10', inputmode: 'numeric', class: 'money-field', 'aria-label': 'Other budget in dollars', value: String(d.budget) });
+    const form = el('form', { class: 'budget-form' },
+      el('label', { class: 'budget-label', text: 'Other amount' }),
+      el('div', { class: 'budget-row' }, el('span', { class: 'money-input' }, el('span', { text: '$', 'aria-hidden': 'true' }), input),
+        el('button', { type: 'submit', class: 'btn btn-sm', text: 'Set' })));
+    form.noValidate = true;
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = Math.round(Number(input.value) / 10) * 10;
+      if (!(v >= 10)) { input.focus(); return; }
+      closeMenu();
+      app().setBudget(v);
     });
-    handle.addEventListener('pointermove', (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      const dy = e.clientY - drag.startY;
-      if (!drag.moved) {
-        if (Math.abs(dy) < 6) return;
-        drag.moved = true;
-        panel.classList.add('is-dragging');
-      }
-      let y = drag.y0 + dy;
-      if (y < 0) y = rubber(y, drag.closed);
-      else if (y > drag.closed) y = drag.closed + rubber(y - drag.closed, drag.closed);
-      drag.y = y;
-      panel.style.transform = 'translateY(' + y + 'px)';
-      drag.hist.push({ y: e.clientY, t: e.timeStamp });
-      if (drag.hist.length > 5) drag.hist.shift();
-    });
-    const end = (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      const d = drag;
-      drag = null;
-      if (!d.moved) return;
-      swallowClick = true;
-      setTimeout(() => { swallowClick = false; }, 0);
-      const a = d.hist[0], b = d.hist[d.hist.length - 1];
-      const v = b.t > a.t ? ((b.y - a.y) / (b.t - a.t)) * 1000 : 0; // px/s, down is positive
-      const open = d.y + project(v) < d.closed / 2;
-      // Settle from where it is now, quickly at first, like the flick it came from.
-      panel.style.transition = 'transform 420ms cubic-bezier(.2, .9, .25, 1)';
-      panel.classList.remove('is-dragging');
-      setSheet(open);
-      panel.style.transform = '';
-      setTimeout(() => { if (!drag) panel.style.transition = ''; }, 440);
-    };
-    handle.addEventListener('pointerup', end);
-    handle.addEventListener('pointercancel', end);
-    handle.addEventListener('click', (e) => {
-      if (swallowClick) { e.stopImmediatePropagation(); swallowClick = false; }
-    }, true);
+    budgetOpen = true;
+    menu(anchor || $('spend-chip'), [{ type: 'head', label: 'Budget for this draft' }].concat(PRESETS.map(([v, note]) => ({ label: money(v), note, value: v, checked: v === d.budget }))),
+      (it) => { app().setBudget(it.value); return false; }, form, () => { budgetOpen = false; }, { class: 'budget-menu', align: anchor && anchor.id === 'spend-chip' ? 'end' : null });
   }
 
   /* ---------- Render ---------- */
   function updateAI() {
     const none = TDW.AI.status() === 'none';
-    $('ai-note').textContent = none ? 'Connect Gemini in Settings to use AI help.' : '';
-    const blocked = !none && (app().state.aiBusy || !Editor.getText().trim());
-    $('ai-message').disabled = blocked;
+    $('ai-note').replaceChildren(...(none ? ['Connect Gemini in ', el('button', { type: 'button', class: 'link-btn', text: 'Settings', onclick: () => app().openSettings('ai') }), ' to use AI help.'] : []));
+    $('ai-note').hidden = !none;
+    $('ai-message').disabled = none || app().state.aiBusy || !Editor.getText().trim();
   }
 
   function render(a, draft, words) {
-    current = { draft };
-    renderRegister(draft, words);
-
+    current.analysis = a;
+    renderMoney(draft, words);
+    renderStats(a, words);
     const grade = $('grade-num');
     const pill = $('grade-pill');
     if (!words || !a) {
-      grade.textContent = 'Grade —';
+      grade.textContent = '—';
       pill.hidden = true;
     } else {
       const label = Engine.gradeLabel(a.grade);
@@ -260,55 +200,35 @@
       pill.className = 'pill ' + GRADE_CLASS[label];
       pill.hidden = false;
     }
-
     $('issue-list').hidden = !words;
     $('issues-empty').hidden = !!words;
+    let total = 0;
     for (const type of ORDER) {
       const n = a ? a.counts[type] : 0;
+      total += n;
       const r = rows[type];
-      r.text.replaceChildren(...rowCopy(type, n, a));
+      r.count.textContent = n ? String(n) : '0';
       r.li.classList.toggle('is-zero', n === 0);
       r.jump.setAttribute('aria-disabled', String(n === 0));
+      r.jump.setAttribute('aria-label', NAMES[type] + ': ' + (n ? sentence(type, n, a) : 'none'));
+      r.sentence = n ? sentence(type, n, a) : '';
       updateEye(type);
     }
-
-    // The numbers behind the amount, on hover.
-    const amount = document.querySelector('.reg-amount');
-    if (words && a) {
-      const chars = Editor.getText().length;
-      const min = Math.max(1, Math.round(a.readingTimeSec / 60));
-      amount.title = words + ' ' + plural(words, 'word', 'words') + ' · ' + chars + ' ' +
-        plural(chars, 'character', 'characters') + ' · ' + min + ' min read';
-    } else {
-      amount.removeAttribute('title');
-    }
-
+    TDW.Inspector.setBadge('review', words && total ? String(total) : '');
     updateAI();
-
-    const fixes = a ? a.issues.length : 0;
-    $('panel-summary').textContent = money(words * 10) + ' of ' + money(draft.budget) +
-      ' · Grade ' + (words && a ? a.grade : '—') + ' · ' + fixes + ' ' + plural(fixes, 'fix', 'fixes');
   }
 
   /* ---------- AI results ---------- */
-  const HIDE_FOR_RESULTS = ['issues', 'ai-desk'];
+  const HIDE_FOR_RESULTS = ['register', 'readability', 'issues', 'ai-desk'];
   const show = (...nodes) => $('ai-body').replaceChildren(...nodes);
 
-  function setBusy(busy) {
-    app().state.aiBusy = busy;
-    updateAI();
-  }
-
-  function stopAI() {
-    if (aiCtrl) { aiCtrl.abort(); aiCtrl = null; }
-    if (app().state.aiBusy) setBusy(false);
-  }
+  function setBusy(busy) { app().state.aiBusy = busy; updateAI(); }
+  function stopAI() { if (aiCtrl) { aiCtrl.abort(); aiCtrl = null; } if (app().state.aiBusy) setBusy(false); }
 
   function openResults() {
     for (const id of HIDE_FOR_RESULTS) $(id).hidden = true;
     $('ai-results').hidden = false;
   }
-
   function closeResults() {
     stopAI();
     if ($('ai-results').hidden) return;
@@ -322,9 +242,8 @@
     const ctrl = new AbortController();
     aiCtrl = ctrl;
     setBusy(true);
-    show(el('div', { class: 'ai-loading' },
-      el('span', { text: 'Thinking…' }),
-      el('button', { type: 'button', class: 'btn-quiet', text: 'Stop', onclick: closeResults })));
+    show(el('div', { class: 'ai-loading' }, el('span', { class: 'busy-dots', text: 'Reading the draft' }),
+      el('button', { type: 'button', class: 'btn btn-quiet btn-sm', text: 'Stop', onclick: closeResults })));
     call(ctrl.signal).then((out) => {
       if (aiCtrl !== ctrl) return;
       aiCtrl = null;
@@ -335,24 +254,24 @@
       aiCtrl = null;
       setBusy(false);
       if (err && err.code === 'cancelled') return;
-      show(el('div', { class: 'ai-block' },
-        el('p', { class: 'ai-error', text: TDW.AI.errorMessage(err) }),
-        el('button', { type: 'button', class: 'btn-outline', text: 'Try again', onclick: retry })));
+      show(el('div', { class: 'ai-block' }, el('p', { class: 'ai-error', text: TDW.AI.errorMessage(err) }),
+        el('button', { type: 'button', class: 'btn btn-outline btn-sm', text: 'Try again', onclick: retry })));
     });
   }
 
   function startMessage() {
     if (TDW.AI.status() === 'none') { app().openSettings('ai'); return; }
     if (!Editor.getText().trim()) return;
+    app().openTab('review');
     stopAI();
     openResults();
-    setSheet(true);
-    const area = el('textarea', { id: 'msg-intent', class: 'field', rows: '3' });
+    const area = el('textarea', { id: 'msg-intent', class: 'field', rows: '3', placeholder: 'One line on what you want readers to do or remember' });
     area.value = (current.draft && current.draft.intent) || '';
     const form = el('form', { class: 'msg-form' },
-      el('label', { for: 'msg-intent', text: 'What should readers take away? (optional)' }),
+      el('label', { for: 'msg-intent', class: 'rv-label', text: 'What should readers take away?' }),
       area,
-      el('div', null, el('button', { type: 'submit', class: 'btn', text: 'Check' })));
+      el('div', { class: 'row-start' }, el('button', { type: 'submit', class: 'btn', text: 'Check the message' }),
+        el('span', { class: 'hint', text: 'Optional' })));
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const intent = area.value.trim();
@@ -368,74 +287,56 @@
   }
 
   function sharper(label, text, btnLabel, which) {
-    const btn = el('button', { type: 'button', class: 'btn-outline btn-sm', text: btnLabel });
+    const btn = el('button', { type: 'button', class: 'btn btn-outline btn-sm', text: btnLabel });
     btn.addEventListener('click', () => {
       const list = Engine.analyze(Editor.getText()).sentenceList;
       const r = which === 'first' ? list[0] : list[list.length - 1];
       if (!r) return;
       app().edit(r.start, r.end, text);
       btn.disabled = true;
+      btn.textContent = 'Used';
     });
-    return el('div', { class: 'ai-block' }, el('div', { class: 'label', text: label }), el('p', { class: 'sharper', text }), btn);
+    return el('div', { class: 'ai-block' }, el('div', { class: 'rv-label', text: label }), el('p', { class: 'page-quote', text }), btn);
   }
 
   function renderMessage(out) {
     const head = el('div', { class: 'ai-block' },
-      el('div', { class: 'label', text: 'Readers will take away' }),
-      el('p', { class: 'takeaway', text: out.takeaway }));
-    const verdict = VERDICT[out.verdict];
-    if (verdict) head.append(el('span', { class: 'pill ' + verdict[1], text: verdict[0] }));
+      el('div', { class: 'rv-row' }, el('span', { class: 'rv-label', text: 'Readers will take away' }),
+        VERDICT[out.verdict] ? el('span', { class: 'pill ' + VERDICT[out.verdict][1], text: VERDICT[out.verdict][0] }) : null),
+      el('p', { class: 'page-quote takeaway', text: out.takeaway }));
     if (out.match !== 'none' && MATCH[out.match]) head.append(el('p', null, 'Matches what you meant: ', el('b', { text: MATCH[out.match] })));
-    if (out.why) head.append(el('p', { text: out.why }));
+    if (out.why) head.append(el('p', { class: 'hint', text: out.why }));
     const nodes = [head];
     if (out.offMessage.length) {
-      nodes.push(el('div', { class: 'ai-block' },
-        el('div', { class: 'label', text: 'Off message' }),
+      nodes.push(el('div', { class: 'ai-block' }, el('div', { class: 'rv-label', text: 'Off message' }),
         el('ul', { class: 'off-list' }, out.offMessage.map((o) => el('li', null,
           el('button', {
-            type: 'button', class: 'off-quote', text: o.quote,
-            onclick: () => {
-              const i = Editor.getText().indexOf(o.quote);
-              if (i >= 0) Editor.select(i, i + o.quote.length);
-            }
+            type: 'button', class: 'off-quote page-quote', text: o.quote,
+            onclick: () => { const i = Editor.getText().indexOf(o.quote); if (i >= 0) Editor.select(i, i + o.quote.length); }
           }),
-          o.reason ? el('p', { class: 'off-reason', text: o.reason }) : null)))));
+          o.reason ? el('p', { class: 'hint', text: o.reason }) : null)))));
     }
-    if (out.strongerOpening) nodes.push(sharper('Sharper opening', out.strongerOpening, 'Use as opening', 'first'));
-    if (out.strongerEnding) nodes.push(sharper('Sharper ending', out.strongerEnding, 'Use as ending', 'last'));
+    if (out.strongerOpening) nodes.push(sharper('A sharper opening', out.strongerOpening, 'Use as the opening', 'first'));
+    if (out.strongerEnding) nodes.push(sharper('A sharper ending', out.strongerEnding, 'Use as the ending', 'last'));
     show(...nodes);
   }
 
   /* ---------- Init ---------- */
   function init() {
     buildRows();
-    $('panel-handle').querySelector('.chev').append(icon('chevUp'));
-    // No hover on a phone: a tap on the amount shows the numbers behind it.
-    document.querySelector('.reg-amount').addEventListener('click', (e) => {
-      if (e.currentTarget.title) TDW.UI.toast(e.currentTarget.title);
-    });
-    $('panel-handle').addEventListener('click', () => setSheet(!$('panel').classList.contains('is-open')));
-    wireSheetDrag();
-    $('reg-budget').addEventListener('click', openBudget);
-    const form = $('budget-form');
-    form.noValidate = true;
-    form.addEventListener('submit', submitBudget);
-    $('budget-cancel').addEventListener('click', () => closeBudget(true));
     $('btn-sample').addEventListener('click', () => app().insertSample());
     $('ai-message').addEventListener('click', startMessage);
+    $('ai-back').append(icon('chevLeft'), 'Review');
     $('ai-back').addEventListener('click', closeResults);
+    $('reg-budget').addEventListener('click', (e) => openBudget(e.currentTarget));
+    $('spend-chip').addEventListener('click', (e) => openBudget(e.currentTarget));
   }
 
   TDW.Panel = {
-    init,
-    render,
-    refund,
-    updateAI,
-    closeResults,
-    startMessage,
-    closeBudget,
-    isBudgetOpen() { return !$('budget-form').hidden; },
-    closeSheet() { setSheet(false); },
-    isSheetOpen() { return $('panel').classList.contains('is-open'); }
+    init, render, renderMoney, refund, updateAI, closeResults, startMessage, openBudget, jumpTo,
+    rowFor: (type) => rows[type] || null,
+    NAMES,
+    closeBudget() { if (budgetOpen) closeMenu(); },
+    isBudgetOpen: () => budgetOpen
   };
 })();
