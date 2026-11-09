@@ -91,12 +91,22 @@
     if (isNarrow()) pushPage();
   }
 
+  let hold = null;
   function render() {
     if (!listEl) return;
     const cur = app().state.draft;
     const focusId = document.activeElement && listEl.contains(document.activeElement) && document.activeElement.dataset.id;
     const all = Store.listDrafts().filter(matches);
     const groups = groupsOf(all);
+    // The open draft keeps its place while you type: editing moves it to the top of its group,
+    // so it holds the slot it had until it's closed or its stage changes.
+    if (cur) {
+      const g = groups.find((x) => x.items.includes(cur));
+      const at = g ? g.items.indexOf(cur) : -1;
+      if (g && hold && hold.id === cur.id && hold.key === g.key && hold.idx > at) {
+        g.items.splice(at, 1); g.items.splice(Math.min(hold.idx, g.items.length), 0, cur);
+      } else hold = g ? { id: cur.id, key: g.key, idx: at } : null;
+    } else hold = null;
     const kids = [];
     for (const g of groups) {
       if (!g.items.length) continue;

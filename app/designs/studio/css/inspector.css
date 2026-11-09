@@ -33,14 +33,14 @@
 .issue-count { width: 2.5em; text-align: right; font-weight: 650; }
 .issue-row.is-zero .issue-jump { color: var(--ink-3); cursor: default; background: transparent; }
 .issue-row.is-zero .issue-count { font-weight: 400; }
-.issue-row.is-zero .kind-swatch { opacity: .5; }
+.issue-row.is-zero .kind-swatch { opacity: .72; }
 .issue-row.is-hidden .issue-name, .issue-row.is-hidden .issue-count { color: var(--ink-3); }
 .issue-row.is-open .issue-jump { background: color-mix(in srgb, var(--emerald) 10%, transparent); }
 .issue-eye { color: var(--ink-3); }
 .issue-eye[aria-pressed="true"] { color: var(--ink-2); }
-.kind-swatch { flex: none; width: 16px; height: 11px; border-radius: 3px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent); }
-.ks-veryHard { background: var(--hl-veryhard); } .ks-hard { background: var(--hl-hard); } .ks-complex { background: var(--hl-complex); }
-.ks-passive { background: var(--hl-passive); } .ks-adverb { background: var(--hl-adverb); }
+.kind-swatch { flex: none; width: 16px; height: 11px; border-radius: 3px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 18%, transparent); }
+.ks-veryHard { background: var(--sw-veryhard); } .ks-hard { background: var(--sw-hard); } .ks-complex { background: var(--sw-complex); }
+.ks-passive { background: var(--sw-passive); } .ks-adverb { background: var(--sw-adverb); }
 .ks-qualifier { height: 2px; border-radius: 0; box-shadow: none; background: none; border-bottom: 2px dotted var(--hl-qualifier); }
 .ks-spelling {
   height: 6px; border-radius: 0; box-shadow: none; background: var(--hl-spelling);

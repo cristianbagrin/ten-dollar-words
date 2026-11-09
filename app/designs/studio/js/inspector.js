@@ -27,7 +27,7 @@
   const badges = {};
   let paneSpring = null;    // computer: 0 closed .. 1 open
   let sheetSpring = null;   // phone: translateY in px
-  let detent = 'half';
+  let detent = 'peek';
   let navHead = null, navTitle = null, doneBtn = null;
 
   const pane = (name) => $('tab-' + name);
@@ -49,6 +49,13 @@
       btns[t.id] = b;
       strip.append(b);
     }
+    // Phone: Review stays in the strip; everything else is behind "More".
+    const more = el('button', { type: 'button', class: 'insp-tab insp-more', 'aria-haspopup': 'menu' }, el('span', { class: 'insp-tab-label', text: 'More' }));
+    more.addEventListener('click', () => {
+      TDW.UI.menu(more, TABS.filter((t) => t.id !== 'review').map((t) => ({ id: t.id, label: t.label, checked: t.id === current })),
+        (it) => { select(it.id, { user: true }); }, null, null, { align: 'end' });
+    });
+    strip.append(more);
     strip.addEventListener('keydown', (e) => {
       const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
       if (!d) return;
@@ -144,8 +151,10 @@
     const vh = window.innerHeight;
     if (d === 'closed') return h + 24;
     if (d === 'full') return Math.max(0, h - vh * 0.9);
-    return Math.max(0, h - Math.round(vh * 0.44));
+    if (d === 'peek') return Math.max(0, h - Math.round(vh * 0.3));
+    return Math.max(0, h - Math.round(vh * 0.5));
   }
+  const normDetent = (d) => (d === 'full' || d === 'half' ? d : 'peek');
   function setSheetY(y) {
     $('inspector').style.transform = 'translate3d(0,' + y.toFixed(2) + 'px,0)';
     // The page keeps its text clear of the sheet.
@@ -154,7 +163,7 @@
     if (hooks.onMove) hooks.onMove();
   }
   function setDetent(d, opts) {
-    detent = d === 'full' ? 'full' : 'half';
+    detent = normDetent(d);
     root.dataset.detent = detent;
     if (open && isNarrow()) sheetSpring.to(detentY(detent), opts);
   }
@@ -198,7 +207,7 @@
       const a = d.hist[0], b = d.hist[d.hist.length - 1];
       const v = b.t > a.t ? ((b.y - a.y) / (b.t - a.t)) * 1000 : 0;
       const landing = sheetSpring.value + project(v);
-      const stops = [['full', detentY('full')], ['half', detentY('half')], ['closed', detentY('closed')]];
+      const stops = [['full', detentY('full')], ['half', detentY('half')], ['peek', detentY('peek')], ['closed', detentY('closed')]];
       let best = stops[0];
       for (const s of stops) if (Math.abs(s[1] - landing) < Math.abs(best[1] - landing)) best = s;
       if (best[0] === 'closed') { if (hooks.onClose) hooks.onClose({ velocity: v }); return; }
@@ -214,7 +223,7 @@
       z.addEventListener('click', (e) => { if (swallow) { e.stopPropagation(); e.preventDefault(); swallow = false; } }, true);
     }
     // A tap on the grabber moves between the two detents.
-    head.addEventListener('click', () => { if (isNarrow() && open) setDetent(detent === 'half' ? 'full' : 'half', { damping: 1 }); });
+    head.addEventListener('click', () => { if (isNarrow() && open) setDetent(detent === 'peek' ? 'half' : detent === 'half' ? 'full' : 'peek', { damping: 1 }); });
   }
 
   /* ---------- Opening and closing ---------- */
@@ -228,10 +237,9 @@
     $('inspector').setAttribute('aria-hidden', 'false');
     $('inspector').inert = false;
     if (isNarrow()) {
-      detent = o.detent || 'half';
+      detent = normDetent(o.detent);
       root.dataset.detent = detent;
-      if (!sheetSpring.moving && sheetSpring.value < detentY('half') - 1 && sheetSpring.value > 0) { /* mid-flight: keep going */ }
-      sheetSpring.to(detentY(detent), { damping: 1, response: 0.4 });
+            sheetSpring.to(detentY(detent), { damping: 1, response: 0.4 });
     } else {
       paneSpring.to(1, { instant: o.instant });
     }

@@ -233,3 +233,17 @@ i.bub-glyph { font-weight: 400; font-style: italic; }
   .bubble { height: 44px; max-width: calc(100vw - 16px); overflow-x: auto; scrollbar-width: none; }
   .bub-btn { height: 40px; min-width: 40px; }
 }
+
+/* The ledger column: each paragraph's cost, ruled in the left margin in Review. */
+.ledger { position: absolute; right: 100%; top: 0; width: 76px; margin-right: 18px; pointer-events: none; user-select: none; }
+.ledger[hidden] { display: none; }
+.ledger-row {
+  position: absolute; right: 0; display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; white-space: nowrap;
+  font: 500 12px/1.9 var(--font-ui); font-variant-numeric: tabular-nums lining-nums; color: var(--plum);
+}
+.ledger-fig { opacity: .78; }
+.ledger-was { opacity: .5; text-decoration-thickness: 1px; }
+.ledger-cut { color: var(--emerald); font-weight: 650; }
+.ledger-row.is-cut .ledger-fig { opacity: 1; font-weight: 650; }
+.ledger-row.is-cut { animation: fade-in 160ms ease; }
+@media (max-width: 760px) { .ledger { display: none; } }

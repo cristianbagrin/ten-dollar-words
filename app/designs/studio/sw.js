@@ -6,7 +6,7 @@ const FONT_CACHE = 'tdw-fonts';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 const PRECACHE = [
   './', 'index.html', 'manifest.webmanifest', 'css/studio.css', 'css/page.css', 'css/inspector.css', 'css/settings.css',
-  'js/marks.js', 'js/alts.js', 'js/menu.js', 'js/overflow.js', 'js/lab.js', 'js/challenges.js', 'js/challenge-ui.js', 'js/desk.js', 'js/blocks.js', 'js/notes.js', 'js/bubble.js',
+  'js/marks.js', 'js/alts.js', 'js/menu.js', 'js/overflow.js', 'js/lab.js', 'js/challenges.js', 'js/challenge-ui.js', 'js/desk.js', 'js/blocks.js', 'js/notes.js', 'js/bubble.js', 'js/ledger.js',
   'js/data.js', 'js/inline.js', 'js/engine.js', 'js/spell.js', 'js/notion-map.js', 'js/sound.js', 'js/store.js', 'js/ai.js',
   'js/ai-mock.js', 'js/notion.js', 'js/sync.js', 'js/vault.js', 'js/account.js', 'js/editor.js', 'js/ui.js', 'js/formats.js', 'js/panel.js',
   'js/popover.js', 'js/dialogs.js', 'js/inspector.js', 'js/library.js', 'js/app.js', 'dict/en-us.txt',
