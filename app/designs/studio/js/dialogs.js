@@ -90,7 +90,7 @@
     return [
       group(null,
         switchRow('Keep the line you’re typing in the middle', !!s.typewriterScroll, (on) => update({ typewriterScroll: on }), 'In Focus, the page scrolls so your line stays at eye level.'),
-        switchRow('Highlight fixes in Studio', s.fixHighlights !== false, (on) => { update({ fixHighlights: on }); app().refresh(); }, 'Spelling, hard sentences, wordy phrases and the rest. The eye on each fix hides just that kind.'),
+        switchRow('Highlight fixes while reviewing', s.fixHighlights !== false, (on) => { update({ fixHighlights: on }); app().refresh(); }, 'Spelling, hard sentences, wordy phrases and the rest. The eye on each fix hides just that kind.'),
         switchRow('No backspace when the stage says so', !!s.noBackspace, (on) => update({ noBackspace: on }), 'A Notion stage named “no backspace” turns the pen off for that draft. The pen in the toolbar overrides it.')),
       group('New drafts',
         row('Format', fmt),

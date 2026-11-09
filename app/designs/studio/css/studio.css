@@ -44,8 +44,8 @@
   --plum: #e48fc2; --on-plum: #2a0c1e; --plum-wash: color-mix(in srgb, #e48fc2 12%, #262521);
   --blue: #7fa2f0; --danger: #ff8a8f; --good: #9ed27a; --ok: #e4b866;
   --selection: rgba(120, 170, 178, .38);
-  --hl-veryhard: rgba(236, 120, 135, .34); --hl-hard: rgba(206, 190, 110, .28); --hl-complex: rgba(200, 120, 170, .30);
-  --hl-passive: rgba(150, 190, 110, .28); --hl-adverb: rgba(120, 175, 185, .30);
+  --hl-veryhard: #70303d; --hl-hard: #5c5424; --hl-complex: #602f55;
+  --hl-passive: #3a5a2c; --hl-adverb: #25555f;
   --hl-qualifier: #7fa2f0; --hl-spelling: #ff8a8f;
   --shadow-float: 0 0 0 1px rgba(255, 255, 255, .07), 0 2px 4px rgba(0, 0, 0, .3), 0 12px 30px -6px rgba(0, 0, 0, .6);
   --shadow-deep: 0 0 0 1px rgba(255, 255, 255, .08), 0 8px 18px rgba(0, 0, 0, .35), 0 30px 70px -16px rgba(0, 0, 0, .7);
@@ -73,7 +73,7 @@
 /* ---------- Base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: clip; background: var(--page); }
+html { scroll-padding-top: calc(var(--tb-h) + var(--safe-t) + 24px); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: clip; background: var(--page); }
 body {
   margin: 0; min-height: 100vh; overflow-x: clip;
   background: var(--page); color: var(--ink);
@@ -394,15 +394,24 @@ dialog .toast { position: fixed; }
   transition: background-color var(--t-fast), color var(--t-fast), transform var(--t-fast) var(--ease);
 }
 .spend-chip:hover, .spend-chip[aria-expanded="true"] { background: var(--plum-wash); }
-.chip-spent { color: var(--plum); font-weight: 650; }
+.chip-spent {
+  color: var(--plum); font-weight: 650; font-variant-numeric: tabular-nums lining-nums;
+  /* The ledger rule: a fine double line under the figure, the way a total is ruled off. */
+  background: linear-gradient(currentColor, currentColor) 0 100% / 100% 1px no-repeat, linear-gradient(currentColor, currentColor) 0 calc(100% - 3px) / 100% 1px no-repeat;
+  padding-bottom: 5px; margin-bottom: -5px;
+}
+.chip-budget { font-variant-numeric: tabular-nums; }
+html.is-credit .chip-spent { animation: credit-tick 900ms var(--ease); }
+@keyframes credit-tick { 25% { color: var(--emerald); transform: translateY(2px); } }
+html.is-credit .money-fill { filter: brightness(1.25); }
 .chip-budget { color: var(--ink-2); }
-html.is-over .spend-chip { background: var(--plum); color: var(--on-plum); }
+html.is-over .spend-chip { background: var(--plum); color: var(--on-plum); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--on-plum) 40%, transparent); }
 html.is-over .spend-chip .chip-spent, html.is-over .spend-chip .chip-budget { color: var(--on-plum); }
 .refund {
   position: absolute; right: 6px; top: -2px; pointer-events: none; color: var(--emerald);
-  font: 700 var(--t-sm)/1 var(--font-ui); animation: refund-rise 900ms var(--ease) forwards;
+  font: 700 14px/1 var(--font-ui); font-variant-numeric: tabular-nums; animation: refund-rise 1400ms var(--ease) forwards;
 }
-@keyframes refund-rise { from { transform: translateY(6px); opacity: 0; } 20% { opacity: 1; } to { transform: translateY(-10px); opacity: 0; } }
+@keyframes refund-rise { from { transform: translateY(6px); opacity: 0; } 15% { opacity: 1; } 70% { opacity: 1; } to { transform: translateY(-12px); opacity: 0; } }
 .tb-nb[aria-pressed="true"] { color: var(--plum); background: var(--plum-wash); }
 .tb-nb.is-pulse { animation: nb-pulse 600ms var(--ease) 2; }
 @keyframes nb-pulse { 40% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--plum) 28%, transparent); transform: scale(1.06); } }
@@ -483,6 +492,10 @@ html.tw-scroll.is-focus .page { padding-bottom: 60vh; }
 }
 .insp-nav-back:hover { background: color-mix(in srgb, var(--emerald) 10%, transparent); }
 .insp-nav-title { font: 650 var(--t-ui)/1 var(--font-ui); }
+.inspector { --t-cap: 13px; --t-sm: 13px; }
+:root:not([data-theme="dark"]) .inspector { --ink-3: #5a6153; }
+.tb-new { width: 28px; height: 28px; }
+.tb-new .icon { width: 15px; height: 15px; }
 .insp-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .insp-pane { padding: 4px 16px 40px; }
 .insp-pane.is-entering { animation: fade-in 140ms ease; }
@@ -548,7 +561,7 @@ html.tw-scroll.is-focus .page { padding-bottom: 60vh; }
   html.is-swiping .page, html.is-swiping .toolbar, html.is-swiping .phone-bar { will-change: transform; }
   .sheet { max-width: 100%; }
   .toolbar { z-index: 13; left: 0; right: 0; padding: var(--safe-t) 4px 0 0; gap: 4px; }
-  .tb-lib, .tb-title, .tb-count, .tb-sep, .tb-format, .tb-share, .tb-insp, .tb-slot { display: none !important; }
+  .tb-new, .tb-lib, .tb-title, .tb-count, .tb-sep, .tb-format, .tb-share, .tb-insp, .tb-slot { display: none !important; }
   .tb-back {
     display: inline-flex; align-items: center; gap: 0; height: 44px; padding: 0 10px 0 4px; border: 0; background: transparent;
     color: var(--emerald); font: 400 17px/1 var(--font-ui);
@@ -583,11 +596,15 @@ html.tw-scroll.is-focus .page { padding-bottom: 60vh; }
     display: block; flex: none; position: relative; height: 22px; width: 100%; padding: 0; border: 0; background: transparent; touch-action: none;
   }
   .insp-grabber::before { content: ""; position: absolute; top: 8px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 24%, transparent); }
+  .insp-grabber { height: 40px; }
   .insp-done {
-    display: inline-flex; align-items: center; position: absolute; z-index: 2; top: 4px; right: 6px; height: 40px; padding: 0 12px;
+    display: inline-flex; align-items: center; position: absolute; z-index: 2; top: 0; right: 6px; height: 38px; padding: 0 12px;
     border: 0; background: transparent; color: var(--emerald); font: 600 16px/1 var(--font-ui);
   }
-  .insp-tabs { height: 44px; padding: 0 16px; padding-right: 80px; touch-action: none; gap: 18px; }
+  .insp-tabs {
+    height: 44px; padding: 0 28px 0 16px; touch-action: pan-x; gap: 16px; scroll-padding: 0 28px;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+  }
   .insp-tab { font-size: 15px; }
   .insp-nav { touch-action: none; padding-top: 0; height: 44px; }
   .insp-pane { padding: 4px 16px calc(40px + var(--safe-b)); }

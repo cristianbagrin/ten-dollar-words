@@ -378,18 +378,24 @@
   const MODULES = ['Alts', 'Menu', 'Overflow', 'Lab', 'Challenges', 'Desk', 'Blocks', 'Bubble', 'Notes'];
   function each(fn) { for (const n of MODULES) { const m = opt(n); if (m) try { fn(m); } catch (e) { console.error(n, e); } } }
 
+  // A fix that returns money gets a moment: the chip ticks down, and a toast says what came back.
+  function saveToast(words) {
+    UI.toast('Saved ' + UI.money(words * 10), { label: 'Undo', run: () => { Editor.undo(); Editor.focus(); } });
+    root.classList.remove('is-credit'); void root.offsetWidth; root.classList.add('is-credit');
+    setTimeout(() => root.classList.remove('is-credit'), 1200);
+  }
   function edit(start, end, text, opts) {
     const before = state.words;
     Editor.replaceRange(start, end, text);
     const saved = before - state.words;
-    if (saved > 0 && state.mode === 'edit' && !(opts && opts.silent)) Sound.play('coin');
+    if (saved > 0 && state.mode === 'edit' && !(opts && opts.silent)) { Sound.play('coin'); saveToast(saved); }
     return saved;
   }
   function cut(start, end, sentenceStart, opts) {
     const before = state.words;
     Editor.cut(start, end, sentenceStart);
     const saved = before - state.words;
-    if (saved > 0 && state.mode === 'edit' && !(opts && opts.silent)) Sound.play('coin');
+    if (saved > 0 && state.mode === 'edit' && !(opts && opts.silent)) { Sound.play('coin'); saveToast(saved); }
     return saved;
   }
   function insertSample() {
@@ -515,6 +521,20 @@
     if (!a) return;
     const r = Editor.rectAt(a.index);
     if (r) window.scrollBy(0, r.lineTop - a.y);
+    keepTopClear();
+  }
+  // The draft fits on screen: the first lines must never sit under the toolbar.
+  function fitsOnScreen() {
+    const sf = $('surface');
+    if (!sf) return true;
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const cover = parseFloat(root.style.getPropertyValue('--sheet-cover')) || 0;
+    return sf.getBoundingClientRect().height + 180 < vh - cover;
+  }
+  function keepTopClear() { if (window.scrollY > 0 && fitsOnScreen()) window.scrollTo(0, 0); }
+  function twScroll() {
+    if (fitsOnScreen()) { keepTopClear(); return; }
+    Editor.typewriterScroll();
   }
 
   // Focus remembers whether the library was open, to bring it back with Studio.
@@ -553,7 +573,11 @@
     updateBackspace();
     each((x) => x.onMode && x.onMode(m));
     restoreAnchor(anchor);
-    if (!(document.activeElement && (document.activeElement.closest('#inspector') || document.activeElement.closest('#library')))) Editor.focus();
+    const ae = document.activeElement;
+    if (m === 'write' || !(ae && ae !== document.body && (ae.closest('#inspector') || ae.closest('#library')))) {
+      Editor.focus();
+      requestAnimationFrame(() => { if (!document.activeElement || document.activeElement === document.body || document.activeElement.closest('[inert]')) Editor.focus(); });
+    }
   }
 
   // A tool asks for its tab: Studio opens on it (Focus leaves the library where it is).
@@ -648,21 +672,39 @@
 
   /* ---------- The toolbar ---------- */
   let titleRaf = 0;
+  // No heading: the first sentence, cut cleanly at a word; "Untitled" when empty.
+  function plainTitle(text) {
+    const flat = String(text || '').replace(/[#*_>`~\[\]]/g, '').replace(/\s+/g, ' ').trim();
+    if (!flat) return 'Untitled';
+    const m = flat.match(/^.*?[.!?](?=\s|$)/);
+    let s = m ? m[0] : flat;
+    const max = 44;
+    if (s.length > max) { s = s.slice(0, max + 1); s = s.slice(0, Math.max(s.lastIndexOf(' '), 12)).replace(/[,;:\s-]+$/, '') + '…'; }
+    else s = s.replace(/[.]+$/, '');
+    return s;
+  }
   function updateTitle() {
     if (titleRaf) return;
     titleRaf = requestAnimationFrame(() => {
       titleRaf = 0;
       const d = state.draft;
-      const t = d ? Store.displayTitle(Object.assign({}, d, { text: Editor.getText() })) : '';
+      const text = d ? Editor.getText() : '';
+      let t = d ? Store.displayTitle(Object.assign({}, d, { text })) : '';
+      const untitled = !!d && !String(d.title || '').trim() && !/^\s*#{1,6}\s+\S/.test(text);
+      if (untitled) t = plainTitle(text);
+      else if (d && !/^\s*#{1,6}\s+\S/.test(text) && String(d.title || '').trim()) t = String(d.title).trim();
       $('tb-title').textContent = t;
-      $('tb-title').classList.toggle('is-untitled', t === 'Untitled draft');
-      document.title = (t && t !== 'Untitled draft' ? t + ' – ' : '') + 'Ten Dollar Words';
+      $('tb-title').classList.toggle('is-untitled', t === 'Untitled' || t === 'Untitled draft');
+      document.title = (t && t !== 'Untitled' && t !== 'Untitled draft' ? t + ' – ' : '') + 'Ten Dollar Words';
     });
   }
 
   function buildToolbar() {
     $('btn-insp').append(icon('inspector'));
     $('btn-insp').addEventListener('click', toggleInspector);
+    $('btn-new').append(icon('compose'));
+    $('btn-new').addEventListener('click', () => { newDraft(''); Editor.focus(); });
+    tip($('btn-new'), 'New draft');
     $('format-btn').addEventListener('click', (e) => formatMenu(e.currentTarget));
     $('pb-format').addEventListener('click', (e) => formatMenu(e.currentTarget));
     $('nb-btn').addEventListener('click', () => setBackspaceOff(!backspaceOff(state.draft)));
@@ -707,7 +749,7 @@
       if (!writeRaf) {
         writeRaf = requestAnimationFrame(() => {
           writeRaf = 0;
-          if (state.settings.typewriterScroll) Editor.typewriterScroll();
+          if (state.settings.typewriterScroll) twScroll();
         });
       }
     }
@@ -719,7 +761,7 @@
       if (s.start === s.end) Popover.showAt(s.end);
     } else if (state.settings.typewriterScroll && !pointerSelecting && performance.now() - lastPointerAt > 600) {
       const s = Editor.getSelection();
-      if (s.start === s.end) requestAnimationFrame(() => Editor.typewriterScroll());
+      if (s.start === s.end) requestAnimationFrame(twScroll);
     }
     each((m) => m.onSelect && m.onSelect(Editor.getSelection()));
   }

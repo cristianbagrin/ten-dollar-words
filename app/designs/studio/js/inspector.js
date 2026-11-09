@@ -144,7 +144,7 @@
     const vh = window.innerHeight;
     if (d === 'closed') return h + 24;
     if (d === 'full') return Math.max(0, h - vh * 0.9);
-    return Math.max(0, h - Math.round(vh * 0.5));
+    return Math.max(0, h - Math.round(vh * 0.44));
   }
   function setSheetY(y) {
     $('inspector').style.transform = 'translate3d(0,' + y.toFixed(2) + 'px,0)';
