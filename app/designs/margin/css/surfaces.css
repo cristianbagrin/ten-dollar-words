@@ -278,3 +278,5 @@ dialog.as-sheet .sheet-drag { touch-action: none; }
 .swatch.is-on { box-shadow: inset 0 0 0 2px var(--blue); }
 .sw-default { color: var(--ink); }
 .ctx-anchor { position: fixed; width: 1px; height: 1px; pointer-events: none; }
+dialog:focus-visible { outline: none; }
+.rn-sheet .rn-card:only-child .rn-card-kind { display: none; }

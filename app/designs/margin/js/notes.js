@@ -127,6 +127,7 @@
   /* ---------- The note card ---------- */
 
   let card = null; // { node, id, draft: bool, range }
+  let cardFrom; // the margin view before a card opened it
   let aiCtrl = null;
 
   function rectOf(start, end) {
@@ -150,7 +151,7 @@
     node.dataset.view = 'notes';
     if (M.isNarrow()) { M.openSheet('notes', title, node, { onClose: () => { if (card && card.node === node) closeCard(true); } }); return; }
     M.layer().append(node);
-    if (M.view() !== 'notes') M.setView('notes');
+    if (M.view() !== 'notes') { cardFrom = M.view(); M.setView('notes'); }
   }
 
   // New: a note (or a message to the AI) on the selection.
@@ -383,6 +384,8 @@
     if (TDW.Margin.sheetOpen('notes') && TDW.Margin.sheetBody().contains(old)) TDW.Margin.closeSheet();
     old.remove();
     Editor.setOpenNote(null);
+    // A card that opened the margin just for itself gives it back.
+    { const v = cardFrom; cardFrom = undefined; if (v !== undefined && TDW.Margin.view() === 'notes') TDW.Margin.setView(v); }
     refreshPanel();
     if (!silent) Editor.focus();
   }
@@ -506,6 +509,7 @@
   }
 
   function showAll() {
+    cardFrom = undefined;
     if (M().isNarrow()) {
       closeCard(true);
       const wrap = UI.el('div', { class: 'notes-list-wrap' });

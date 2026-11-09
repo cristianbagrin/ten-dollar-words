@@ -217,7 +217,7 @@
         const label = n.kind === 'issue' ? SHORT[n.issue.type] : h.kind;
         return el('button', { type: 'button', class: 'rchip tone-' + h.tone, 'aria-label': h.kind + ': ' + (typeof h.detail === 'string' ? h.detail : h.detail.textContent), onclick: () => openSheet(line, n.key) },
           el('span', { class: 'rchip-tick', 'aria-hidden': 'true' }), label);
-      }), ns.length > 3 ? el('button', { type: 'button', class: 'rchip rchip-more', text: '+' + (ns.length - 3), 'aria-label': (ns.length - 3) + ' more notes', onclick: () => openSheet(line, null) }) : null);
+      }), ...(ns.length > 3 ? [el('button', { type: 'button', class: 'rchip rchip-more', text: '+' + (ns.length - 3), 'aria-label': (ns.length - 3) + ' more notes', onclick: () => openSheet(line, null) })] : []));
       k++;
     }
     for (let i = k; i < chipRows.length; i++) chipRows[i].hidden = true;
@@ -641,10 +641,8 @@
   function init() {
     Editor.rootEl().addEventListener('click', onEditorClick);
     Margin.onChange((v) => {
-      if (v === 'review') {
-        for (const node of pool.values()) if (node._pendingY !== undefined) delete node._pendingY;
-        schedule();
-      } else if (openKey) closeNote(false);
+      if (v !== 'review' && openKey) closeNote(false);
+      if (analysis) schedule();
     });
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || document.querySelector('dialog[open]:modal') || UI.menuOpen()) return;
@@ -667,7 +665,8 @@
       schedule();
     },
     onMode(m) {
-      if (m === 'edit') { if (!Margin.isNarrow() && Margin.view() !== 'alts') Margin.setView('review'); }
+      // The lens class lands a frame or two later and gives paragraphs room for chips.
+      if (m === 'edit') { if (!Margin.isNarrow() && Margin.view() !== 'alts') Margin.setView('review'); setTimeout(schedule, 80); }
       else if (Margin.view() === 'review') Margin.setView(null);
     },
     onSelect() { markCaretLine(); },
