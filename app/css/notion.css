@@ -53,13 +53,9 @@ html.is-typing .nt:not(.is-open) { background: transparent; }
   border: 0; border-radius: 6px; background: transparent; color: var(--note-line); cursor: pointer; pointer-events: auto;
   font: 700 10px/1 var(--font-ui);
 }
-.note-pin::before {
-  content: ""; position: absolute; inset: 4px; border-radius: 4px 4px 4px 1px; background: currentColor; opacity: .9;
-  -webkit-mask: none;
-}
-.note-pin:not(:empty)::before { opacity: .25; }
-.note-pin:not(:empty) { color: var(--ink); }
-.note-pin.is-ai::before { border-radius: 50%; }
+.note-pin-n { position: absolute; right: -2px; top: -3px; min-width: 12px; height: 12px; padding: 0 2px; border-radius: 6px; background: var(--note-line); color: var(--paper); font: 700 9px/12px var(--font-ui); }
+.note-pin.is-ai { color: var(--accent); }
+.note-pin.is-ai .note-pin-n { background: var(--accent); }
 .note-pin.is-done { color: var(--ink-3); opacity: .55; }
 .note-pin:hover, .note-pin.is-open { background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .note-pin[hidden] { display: none; }
@@ -89,7 +85,7 @@ html.is-dragging-block, html.is-dragging-block * { cursor: grabbing !important; 
 .editor:focus .ln-p.ln-empty.is-caret::after {
   content: "Type '/' for commands"; position: absolute; left: 0; top: 0; color: var(--ink-3); opacity: .55; pointer-events: none; text-shadow: none;
 }
-.editor.is-empty .ln-p.ln-empty.is-caret::after { content: none; }
+.editor.is-empty .ln-p.ln-empty.is-caret::after, html.is-typing .editor .ln-p.ln-empty.is-caret::after { content: none; }
 
 /* ---------- Menus: the "/" menu, the block menu's header, colors ---------- */
 .menu-head { padding: 6px 10px 4px; color: var(--ink-3); font: 600 11px/1.2 var(--font-ui); letter-spacing: .02em; }
@@ -160,7 +156,7 @@ html.is-dragging-block, html.is-dragging-block * { cursor: grabbing !important; 
 
 /* ---------- The note card ---------- */
 .note-card {
-  position: fixed; z-index: 57; width: min(340px, calc(100vw - 16px)); max-height: min(70vh, 560px); overflow-y: auto;
+  position: fixed; z-index: 57; width: min(320px, calc(100vw - 16px)); max-height: min(70vh, 560px); overflow-y: auto;
   display: grid; gap: 8px; padding: 12px 12px 10px; background: var(--card); color: var(--ink);
   border-radius: 10px; box-shadow: var(--pop-shadow); font: var(--t-sm)/1.45 var(--font-ui);
   animation: menu-in var(--t-med) var(--ease);

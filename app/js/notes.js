@@ -179,10 +179,10 @@
     const foot = UI.el('div', { class: 'note-foot' }, UI.el('span', { class: 'note-spacer' }), swap, save);
     node.append(quote, input, chips, foot);
     document.body.append(node);
-    card = { node, id: null, range: r, ai };
+    card = { node, id: null, range: r, ai, marked: false };
     Editor.setOpenNote(null);
-    // Show what the note is on while you write it.
-    Editor.setLab([{ start: r.start, end: r.end, type: 'note-target', id: 'note-target' }]);
+    // Show what the note is on while you write it (unless the Lab's marks are showing).
+    if (!Editor.getLab().length && r.end > r.start) { Editor.setLab([{ start: r.start, end: r.end, type: 'note-target', id: 'note-target' }]); card.marked = true; }
     const send = () => {
       const msg = input.value.trim();
       if (!msg) { input.focus(); return; }
@@ -190,7 +190,7 @@
         ? { ai: true, body: '', thread: [{ by: 'me', text: msg, at: Date.now() }] }
         : { body: msg, done: false });
       if (!got) { UI.toast('This draft has as many notes as it can hold.'); return; }
-      Editor.setLab([]);
+      if (card && card.marked) { Editor.setLab([]); card.marked = false; }
       Editor.change({ ann: got.ann, kind: 'marks', keepFocus: false });
       const id = got.id;
       closeCard(true);
@@ -379,7 +379,7 @@
       const body = card.node.querySelector('.note-body');
       const n = noteOf(card.id);
       if (body && n && body.value !== n.body) Editor.change({ ann: Marks.updateNote(ann(), card.id, { body: body.value }), kind: 'marks', keepFocus: false });
-    } else Editor.setLab([]);
+    } else if (card.marked) Editor.setLab([]);
     card.node.remove();
     card = null;
     Editor.setOpenNote(null);

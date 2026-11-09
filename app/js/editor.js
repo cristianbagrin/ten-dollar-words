@@ -18,7 +18,7 @@
   const PREFIX = { p: '', h1: '# ', h2: '## ', h3: '### ', li: '- ', quote: '> ' };
   const PLACEHOLDER = { h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', li: 'List', ol: 'List', todo: 'To-do', quote: 'Quote' };
   const LISTY = new Set(['li', 'ol', 'todo', 'quote']);
-  const FREE_UNDO = new Set(['marks', 'stash', 'swap']); // undone even with backspace off: nothing typed is lost
+  const FREE_UNDO = new Set(['marks', 'stash', 'swap', 'move']); // undone even with backspace off: nothing typed is lost
 
   let root = null;       // the contenteditable
   let surface = null;    // positioned parent of root, under and aids
@@ -603,6 +603,7 @@
     hideFrom('pager', k);
   }
 
+  const PIN_SVG = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3.5 2.5V11h-1z" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
   // A small speech mark in the right margin by each note's last line; a note whose words were
   // deleted keeps its mark where they were.
   function placePins(sr) {
@@ -638,7 +639,11 @@
       b._ids = row.ids;
       b.className = 'note-pin' + (row.done ? ' is-done' : '') + (row.ai ? ' is-ai' : '') + (row.ids.includes(openNote) ? ' is-open' : '');
       b.style.cssText = 'top:' + (row.top + row.h / 2 - 11) + 'px';
-      b.textContent = row.ids.length > 1 ? String(row.ids.length) : '';
+      const label = row.ids.length > 1 ? String(row.ids.length) : '';
+      if (b._label !== label) {
+        b._label = label;
+        b.innerHTML = PIN_SVG + (label ? '<span class="note-pin-n">' + label + '</span>' : '');
+      }
       b.setAttribute('aria-label', row.ids.length > 1 ? row.ids.length + ' notes' : 'Note');
       b.title = row.ids.length > 1 ? row.ids.length + ' notes' : 'Open the note';
     }
