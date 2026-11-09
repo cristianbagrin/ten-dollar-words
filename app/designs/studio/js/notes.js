@@ -1,13 +1,12 @@
 /* Colors, notes and talking to the AI about the draft.
-   - Color: select text and pick a text color or a background (the bubble's "A", the block
-     menu's Color, or "/red", "/yellow background"). In Notion it's the same color.
-   - Notes for future you: select text and add a note (Ctrl+Shift+M, the bubble's speech mark,
-     or "/note"). The words get a faint underline and a mark in the margin. A note can be a
-     to-do: tick it off when it's done. The Notes panel (bottom right) lists them all.
-   - Ask AI: a note you write to the AI (the bubble's ✦, Ctrl+J, or "/ai"). Ask for "a punchier
-     version" or "is this clear?" and it answers in the thread, like a comment in a design tool.
-     Versions it suggests join the text's alternatives, so you flip through them in place
-     (A/B) and keep the one you like. It never changes the page by itself. */
+   - Color: select text and pick a text color or a background (the bar's More, the block menu's
+     Color, or "/red", "/yellow background"). In Notion it's the same color.
+   - Notes for future you: select text and add a note (the bar's Note, Ctrl+Shift+M or "/note").
+     The words get a faint underline and a mark in the margin; the note itself opens in the
+     inspector's Notes tab. A note is a to-do: tick it off when it's done.
+   - Ask AI: a note you write to the AI (the bar's Ask AI, Ctrl+J or "/ai"). It answers in the
+     thread; versions it suggests join the text's alternatives, so you flip through them in
+     place. It never changes the page by itself. */
 (function () {
   'use strict';
   const TDW = window.TDW = window.TDW || {};
@@ -124,38 +123,32 @@
     node.style.top = top + 'px';
   }
 
-  /* ---------- The note card ---------- */
+  /* ---------- The Notes tab ----------
+     A composer at the top while you write a note, the list (Open, Done, All), and the note you
+     opened, expanded in place with its thread and a reply box. Nothing floats over the text. */
 
-  let card = null; // { node, id, draft: bool, range }
+  let tab = null, listEl = null, filterSeg = null, composerEl = null;
+  let filter = 'open';
+  let selected = null;     // the open note's id
+  let composing = null;    // { range, ai, marked, transient }
+  let busyId = null;
   let aiCtrl = null;
 
-  function rectOf(start, end) {
-    const a = Editor.rectAt(start), b = Editor.rectAt(Math.max(start, end));
-    if (!a) return null;
-    const top = a.lineTop, bottom = (b || a).lineTop + (b || a).lh;
-    return { left: a.left, right: b ? b.left : a.left, top, bottom };
+  const inFront = () => TDW.Inspector.isOpen() && TDW.Inspector.tab() === 'notes' && !TDW.Inspector.pushed();
+
+  function build() {
+    tab = TDW.Inspector.pane('notes');
+    filterSeg = UI.segmented({
+      label: 'Show', value: filter,
+      options: [{ value: 'open', label: 'Open' }, { value: 'done', label: 'Done' }, { value: 'all', label: 'All' }],
+      onChange: (v) => { filter = v; draw(); }
+    });
+    composerEl = UI.el('div', { class: 'note-composer', hidden: true });
+    listEl = UI.el('ol', { class: 'notes-list' });
+    tab.append(composerEl, UI.el('div', { class: 'rv-row notes-filter' }, UI.el('span', { class: 'rv-label', text: 'Notes' }), filterSeg), listEl);
   }
 
-  // Beside the page if there's room on the right, else under the text.
-  function placeCard(start, end) {
-    if (!card) return;
-    const r = rectOf(start, end);
-    const sheet = document.getElementById('sheet').getBoundingClientRect();
-    const n = card.node;
-    const w = n.offsetWidth, h = n.offsetHeight;
-    const vh = UI.visibleBottom ? UI.visibleBottom() : window.innerHeight;
-    if (!r) return;
-    const roomRight = window.innerWidth - sheet.right - 40 >= w && !document.documentElement.classList.contains('overflow-open') && !document.documentElement.classList.contains('notes-open');
-    let left, top;
-    if (roomRight) { left = sheet.right + 32; top = r.top - 8; }
-    else { left = Math.max(8, Math.min(r.left - 12, window.innerWidth - w - 8)); top = r.bottom + 10; if (top + h > vh - 8) top = Math.max(8, r.top - h - 10); }
-    top = Math.max(8, Math.min(top, vh - Math.min(h, vh - 16) - 8));
-    n.style.left = left + 'px';
-    n.style.top = top + 'px';
-    n.classList.toggle('is-beside', roomRight);
-  }
-
-  // New: a note (or a message to the AI) on the selection.
+  /* ---------- Composing ---------- */
   function compose(opts) {
     if (app().state.loading) return;
     if (Editor.rootEl().contentEditable !== 'true') return;
@@ -167,46 +160,69 @@
       UI.toast('Add your Gemini key in Settings to ask the AI.', { label: 'Settings', run: () => app().openSettings('ai') });
       return;
     }
-    closeCard(true);
+    const transient = composing ? composing.transient : !TDW.Inspector.isOpen();
+    endCompose(true);
     TDW.Bubble && TDW.Bubble.hide();
-    const node = UI.el('div', { class: 'note-card is-new' + (ai ? ' is-ai' : ''), role: 'dialog', 'aria-label': ai ? 'Ask AI' : 'New note' });
-    const quote = UI.el('div', { class: 'note-quote', text: TDW.Inline.plain(text().slice(r.start, r.end)).slice(0, 160) });
-    const input = UI.el('textarea', { class: 'note-input', rows: '2', placeholder: ai ? 'Ask AI to rewrite, shorten, judge…' : 'A note for later: a to-do, an idea, a question…', 'aria-label': ai ? 'Message to the AI' : 'Note' });
-    const chips = ai ? UI.el('div', { class: 'note-chips' }, ['Other ways to say this', 'Make it punchier', 'Shorter', 'Simpler words', 'Is this clear?'].map((q) =>
-      UI.el('button', { type: 'button', class: 'chip note-chip', text: q, onclick: () => { input.value = q; send(); } }))) : null;
-    const save = UI.el('button', { type: 'button', class: 'btn btn-sm', text: ai ? 'Ask' : 'Add note' });
-    const swap = UI.el('button', { type: 'button', class: 'btn-quiet btn-sm note-swap', text: ai ? 'Just a note' : '✦ Ask AI instead' });
-    const foot = UI.el('div', { class: 'note-foot' }, UI.el('span', { class: 'note-spacer' }), swap, save);
-    node.append(quote, input, chips, foot);
-    document.body.append(node);
-    card = { node, id: null, range: r, ai, marked: false };
-    Editor.setOpenNote(null);
-    // Show what the note is on while you write it (unless the Lab's marks are showing).
-    if (!Editor.getLab().length && r.end > r.start) { Editor.setLab([{ start: r.start, end: r.end, type: 'note-target', id: 'note-target' }]); card.marked = true; }
-    const send = () => {
+    composing = { range: r, ai, marked: false, transient };
+    // Show what the note is on while you write it (unless the Lab's marks are there).
+    if (!Editor.getLab().length && r.end > r.start) { Editor.setLab([{ start: r.start, end: r.end, type: 'note-target', id: 'note-target' }]); composing.marked = true; }
+    app().openTab('notes');
+    drawComposer();
+    const input = composerEl.querySelector('textarea');
+    if (input) input.focus({ preventScroll: true });
+  }
+
+  function drawComposer() {
+    if (!composing) { composerEl.hidden = true; composerEl.replaceChildren(); return; }
+    const { range: r, ai } = composing;
+    const quote = TDW.Inline.plain(text().slice(r.start, r.end));
+    const input = UI.el('textarea', { class: 'field note-input', rows: '2', placeholder: ai ? 'Ask for other ways to say it, a shorter one, a verdict…' : 'A to-do, an idea, a question for later', 'aria-label': ai ? 'Message to the AI' : 'Note' });
+    const chips = ai ? UI.el('div', { class: 'fix-chips' }, ['Other ways to say this', 'Make it punchier', 'Shorter', 'Simpler words', 'Is this clear?'].map((q) =>
+      UI.el('button', { type: 'button', class: 'chip', onclick: () => { input.value = q; send(); } }, UI.el('span', { class: 'chip-word', text: q })))) : null;
+    const save = UI.el('button', { type: 'button', class: 'btn btn-sm' }, ai ? UI.icon('spark') : null, ai ? 'Ask' : 'Add note');
+    const swap = UI.el('button', { type: 'button', class: 'btn btn-quiet btn-sm', text: ai ? 'Just a note' : 'Ask AI instead' });
+    const cancel = UI.el('button', { type: 'button', class: 'btn btn-quiet btn-sm', text: 'Cancel', onclick: () => endCompose(false) });
+    composerEl.replaceChildren(
+      UI.el('div', { class: 'rv-label', text: ai ? 'Ask AI about' : 'New note on' }),
+      quote ? UI.el('p', { class: 'page-quote note-quote', text: quote.length > 160 ? quote.slice(0, 157) + '…' : quote }) : UI.el('p', { class: 'hint', text: 'This block' }),
+      input, chips, UI.el('div', { class: 'note-foot' }, swap, UI.el('span', { class: 'note-spacer' }), cancel, save));
+    composerEl.hidden = false;
+    function send() {
       const msg = input.value.trim();
       if (!msg) { input.focus(); return; }
-      const got = Marks.addNote(ann(), r.start, r.end, ai
-        ? { ai: true, body: '', thread: [{ by: 'me', text: msg, at: Date.now() }] }
-        : { body: msg, done: false });
+      const got = Marks.addNote(ann(), r.start, r.end, ai ? { ai: true, body: '', thread: [{ by: 'me', text: msg, at: Date.now() }] } : { body: msg, done: false });
       if (!got) { UI.toast('This draft has as many notes as it can hold.'); return; }
-      if (card && card.marked) { Editor.setLab([]); card.marked = false; }
+      clearTarget();
+      composing = null;
+      drawComposer();
       Editor.change({ ann: got.ann, kind: 'marks', keepFocus: false });
-      const id = got.id;
-      closeCard(true);
-      openNote(id);
-      if (ai) askAI(id, msg);
-      refreshPanel();
-    };
+      selected = got.id;
+      if (filter === 'done') { filter = 'open'; filterSeg.set('open'); }
+      Editor.setOpenNote(got.id);
+      draw();
+      if (ai) askAI(got.id, msg); else Editor.focus();
+    }
     save.addEventListener('click', send);
-    swap.addEventListener('click', () => { const v = input.value; compose({ ai: !ai }); if (card) card.node.querySelector('textarea').value = v; });
+    swap.addEventListener('click', () => { const v = input.value; composing.ai = !ai; drawComposer(); const t = composerEl.querySelector('textarea'); t.value = v; t.focus(); });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
-      else if (e.key === 'Escape') { e.preventDefault(); closeCard(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); endCompose(false); }
     });
     autosize(input);
-    placeCard(r.start, r.end);
-    input.focus({ preventScroll: true });
+  }
+
+  function clearTarget() { if (composing && composing.marked) { Editor.setLab([]); composing.marked = false; } }
+
+  function endCompose(silent) {
+    if (!composing) return;
+    const transient = composing.transient;
+    clearTarget();
+    composing = null;
+    drawComposer();
+    if (!silent) {
+      if (transient && inFront()) app().setMode('write', { keepLibrary: true });
+      else Editor.focus();
+    }
   }
 
   function autosize(t) {
@@ -215,102 +231,128 @@
     requestAnimationFrame(go);
   }
 
-  // An existing note: its words, its body (editable), the thread, a reply box.
+  /* ---------- The list, and the note you opened ---------- */
   function openNote(id) {
+    if (!noteOf(id)) return;
+    endCompose(true);
+    selected = id;
     const n = noteOf(id);
-    if (!n) return;
-    closeCard(true);
-    const node = UI.el('div', { class: 'note-card' + (n.ai ? ' is-ai' : '') + (n.done ? ' is-done' : ''), role: 'dialog', 'aria-label': n.ai ? 'Conversation with the AI' : 'Note' });
-    card = { node, id, range: { start: n.start, end: n.end }, ai: n.ai };
+    if ((filter === 'open' && n.done) || (filter === 'done' && !n.done)) { filter = 'all'; filterSeg.set('all'); }
     Editor.setOpenNote(id);
-    drawCard();
-    document.body.append(node);
-    placeCard(n.start, n.end);
-    const input = node.querySelector('.note-reply');
-    if (input && n.ai) input.focus({ preventScroll: true });
+    app().openTab('notes');
+    draw();
+    requestAnimationFrame(() => {
+      const row = listEl.querySelector('.notes-row.is-open');
+      if (row) row.scrollIntoView({ block: 'nearest' });
+      const reply = listEl.querySelector('.note-reply');
+      if (reply && n.ai && !UI.device.touch) reply.focus({ preventScroll: true });
+    });
   }
 
-  function drawCard() {
-    if (!card || !card.id) return;
-    const n = noteOf(card.id);
-    if (!n) { closeCard(true); return; }
+  function closeNote() {
+    selected = null;
+    Editor.setOpenNote(null);
+    draw();
+  }
+
+  let drawRaf = 0;
+  function refreshPanel() { cancelAnimationFrame(drawRaf); drawRaf = requestAnimationFrame(draw); }
+
+  function draw() {
+    if (!tab) return;
+    const notes = ann().notes || [];
+    const openCount = notes.filter((n) => !n.done).length;
+    TDW.Inspector.setBadge('notes', openCount ? String(openCount) : '');
+    if (selected && !noteOf(selected)) { selected = null; Editor.setOpenNote(null); }
+    const active = document.activeElement;
+    const keep = active && listEl.contains(active) && active.matches('textarea') ? { cls: active.className, value: active.value, s: active.selectionStart } : null;
     const t = text();
-    const node = card.node;
-    node.classList.toggle('is-done', !!n.done);
-    const quoteText = n.end > n.start ? TDW.Inline.plain(t.slice(n.start, n.end)) : '';
-    const head = UI.el('div', { class: 'note-head' },
-      UI.el('label', { class: 'note-check', title: n.done ? 'Mark as not done' : 'Mark as done' },
-        UI.el('input', { type: 'checkbox', checked: !!n.done, 'aria-label': 'Done', onchange: (e) => setNote(n.id, { done: e.target.checked }) })),
-      UI.el('span', { class: 'note-kind', text: n.ai ? '✦ AI thread' : 'Note' }),
-      UI.el('span', { class: 'note-when', text: n.at ? UI.relTime(n.at) : '' }),
-      UI.el('button', { type: 'button', class: 'btn-icon note-del', 'aria-label': 'Delete note', title: 'Delete note', onclick: () => removeNote(n.id) }, UI.icon('trash') || '×'),
-      UI.el('button', { type: 'button', class: 'btn-icon note-x', 'aria-label': 'Close', title: 'Close (Esc)', onclick: () => closeCard() }, UI.icon('close')));
-    const quote = quoteText
-      ? UI.el('button', { type: 'button', class: 'note-quote', text: quoteText.slice(0, 160) + (quoteText.length > 160 ? '…' : ''), title: 'Select it on the page', onclick: () => { Editor.select(n.start, n.end); } })
-      : UI.el('div', { class: 'note-quote is-gone', text: 'The words this note was on were deleted.' });
-    const kids = [head, quote];
+    const shown = notes.filter((n) => filter === 'all' || (filter === 'done' ? n.done : !n.done));
+    const rows = shown.map((n) => {
+      const q = n.end > n.start ? TDW.Inline.plain(t.slice(n.start, n.end)) : '';
+      const last = n.thread.length ? n.thread[n.thread.length - 1] : null;
+      const isOpen = n.id === selected;
+      const li = UI.el('li', { class: 'notes-row' + (n.done ? ' is-done' : '') + (n.ai ? ' is-ai' : '') + (isOpen ? ' is-open' : '') });
+      const check = UI.el('input', { type: 'checkbox', class: 'note-check', checked: !!n.done, 'aria-label': n.done ? 'Done. Mark as open' : 'Mark as done', onchange: (e) => setNote(n.id, { done: e.target.checked }) });
+      const head = UI.el('button', { type: 'button', class: 'notes-open', 'aria-expanded': String(isOpen), onclick: () => { if (isOpen) closeNote(); else { Editor.scrollToIndex(n.start, 0.35, true); openNote(n.id); } } },
+        UI.el('span', { class: 'notes-quote', text: q ? q.slice(0, 90) + (q.length > 90 ? '…' : '') : 'The words this note was on were deleted' }),
+        isOpen ? null : UI.el('span', { class: 'notes-body' }, n.ai ? UI.el('span', { class: 'notes-ai', text: 'AI ' }) : null, n.ai ? (last ? last.text : '') : n.body || ''));
+      li.append(UI.el('div', { class: 'notes-line' }, check, head));
+      if (isOpen) li.append(detail(n));
+      return li;
+    });
+    if (!rows.length) {
+      rows.push(UI.el('li', { class: 'notes-empty' }, filter === 'done' ? 'Nothing done yet.' : notes.length ? 'Every note is done.' : 'No notes yet. Select some words, then Note in the bar or ' + UI.ctrlKeys('Ctrl+Shift+M') + '.'));
+    }
+    listEl.replaceChildren(...rows);
+    if (keep) {
+      const again = listEl.querySelector('textarea.' + keep.cls.split(' ').filter(Boolean).join('.'));
+      if (again) { again.value = keep.value; again.focus({ preventScroll: true }); try { again.setSelectionRange(keep.s, keep.s); } catch (_) { /* fine */ } }
+    }
+  }
+
+  function detail(n) {
+    const kids = [];
     if (!n.ai || n.body) {
       const body = UI.el('textarea', { class: 'note-body', rows: '1', placeholder: 'Write a note…', 'aria-label': 'Note' });
       body.value = n.body;
       body.addEventListener('change', () => setNote(n.id, { body: body.value }));
-      body.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); body.blur(); closeCard(); } });
+      body.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); body.blur(); Editor.focus(); } });
       autosize(body);
       kids.push(body);
     }
     if (n.thread.length) {
-      const list = UI.el('ol', { class: 'note-thread' });
-      n.thread.forEach((m) => {
+      kids.push(UI.el('ol', { class: 'note-thread' }, n.thread.map((m) => {
         const li = UI.el('li', { class: 'note-msg ' + (m.by === 'ai' ? 'by-ai' : 'by-me') },
-          UI.el('span', { class: 'note-who', text: m.by === 'ai' ? '✦ AI' : 'You' }),
+          UI.el('span', { class: 'note-who', text: m.by === 'ai' ? 'AI' : 'You' }),
           UI.el('p', { class: 'note-text', text: m.text }));
         if (m.options && m.options.length) li.append(optionList(n, m.options));
-        list.append(li);
-      });
-      kids.push(list);
+        return li;
+      })));
     }
-    if (card.busy) kids.push(UI.el('div', { class: 'note-busy', 'aria-live': 'polite' }, UI.el('span', { class: 'dots' }), ' thinking'));
-    const reply = UI.el('textarea', { class: 'note-reply', rows: '1', placeholder: n.ai ? 'Reply to the AI…' : 'Ask AI about this…', 'aria-label': 'Reply' });
-    const ask = UI.el('button', { type: 'button', class: 'btn btn-sm', text: '✦ Ask', disabled: !!card.busy });
+    if (busyId === n.id) kids.push(UI.el('p', { class: 'hint busy-dots', 'aria-live': 'polite', text: 'Thinking' }));
+    const reply = UI.el('textarea', { class: 'field note-reply', rows: '1', placeholder: n.ai ? 'Reply to the AI…' : 'Ask AI about this…', 'aria-label': n.ai ? 'Reply' : 'Ask AI about this' });
+    const ask = UI.el('button', { type: 'button', class: 'btn btn-sm', disabled: busyId === n.id }, UI.icon('spark'), 'Ask');
     const go = () => { const v = reply.value.trim(); if (!v) { reply.focus(); return; } reply.value = ''; ask_(n.id, v); };
     ask.addEventListener('click', go);
     reply.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); go(); }
-      else if (e.key === 'Escape') { e.preventDefault(); closeCard(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); Editor.focus(); }
     });
     autosize(reply);
     kids.push(UI.el('div', { class: 'note-replybox' }, reply, ask));
-    const keepFocus = node.contains(document.activeElement) && document.activeElement.classList.contains('note-reply');
-    node.replaceChildren(...kids);
-    if (keepFocus) node.querySelector('.note-reply').focus({ preventScroll: true });
+    kids.push(UI.el('div', { class: 'note-foot' },
+      UI.el('span', { class: 'hint', text: n.at ? (n.ai ? 'Thread started ' : 'Added ') + UI.relTime(n.at).toLowerCase() : '' }),
+      UI.el('span', { class: 'note-spacer' }),
+      n.end > n.start ? UI.el('button', { type: 'button', class: 'btn btn-quiet btn-sm', text: 'Select on the page', onclick: () => { const x = noteOf(n.id); if (x) Editor.select(x.start, x.end); } }) : null,
+      UI.el('button', { type: 'button', class: 'icon-btn icon-btn-sm is-danger', 'aria-label': 'Delete note', onclick: () => removeNote(n.id) }, UI.icon('trash'))));
+    return UI.el('div', { class: 'note-detail' }, ...kids);
   }
 
   // The AI's versions: click one to put it on the page (it's an alternative, so the original
   // and the others stay a ↑/↓ away).
   function optionList(n, options) {
-    const t = text();
-    const shown = t.slice(n.start, n.end);
+    const shown = text().slice(n.start, n.end);
     const ul = UI.el('ul', { class: 'note-options' });
     for (const o of options) {
       const on = o === shown;
-      const b = UI.el('button', { type: 'button', class: 'note-option' + (on ? ' is-on' : ''), title: on ? 'On the page' : 'Try it on the page' },
+      const b = UI.el('button', { type: 'button', class: 'note-option' + (on ? ' is-on' : ''), 'aria-pressed': String(on), title: on ? 'On the page' : 'Try it on the page' },
         UI.el('span', { class: 'note-option-dot', 'aria-hidden': 'true' }), UI.el('span', { text: TDW.Inline.plain(o) }));
       b.addEventListener('mousedown', (e) => e.preventDefault());
       b.addEventListener('click', () => tryOption(n.id, o));
       ul.append(UI.el('li', null, b));
     }
-    const orig = UI.el('button', { type: 'button', class: 'btn-quiet btn-sm note-orig', text: 'Back to the original', onclick: () => tryOriginal(n.id) });
-    orig.addEventListener('mousedown', (e) => e.preventDefault());
     const alt = altFor(n);
-    if (alt && alt.active !== 0) ul.append(UI.el('li', null, orig));
+    if (alt && alt.active !== 0) {
+      const orig = UI.el('button', { type: 'button', class: 'btn btn-quiet btn-sm', text: 'Back to the original', onclick: () => tryOriginal(n.id) });
+      orig.addEventListener('mousedown', (e) => e.preventDefault());
+      ul.append(UI.el('li', null, orig));
+    }
     return ul;
   }
 
-  // The alternative that sits exactly on a note's words, if any.
-  function altFor(n) {
-    return ann().alts.find((a) => a.start === n.start && a.end === n.end) || null;
-  }
+  function altFor(n) { return ann().alts.find((a) => a.start === n.start && a.end === n.end) || null; }
 
-  // The note's words as an alternative with these options (made if needed). Returns its id.
   function ensureAlt(id, options) {
     const n = noteOf(id);
     if (!n || n.end <= n.start) return null;
@@ -321,7 +363,7 @@
     if (!got) return null;
     let next = got.ann;
     const a = next.alts.find((x) => x.id === got.id);
-    if (a.start !== n.start || a.end !== n.end) return null; // another alternative covers it
+    if (a.start !== n.start || a.end !== n.end) return null;
     next = Marks.addOptions(next, got.id, options, 'ai');
     if (next !== ann()) Editor.change({ ann: next, kind: 'marks', history: false, keepFocus: false });
     return got.id;
@@ -335,20 +377,15 @@
       const a = ann().alts.find((x) => x.id === altId);
       const k = a.options.findIndex((x) => x.text === o);
       const r = Marks.swap(text(), ann(), altId, k);
-      if (r) {
-        // The note follows its words to their new length.
-        const ann2 = Marks.updateNote(r.ann, id, { start: r.start, end: r.end });
-        Editor.change({ text: r.text, ann: ann2, kind: 'swap', keepFocus: false });
-      }
+      if (r) Editor.change({ text: r.text, ann: Marks.updateNote(r.ann, id, { start: r.start, end: r.end }), kind: 'swap', keepFocus: false });
     } else {
-      // Across lines: replace it, one undo step.
       const t = text();
       const nt = t.slice(0, n.start) + o + t.slice(n.end);
       const shifted = Marks.applyChange(Marks.removeNote(ann(), id), t, nt);
       const notes = shifted.notes.concat(Object.assign({}, n, { start: n.start, end: n.start + o.length })).sort((x, y) => x.start - y.start);
       Editor.change({ text: nt, ann: Marks.withAnn(shifted, { notes }), kind: 'swap', keepFocus: false });
     }
-    drawCard();
+    draw();
   }
 
   function tryOriginal(id) {
@@ -357,37 +394,22 @@
     if (!a) return;
     const r = Marks.swap(text(), ann(), a.id, 0);
     if (r) Editor.change({ text: r.text, ann: Marks.updateNote(r.ann, id, { start: r.start, end: r.end }), kind: 'swap', keepFocus: false });
-    drawCard();
+    draw();
   }
 
   function setNote(id, patch) {
     Editor.change({ ann: Marks.updateNote(ann(), id, patch), kind: 'marks', keepFocus: false });
-    drawCard();
-    refreshPanel();
+    draw();
   }
 
   function removeNote(id) {
     Editor.change({ ann: Marks.removeNote(ann(), id), kind: 'marks', keepFocus: false });
-    closeCard();
-    refreshPanel();
-    UI.toast('Note deleted.', { label: 'Undo', run: () => Editor.undo() });
-  }
-
-  function closeCard(silent) {
-    if (!card) return;
-    if (card.id) {
-      const body = card.node.querySelector('.note-body');
-      const n = noteOf(card.id);
-      if (body && n && body.value !== n.body) Editor.change({ ann: Marks.updateNote(ann(), card.id, { body: body.value }), kind: 'marks', keepFocus: false });
-    } else if (card.marked) Editor.setLab([]);
-    card.node.remove();
-    card = null;
-    Editor.setOpenNote(null);
-    if (!silent) Editor.focus();
+    if (selected === id) { selected = null; Editor.setOpenNote(null); }
+    draw();
+    UI.toast('Note deleted', { label: 'Undo', run: () => Editor.undo() });
   }
 
   /* ---------- Talking to the AI ---------- */
-
   function contextOf(n) {
     const t = text();
     const par = Marks.paragraphAt(t, n.start);
@@ -420,7 +442,8 @@
     if (!n) return;
     if (aiCtrl) aiCtrl.abort();
     aiCtrl = new AbortController();
-    if (card && card.id === id) { card.busy = true; drawCard(); }
+    busyId = id;
+    draw();
     const input = Object.assign(contextOf(n), { message: msg, thread: n.thread.slice(0, -1).slice(-10) });
     try {
       const res = await TDW.AI.talk(input, aiCtrl.signal);
@@ -429,96 +452,33 @@
       const options = (res.options || []).filter((o) => o && o !== text().slice(cur.start, cur.end));
       const thread = cur.thread.concat({ by: 'ai', text: res.reply || (options.length ? 'Here are some versions.' : 'No answer.'), at: Date.now(), options });
       Editor.change({ ann: Marks.updateNote(ann(), id, { thread }), kind: 'marks', keepFocus: false });
-      // Its versions join the alternatives, so ↑/↓ on the page flips through them.
       if (options.length) ensureAlt(id, options);
     } catch (err) {
       if (!err || err.code !== 'cancelled') UI.toast(TDW.AI.errorMessage(err));
     } finally {
-      if (card && card.id === id) { card.busy = false; drawCard(); placeCard(card.range.start, card.range.end); }
-      refreshPanel();
+      if (busyId === id) busyId = null;
+      draw();
     }
   }
 
-  /* ---------- The Notes panel ---------- */
-
-  let panel = null, listEl = null, btn = null, filter = 'open';
-
-  function buildPanel() {
-    panel = UI.el('aside', { id: 'notes-panel', class: 'notes-panel', 'aria-label': 'Notes', hidden: true });
-    const tabs = UI.el('div', { class: 'notes-tabs', role: 'tablist' });
-    for (const [k, label] of [['open', 'Open'], ['done', 'Done'], ['all', 'All']]) {
-      const b = UI.el('button', { type: 'button', role: 'tab', class: 'notes-tab', text: label, dataset: { f: k } });
-      b.addEventListener('click', () => { filter = k; refreshPanel(); });
-      tabs.append(b);
-    }
-    const close = UI.el('button', { type: 'button', class: 'btn-icon', 'aria-label': 'Close notes', title: 'Close (Ctrl+Shift+M)' }, UI.icon('close'));
-    close.addEventListener('click', () => setPanel(false, true));
-    listEl = UI.el('ol', { class: 'notes-list' });
-    panel.append(UI.el('div', { class: 'ov-head' }, UI.el('h2', { class: 'ov-title', text: 'Notes' }), close), tabs, listEl,
-      UI.el('p', { class: 'ov-foot', text: 'select text · ' + (IS_MAC ? '⌃⇧M' : 'Ctrl+Shift+M') + ' adds a note · ' + (IS_MAC ? '⌃J' : 'Ctrl+J') + ' asks the AI' }));
-    document.body.append(panel);
-    btn = UI.el('button', { type: 'button', class: 'dock-btn notes-toggle', title: 'Notes (Ctrl+Shift+M with nothing selected)', 'aria-controls': 'notes-panel', 'aria-expanded': 'false' });
-    btn.addEventListener('mousedown', (e) => e.preventDefault());
-    btn.addEventListener('click', () => setPanel(!isPanelOpen()));
-    const slot = document.getElementById('dock-right');
-    if (slot) slot.prepend(btn);
-  }
-
-  const isPanelOpen = () => !!panel && !panel.hidden;
-  function setPanel(on, focusPage) {
-    if (!panel) buildPanel();
-    if (on && TDW.Overflow && TDW.Overflow.isOpen()) TDW.Overflow.close();
-    panel.hidden = !on;
-    document.documentElement.classList.toggle('notes-open', !!on);
-    btn.setAttribute('aria-expanded', String(!!on));
-    btn.classList.toggle('is-on', !!on);
-    if (on) refreshPanel();
-    if (!on && focusPage) Editor.focus();
-    requestAnimationFrame(() => Editor.placeAids());
-  }
-
-  function refreshPanel() {
-    if (!btn) return;
-    const notes = (ann().notes || []);
-    const open = notes.filter((n) => !n.done).length;
-    btn.textContent = open ? 'Notes ' + open : 'Notes';
-    btn.hidden = !notes.length && !isPanelOpen();
-    if (!isPanelOpen()) return;
-    for (const b of panel.querySelectorAll('.notes-tab')) b.classList.toggle('is-on', b.dataset.f === filter);
-    const t = text();
-    const shown = notes.filter((n) => filter === 'all' || (filter === 'done' ? n.done : !n.done));
-    const rows = shown.map((n) => {
-      const q = n.end > n.start ? TDW.Inline.plain(t.slice(n.start, n.end)) : '';
-      const last = n.thread.length ? n.thread[n.thread.length - 1] : null;
-      const li = UI.el('li', { class: 'notes-row' + (n.done ? ' is-done' : '') + (n.ai ? ' is-ai' : '') },
-        UI.el('input', { type: 'checkbox', checked: !!n.done, 'aria-label': 'Done', onchange: (e) => setNote(n.id, { done: e.target.checked }) }),
-        UI.el('button', { type: 'button', class: 'notes-open', onclick: () => { Editor.scrollToIndex(n.start, 0.35, true); setTimeout(() => openNote(n.id), 200); } },
-          UI.el('span', { class: 'notes-quote', text: q ? '“' + q.slice(0, 90) + (q.length > 90 ? '…' : '') + '”' : '(deleted text)' }),
-          UI.el('span', { class: 'notes-body', text: n.ai ? '✦ ' + (last ? last.text : '') : n.body || '' })));
-      return li;
-    });
-    if (!rows.length) rows.push(UI.el('li', { class: 'notes-empty', text: filter === 'done' ? 'Nothing done yet.' : 'No notes. Select some words and add one.' }));
-    listEl.replaceChildren(...rows);
+  function togglePanel() {
+    if (inFront()) app().setMode('write', { keepLibrary: true });
+    else app().openTab('notes');
   }
 
   /* ---------- Wiring ---------- */
-
   function wire() {
-    buildPanel();
+    build();
     document.addEventListener('keydown', (e) => {
       if (document.querySelector('dialog[open]') || app().state.loading) return;
-      if (e.key === 'Escape' && card && !e.defaultPrevented) {
-        if (card.node.contains(e.target) || document.activeElement === Editor.rootEl()) { e.preventDefault(); closeCard(); return; }
-      }
       if (!e.ctrlKey || e.metaKey) return;
       const k = e.code;
       if (e.shiftKey && !e.altKey && k === 'KeyM') {
         e.preventDefault();
         const s = Editor.getSelection();
-        if (s.end > s.start) compose({ ai: false }); else setPanel(!isPanelOpen(), true);
+        if (s.end > s.start && document.activeElement === Editor.rootEl()) compose({ ai: false }); else togglePanel();
       } else if (!e.shiftKey && !e.altKey && k === 'KeyJ') { e.preventDefault(); compose({ ai: true }); }
       else if (e.shiftKey && !e.altKey && k === 'KeyH') {
-        // Highlight with the last color used (again to take it off).
         e.preventDefault();
         const r = range({ allowEmpty: true });
         if (r.end <= r.start) return;
@@ -526,37 +486,30 @@
         applyColor(r.start, r.end, Marks.colorAt(ann(), r.start, r.end) === c ? null : c);
       }
     });
-    // Clicking noted words opens their note.
+    // Clicking noted words opens their note in the Notes tab.
     Editor.rootEl().addEventListener('click', (e) => {
-      const el = e.target.closest && e.target.closest('[data-note]');
-      if (!el) return;
+      const n = e.target.closest && e.target.closest('[data-note]');
+      if (!n) return;
       const s = Editor.getSelection();
       if (s.end > s.start) return;
-      openNote(el.dataset.note);
+      openNote(n.dataset.note);
     });
-    window.addEventListener('resize', () => { if (card) placeCard(card.range.start, card.range.end); });
-    document.addEventListener('pointerdown', (e) => {
-      if (!card || card.node.contains(e.target)) return;
-      if (e.target.closest && (e.target.closest('.note-pin') || e.target.closest('[data-note]') || e.target.closest('.bubble'))) return;
-      closeCard(true);
-    }, true);
-    window.addEventListener('scroll', () => { if (card) { const n = card.id ? noteOf(card.id) : null; const r = n || card.range; placeCard(r.start, r.end); } }, { passive: true });
   }
 
   TDW.Notes = {
-    init() { wire(); refreshPanel(); },
-    load() { closeCard(true); closeColor(); refreshPanel(); },
-    reload() { if (card && card.id && !noteOf(card.id)) closeCard(true); else drawCard(); refreshPanel(); },
-    onText() { if (card && card.id) { const n = noteOf(card.id); if (n) card.range = { start: n.start, end: n.end }; } refreshPanel(); },
-    onMode() { closeCard(true); },
-    // From the margin pins: one note opens; several open the panel.
+    init() { wire(); draw(); },
+    load() { endCompose(true); closeColor(); selected = null; busyId = null; if (aiCtrl) { aiCtrl.abort(); aiCtrl = null; } draw(); },
+    reload() { draw(); },
+    onText() { if (composing) { /* the composer keeps its quote */ } refreshPanel(); },
+    onMode(m) { if (m !== 'edit') { endCompose(true); if (selected) { selected = null; Editor.setOpenNote(null); } } },
+    onTab(t) { if (t !== 'notes' && composing) endCompose(true); if (t === 'notes') draw(); },
     openPins(ids) {
       if (!ids || !ids.length) return;
-      if (ids.length === 1) { if (card && card.id === ids[0]) closeCard(); else openNote(ids[0]); }
-      else { filter = 'all'; setPanel(true); }
+      if (ids.length === 1) { if (selected === ids[0] && inFront()) closeNote(); else openNote(ids[0]); }
+      else { filter = 'all'; filterSeg.set('all'); selected = ids[0]; app().openTab('notes'); draw(); }
     },
     compose, openNote, colorMenu, colorBlock, applyColor, palette, lastColor,
-    togglePanel: () => setPanel(!isPanelOpen(), true),
-    isCardOpen: () => !!card
+    togglePanel,
+    isCardOpen: () => !!composing
   };
 })();
