@@ -5,10 +5,10 @@ export const steps = {
     await page.evaluate(() => TDW.Palette.open({ query: 'challenge' }));
     await page.waitForTimeout(500);
   },
-  // The phone's review: tap a pencil chip under a paragraph.
+  // The phone's review: tap a pencil dot at the end of a line.
   'P03-review-open': async (page) => {
-    const chip = await page.$('.rchip');
-    if (!chip) throw new Error('no review chip');
+    const chip = await page.$('.pdot:not([hidden])');
+    if (!chip) throw new Error('no review dot');
     await chip.tap();
     await page.waitForTimeout(700);
   }

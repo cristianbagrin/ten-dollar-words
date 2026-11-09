@@ -95,7 +95,7 @@
     if (!rows.length) rows.push(el('li', { class: 'sw-empty', text: query ? 'No draft has “' + query + '” in its title.' : 'No other drafts yet.' }));
     listEl.replaceChildren(...rows);
     if (focusKey) { const again = listEl.querySelector('[data-key="' + CSS.escape(focusKey) + '"]'); if (again) again.focus({ preventScroll: true }); }
-    footEl.replaceChildren(...[c ? 'Synced with ' + c.dbTitle + '.' : 'Drafts live in this browser. ',
+    footEl.replaceChildren(...[c ? 'Synced with ' + String(c.dbTitle || '').replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, '').replace(/\s+/g, ' ').trim() + '.' : 'Drafts live in this browser. ',
       c ? null : el('button', { type: 'button', class: 'link', text: 'Connect Notion', onclick: () => { dismiss(draftsDlg); openSettings('notion'); } })].filter(Boolean));
   }
   const renderList = renderDraftList;
