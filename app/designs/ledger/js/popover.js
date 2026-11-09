@@ -70,12 +70,12 @@
   // The money a change makes or costs, as the receipt prints it.
   const credit = (savedWords) => el('span', {
     class: 'chip-note' + (savedWords < 0 ? ' is-cost' : savedWords === 0 ? ' is-even' : ''),
-    text: savedWords > 0 ? '+' + money(savedWords * 10) : savedWords < 0 ? '−' + money(-savedWords * 10) : 'same price'
+    text: savedWords > 0 ? 'Save ' + money(savedWords * 10) : savedWords < 0 ? 'Costs ' + money(-savedWords * 10) : 'same price'
   });
 
   const cutButton = (issue, amount) =>
     el('button', { type: 'button', class: 'btn credit', 'aria-label': 'Cut it, refund ' + money(amount), onclick: () => cutRange(issue, issue.start, issue.end) },
-      'Cut it', el('span', { class: 'btn-fig', text: '+' + money(amount) }));
+      'Cut it', el('span', { class: 'btn-fig', text: 'Save ' + money(amount) }));
 
   // A word chip with its money effect: "exhausted +$10".
   const chip = (word, savedWords, onclick, note) =>

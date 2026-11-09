@@ -91,7 +91,7 @@
       prev: { budget: draft.budget, nb: typeof draft.nb === 'boolean' ? draft.nb : null, off: app() ? app().backspaceOff(draft) : false, changedNb: false }
     };
     draft.challenge = c;
-    collapsed = false;
+    collapsed = true; // a slim strip under the balance; click to open the rules
     // Side effects: the budget, the backspace switch, the first line's alternatives.
     const half = item(c, 'A5');
     if (half && app()) app().setBudget(Math.max(10, half.data.target * 10));
@@ -353,7 +353,7 @@
     if (!c) { if (card && card.isConnected) { card.remove(); TDW.Tape.sync(); } return; }
     if (!card) buildCard();
     if (!card.isConnected) { document.getElementById('tape-pinned').prepend(card); TDW.Tape.sync(); }
-    card.classList.toggle('is-collapsed', collapsed);
+    card.classList.toggle('is-collapsed', collapsed && !c.setup);
     card.classList.toggle('is-met', !!c.metAt);
     const res = c.metAt && c.final ? c.final : R().evaluate(c, text(), ctxOf(c));
     if (res.ok && !c.metAt && !c.setup) { met(c); return draw(); }

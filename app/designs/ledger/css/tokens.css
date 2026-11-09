@@ -61,7 +61,7 @@
   --shadow-float: 0 0 0 1px rgba(14, 42, 92, .08), 0 2px 6px -2px rgba(14, 42, 92, .1), 0 14px 34px -14px rgba(14, 42, 92, .34);
   --scrim: rgba(14, 42, 92, .22);
   --material: color-mix(in srgb, var(--desk) 84%, transparent);
-  --guilloche: rgba(14, 42, 92, .16);
+  --guilloche: rgba(14, 42, 92, .075);
 }
 
 /* ---------- Dark: night note ---------- */
@@ -81,13 +81,14 @@
   --on-ink: #0b1426;
   --caret: #52c7d1;
   --selection: rgba(82, 199, 209, .26);
-  --hl-veryhard: rgba(229, 139, 115, .26);
-  --hl-hard: rgba(214, 180, 96, .2);
-  --hl-complex: rgba(82, 199, 209, .2);
-  --hl-adverb: rgba(160, 150, 230, .24);
-  --hl-passive: rgba(140, 190, 140, .2);
-  --hl-qualifier: #b9cbe8;
-  --hl-spelling: #e58b73;
+  --hl-veryhard: rgba(255, 150, 120, .2);
+  --hl-hard: rgba(240, 204, 110, .17);
+  --hl-complex: rgba(100, 218, 230, .17);
+  --hl-adverb: rgba(180, 168, 255, .2);
+  --hl-passive: rgba(150, 214, 150, .16);
+  --hl-qualifier: #cfdcf2;
+  --hl-line-veryhard: #ff9678; --hl-line-hard: #f0cc6e; --hl-line-complex: #64dae6; --hl-line-adverb: #b4a8ff; --hl-line-passive: #96d696;
+  --hl-spelling: #ff9d82;
   --line-1: color-mix(in srgb, var(--rule) 30%, transparent);
   --line-2: color-mix(in srgb, var(--rule) 55%, transparent);
   --hover: color-mix(in srgb, var(--ink) 8%, transparent);
@@ -97,17 +98,17 @@
   --shadow-float: 0 0 0 1px rgba(220, 236, 238, .09), 0 2px 8px rgba(0, 0, 0, .35), 0 18px 40px -16px rgba(0, 0, 0, .7);
   --scrim: rgba(2, 6, 14, .5);
   --material: color-mix(in srgb, var(--desk) 80%, transparent);
-  --guilloche: rgba(220, 236, 238, .14);
+  --guilloche: rgba(220, 236, 238, .07);
 }
 
 /* ---------- Writing faces ---------- */
-:root, [data-face="typewriter"] {
+:root, [data-face="serif"] {
+  --font-write: "Newsreader", Georgia, "Cactus Classical Serif", "Noto Serif TC", "PMingLiU", "Songti TC", serif;
+  --write-size: 21px; --write-leading: 1.55; --measure: 36em;
+}
+[data-face="typewriter"] {
   --font-write: "Courier Prime", "Courier New", "Cactus Classical Serif", "Noto Serif TC", "PMingLiU", "Songti TC", monospace;
   --write-size: 19px; --write-leading: 1.6; --measure: 64ch;
-}
-[data-face="serif"] {
-  --font-write: "Newsreader", Georgia, "Cactus Classical Serif", "Noto Serif TC", "PMingLiU", "Songti TC", serif;
-  --write-size: 21px; --write-leading: 1.5; --measure: 36em;
 }
 [data-face="sans"] {
   --font-write: "Public Sans", system-ui, "Noto Sans TC", "PingFang TC", sans-serif;

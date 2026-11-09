@@ -107,7 +107,7 @@
     const touch = UI.device.touch;
     // On a touch screen the phone's own menu sits above the selection, so this goes below.
     let top = touch ? (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 12 : top0 - h - 8;
-    if (top < 8) top = (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 8;
+    if (top < (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mast-h')) || 56) + 12) top = (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 8;
     const x = r1.lineTop === (r2 && r2.lineTop) ? (r1.left + r2.left) / 2 - w / 2 : r1.left;
     bar.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
     bar.style.top = top + 'px';

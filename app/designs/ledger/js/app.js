@@ -49,7 +49,7 @@
   const FACES = ['typewriter', 'serif', 'sans'];
   function lookOf(s) {
     const theme = THEMES.includes(s.theme) ? s.theme : s.skin === 'night' && !s.autoNight ? 'dark' : 'auto';
-    const face = FACES.includes(s.face) ? s.face : s.skin === 'ditto' ? 'serif' : 'typewriter';
+    const face = FACES.includes(s.face) ? s.face : 'serif';
     return { theme, face };
   }
   const themeNow = (s) => { const t = lookOf(s).theme; return t === 'auto' ? (darkScheme.matches ? 'dark' : 'light') : t; };
@@ -70,7 +70,7 @@
       const next = Object.assign({}, state.settings, patch);
       const was = lookOf(state.settings).theme;
       patch.theme = next.autoNight ? 'auto' : next.skin === 'night' ? 'dark' : was === 'dark' || was === 'auto' ? 'light' : was;
-      if ('skin' in patch && !('face' in patch)) patch.face = patch.skin === 'ditto' ? 'serif' : patch.skin === 'night' ? lookOf(state.settings).face : 'typewriter';
+      if ('skin' in patch && !('face' in patch)) patch.face = patch.skin === 'night' ? lookOf(state.settings).face : 'serif';
     }
     if ('theme' in patch || 'face' in patch) {
       const L = lookOf(Object.assign({}, state.settings, patch));
@@ -670,10 +670,25 @@
       if (!writeRaf) {
         writeRaf = requestAnimationFrame(() => {
           writeRaf = 0;
-          if (state.settings.typewriterScroll) Editor.typewriterScroll();
+          if (state.settings.typewriterScroll) twScroll();
         });
       }
     }
+  }
+
+  // Keep the caret line near the middle only once it has dropped below it, or climbed under the bar:
+  // a short draft never gets pushed up under the masthead.
+  function twScroll() {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0).cloneRange();
+    r.collapse(false);
+    const rc = r.getClientRects()[0] || r.getBoundingClientRect();
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    if (!rc || (!rc.top && !rc.height)) return;
+    // Everything already fits on screen: leave the page where it is.
+    if (window.scrollY < 4 && Editor.rootEl().getBoundingClientRect().bottom < vh - 72) return;
+    if (rc.top > vh * 0.45 + 24 || rc.top < 96) Editor.typewriterScroll();
   }
 
   function onCaretMove() {
@@ -684,7 +699,7 @@
     } else if (state.settings.typewriterScroll && !pointerSelecting && performance.now() - lastPointerAt > 600) {
       // Only after typing or arrow keys: a click or a selection never moves the page.
       const s = Editor.getSelection();
-      if (s.start === s.end) requestAnimationFrame(() => Editor.typewriterScroll());
+      if (s.start === s.end) requestAnimationFrame(twScroll);
     }
     if (state.mode !== 'edit') each((m) => m.onSelect && m.onSelect(Editor.getSelection()));
   }

@@ -109,7 +109,7 @@
     const h = sheetH();
     if (d === 'closed') return h + 8;
     if (d === 'peek') return h - 64 - safeBottom();
-    if (d === 'half') return Math.max(0, h - Math.round(window.innerHeight * 0.56));
+    if (d === 'half') return Math.max(0, h - Math.round(window.innerHeight * 0.42));
     return 0;
   }
   function draw(v) {

@@ -6,7 +6,7 @@
   const { Store, Sync, Account } = TDW;
   const app = () => TDW.App;
 
-  const FACES = [['typewriter', 'Typewriter', 'Courier Prime'], ['serif', 'Serif', 'Newsreader'], ['sans', 'Sans', 'Public Sans']];
+  const FACES = [['serif', 'Book', 'Newsreader'], ['sans', 'Sans', 'Public Sans'], ['typewriter', 'Typewriter', 'Courier Prime']];
   const SECTIONS = [['writing', 'Writing'], ['look', 'Look'], ['sound', 'Sound'], ['ai', 'AI help'], ['notion', 'Notion'], ['account', 'Account'], ['keys', 'Keys']];
   const SOUNDS = [['typewriter', 'Typewriter'], ['soft', 'Soft keys'], ['off', 'Off']];
   const STEPS = [

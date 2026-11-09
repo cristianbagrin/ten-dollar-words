@@ -26,7 +26,7 @@
   function guilloche() {
     const W = 400, H = 120, mid = H / 2;
     const paths = [];
-    const N = 14;
+    const N = 22;
     for (let k = 0; k < N; k++) {
       const ph = (k / N) * Math.PI * 2;
       for (const sgn of [1, -1]) {
@@ -40,7 +40,7 @@
       }
     }
     const t = document.createElement('template');
-    t.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" fill="none" stroke="currentColor" stroke-width=".55" aria-hidden="true">' + paths.join('') + '</svg>';
+    t.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" fill="none" stroke="currentColor" stroke-width=".35" aria-hidden="true">' + paths.join('') + '</svg>';
     return t.content.firstChild;
   }
 
@@ -143,7 +143,7 @@
     const btn = li.firstChild;
     btn.dataset.line = String(it.i);
     const [t, w, c] = btn.children;
-    t.textContent = it.text;
+    t.textContent = it.kind === 'item' ? lead(it.text, 22) : it.text;
     w.textContent = it.kind === 'item' ? String(it.words) : '';
     c.textContent = it.kind === 'rule' ? '' : money(it.words * 10);
     btn.title = it.kind === 'rule' ? it.text : it.text.slice(0, 120) + (it.text.length > 120 ? '…' : '');
@@ -241,7 +241,7 @@
   /* ---------- Refunds ---------- */
   function lead(t, n) {
     const s = Inline.plain(t.replace(/\n/g, ' ')).trim();
-    return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + '…' : s;
+    return s.length > n ? s.slice(0, n + 1).replace(/\s+\S*$/, '') + '…' : s;
   }
 
   function priceOf(i) {
@@ -259,10 +259,24 @@
         return { what: i.text, amt: w * 10 };
       }
       case 'passive': return { what: i.text, word: 'rewrite' };
-      case 'hard': return { what: lead(i.text, 30), word: 'split' };
-      case 'veryHard': return { what: lead(i.text, 26), word: 'split or cut' };
+      case 'hard': return { what: lead(i.text, 34), word: 'split' };
+      case 'veryHard': return { what: lead(i.text, 30), word: 'split or cut' };
       default: return { what: i.text, word: 'fix' };
     }
+  }
+
+  // A fix with exactly one way to apply it is applied straight from its row, with Undo in the toast.
+  function quickFix(i, a) {
+    const one = i.type === 'adverb' || (i.type === 'qualifier' && !(i.suggestion && i.cut)) || (i.type === 'complex' && !i.suggestion);
+    const swapTo = i.type === 'complex' && i.suggestion && i.suggestion.indexOf(', ') < 0 ? Editor.matchCase(i.text, i.suggestion) : null;
+    if (!one && swapTo === null) return null;
+    return () => {
+      if (Editor.getText().slice(i.start, i.end) !== i.text) { TDW.UI.toast('That text changed. Pick the fix again.'); return; }
+      const sent = a.sentenceList.find((r) => r.start <= i.start && i.start < r.end);
+      const saved = swapTo !== null ? app().edit(i.start, i.end, swapTo) : app().cut(i.start, i.end, sent ? sent.start : -1);
+      TDW.Popover.hide();
+      TDW.UI.toast(saved > 0 ? 'Saved ' + money(saved * 10) : 'Fixed', { label: 'Undo', run: () => Editor.undo() });
+    };
   }
 
   function renderRefunds(a, words) {
@@ -283,8 +297,12 @@
       },
       el('span', { class: 'refund-sw sw-' + i.type, 'aria-hidden': 'true' }),
       el('span', { class: 'refund-what' }, p.what, el('span', { class: 'refund-kind', text: KIND[i.type] })),
-      el('span', { class: 'refund-amt' + (p.amt ? '' : ' is-word'), text: p.amt ? money(p.amt) : p.word }));
+      el('span', { class: 'refund-amt' + (p.amt ? '' : ' is-word'), text: p.amt ? 'Save ' + money(p.amt) : p.word }));
+      line.title = p.what;
+      const quick = p.amt ? quickFix(i, a) : null;
+      if (quick) line.classList.add('is-quick');
       line.addEventListener('click', () => {
+        if (quick) { quick(); return; }
         if (openId === i.id) { TDW.Popover.hide(); return; }
         Editor.select(i.start, i.end);
         TDW.Popover.show(i, { from: 'tape' });
@@ -348,8 +366,7 @@
     renderRefunds(a, words);
     const total = $('refund-total').textContent;
     $('panel-summary').replaceChildren(
-      el('span', { text: 'Receipt' }),
-      words && a ? el('span', { class: 'gs-k', text: 'Grade ' + a.grade }) : null,
+      el('span', { text: words && a ? 'Grade ' + a.grade : 'Receipt' }),
       el('span', null, el('span', { class: 'gs-k', text: total ? 'Refunds ' : '' }), el('span', { class: 'gs-fig', text: total })));
   }
 
