@@ -85,8 +85,10 @@
     const issue = list[index];
     app().state.cycle = { type, index };
     if (app().state.settings.highlights[type] === false) app().toggleHighlight(type);
+    if (TDW.UI.isNarrow() && TDW.Inspector.isOpen() && TDW.Inspector.detent() === 'peek') TDW.Inspector.setDetent('half', { damping: 1 });
     Editor.select(issue.start, issue.end);
     TDW.Popover.show(issue, { index, total: list.length });
+    if (TDW.UI.isNarrow()) requestAnimationFrame(() => rows[type].li.scrollIntoView({ block: 'start', behavior: 'smooth' }));
   }
 
   /* ---------- The money: chip, rule, register ---------- */
@@ -149,9 +151,12 @@
     if (refundEl) refundEl.remove();
     const chip = $('spend-chip');
     const node = el('span', { class: 'refund', 'aria-hidden': 'true', text: '−' + money(refundTotal) });
-    chip.append(node);
+    // Hung on the toolbar, not the chip: the chip is redrawn with every keystroke.
+    const r = chip.getBoundingClientRect();
+    node.style.left = Math.round(r.right - 8) + 'px'; node.style.top = Math.round(r.bottom + 2) + 'px';
+    document.body.append(node);
     refundEl = node;
-    setTimeout(() => { node.remove(); if (refundEl === node) refundEl = null; }, 900);
+    setTimeout(() => { node.remove(); if (refundEl === node) refundEl = null; }, 1500);
   }
 
   /* ---------- Budget: a small menu under the chip ---------- */

@@ -29,6 +29,7 @@
   --selection: rgba(169, 203, 208, .55);
   --hl-veryhard: #f6c4ca; --hl-hard: #ece5c3; --hl-complex: #ecd8e4; --hl-passive: #d8e4c9; --hl-adverb: #d3e3e5;
   --hl-qualifier: #3a66cc; --hl-spelling: #c23b4a;
+  --sw-veryhard: #d6402e; --sw-hard: #b07a0a; --sw-complex: #7d55c4; --sw-passive: #4a8f2a; --sw-adverb: #1c8a96;
   --shadow-float: 0 0 0 1px rgba(29, 35, 29, .07), 0 2px 4px rgba(29, 35, 29, .06), 0 10px 28px -6px rgba(29, 35, 29, .2);
   --shadow-deep: 0 0 0 1px rgba(29, 35, 29, .08), 0 8px 18px rgba(29, 35, 29, .1), 0 28px 64px -16px rgba(29, 35, 29, .32);
   --scrim: rgba(29, 35, 29, .28);
@@ -47,6 +48,7 @@
   --hl-veryhard: #70303d; --hl-hard: #5c5424; --hl-complex: #602f55;
   --hl-passive: #3a5a2c; --hl-adverb: #25555f;
   --hl-qualifier: #7fa2f0; --hl-spelling: #ff8a8f;
+  --sw-veryhard: #ff7f7a; --sw-hard: #e6c14d; --sw-complex: #b79cf0; --sw-passive: #8fd36b; --sw-adverb: #5cc8d8;
   --shadow-float: 0 0 0 1px rgba(255, 255, 255, .07), 0 2px 4px rgba(0, 0, 0, .3), 0 12px 30px -6px rgba(0, 0, 0, .6);
   --shadow-deep: 0 0 0 1px rgba(255, 255, 255, .08), 0 8px 18px rgba(0, 0, 0, .35), 0 30px 70px -16px rgba(0, 0, 0, .7);
   --scrim: rgba(0, 0, 0, .5);
@@ -380,6 +382,11 @@ dialog .toast { position: fixed; }
 .tb-count { padding: 0 6px; color: var(--ink-2); font-size: var(--t-sm); white-space: nowrap; }
 .tb-count.is-selection { color: var(--ink); }
 .tb-count:empty { display: none; }
+.insp-tabs .insp-more { display: none; }
+.tb-mode { display: inline-flex; margin-right: 6px; }
+.mode-seg .seg-opt { height: 22px; padding: 0 11px; }
+.mode-seg .seg-opt[aria-checked="true"] { background: var(--page); color: var(--ink); box-shadow: 0 0 0 1px var(--line-2), 0 1px 1px rgba(29,35,29,.08); }
+.mode-seg .seg-opt[aria-checked="true"][data-value="edit"] { background: var(--emerald); color: var(--on-emerald); box-shadow: none; }
 .tb-sep { width: 1px; height: 16px; margin: 0 4px; background: var(--line); }
 .tb-btn {
   display: inline-flex; align-items: center; gap: 3px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--r-sm);
@@ -408,8 +415,8 @@ html.is-credit .money-fill { filter: brightness(1.25); }
 html.is-over .spend-chip { background: var(--plum); color: var(--on-plum); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--on-plum) 40%, transparent); }
 html.is-over .spend-chip .chip-spent, html.is-over .spend-chip .chip-budget { color: var(--on-plum); }
 .refund {
-  position: absolute; right: 6px; top: -2px; pointer-events: none; color: var(--emerald);
-  font: 700 14px/1 var(--font-ui); font-variant-numeric: tabular-nums; animation: refund-rise 1400ms var(--ease) forwards;
+  position: fixed; transform-origin: right top; translate: -100% 0; pointer-events: none; color: var(--emerald); z-index: 120;
+  font: 700 13px/1 var(--font-ui); font-variant-numeric: tabular-nums; animation: refund-rise 1400ms var(--ease) forwards;
 }
 @keyframes refund-rise { from { transform: translateY(6px); opacity: 0; } 15% { opacity: 1; } 70% { opacity: 1; } to { transform: translateY(-12px); opacity: 0; } }
 .tb-nb[aria-pressed="true"] { color: var(--plum); background: var(--plum-wash); }
@@ -561,7 +568,7 @@ html.tw-scroll.is-focus .page { padding-bottom: 60vh; }
   html.is-swiping .page, html.is-swiping .toolbar, html.is-swiping .phone-bar { will-change: transform; }
   .sheet { max-width: 100%; }
   .toolbar { z-index: 13; left: 0; right: 0; padding: var(--safe-t) 4px 0 0; gap: 4px; }
-  .tb-new, .tb-lib, .tb-title, .tb-count, .tb-sep, .tb-format, .tb-share, .tb-insp, .tb-slot { display: none !important; }
+  .tb-mode, .tb-new, .tb-lib, .tb-title, .tb-count, .tb-sep, .tb-format, .tb-share, .tb-insp, .tb-slot { display: none !important; }
   .tb-back {
     display: inline-flex; align-items: center; gap: 0; height: 44px; padding: 0 10px 0 4px; border: 0; background: transparent;
     color: var(--emerald); font: 400 17px/1 var(--font-ui);
@@ -606,7 +613,19 @@ html.tw-scroll.is-focus .page { padding-bottom: 60vh; }
     -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
   }
   .insp-tab { font-size: 15px; }
+  .insp-tab:not([aria-selected="true"]):not(.insp-more):not([data-tab="review"]) { display: none; }
+  .insp-tabs { -webkit-mask-image: none; mask-image: none; padding-right: 16px; overflow: visible; }
+  .insp-tabs .insp-more { display: inline-flex; margin-left: auto; color: var(--ink-2); }
+  .insp-more::after { display: none; }
   .insp-nav { touch-action: none; padding-top: 0; height: 44px; }
+  /* Only the part of the sheet above the screen's bottom edge scrolls, so every row is reachable at any detent. */
+  .insp-body { flex: none; max-height: max(120px, calc(var(--sheet-cover) - 86px)); }
+  /* The peek: the total, then the first fixes. Everything else waits for half or full. */
+  html[data-detent="peek"] #reg-stats, html[data-detent="peek"] #readability, html[data-detent="peek"] #ai-desk,
+  html[data-detent="peek"] .issue-row.is-zero { display: none; }
+  .issue-row.is-zero { display: none; }
+  html[data-detent="peek"] .insp-pane { padding-top: 0; }
+  html[data-detent="peek"] #register { padding-bottom: 6px; margin-bottom: 0; border-bottom: 0; }
   .insp-pane { padding: 4px 16px calc(40px + var(--safe-b)); }
   html.is-sheet-dragging .inspector { transition: none; }
   .toast { left: 50%; bottom: calc(68px + var(--safe-b) + var(--kb)); }

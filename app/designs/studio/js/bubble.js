@@ -107,9 +107,17 @@
     const w = bar.offsetWidth, h = bar.offsetHeight;
     const top0 = Math.min(r1.lineTop, r2 ? r2.lineTop : r1.lineTop);
     const touch = UI.device.touch;
-    // On a touch screen the phone's own menu sits above the selection, so this goes below.
-    let top = touch ? (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 12 : top0 - h - 8;
-    if (top < 8) top = (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 8;
+    // Under the selection by default: above it the bar would sit on the line before, or on the toolbar.
+    // It goes above only when there is no room below (the sheet or the bottom of the screen).
+    const below = (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + (touch ? 12 : 6);
+    const cover = parseFloat(document.documentElement.style.getPropertyValue('--sheet-cover')) || 0;
+    const limit = (window.visualViewport ? window.visualViewport.height : window.innerHeight) - cover - 8;
+    let top = below;
+    if (below + h > limit && !touch) {
+      const above = top0 - h - 6;
+      const tb = document.getElementById('toolbar');
+      if (above > (tb ? tb.getBoundingClientRect().bottom : 0) + 4) top = above;
+    }
     const x = r1.lineTop === (r2 && r2.lineTop) ? (r1.left + r2.left) / 2 - w / 2 : r1.left;
     bar.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
     bar.style.top = top + 'px';

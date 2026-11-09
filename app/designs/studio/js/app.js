@@ -171,7 +171,12 @@
   }
   // The library's spend and dates follow the typing, a little behind it.
   let listTimer = 0;
-  function scheduleList() { clearTimeout(listTimer); listTimer = setTimeout(() => { Library.render(); }, 400); }
+  function scheduleList(ms) { clearTimeout(listTimer); listTimer = setTimeout(() => {
+    // The open draft's row reads the same text as the header, not the last saved copy.
+    const d = state.draft;
+    if (d && !state.loading) { d.text = Editor.getText(); d.ann = Editor.getAnnotations(); }
+    Library.render();
+  }, ms == null ? 250 : ms); }
 
   /* ---------- Formats ---------- */
   const foldCache = new Map();
@@ -375,12 +380,13 @@
     Library.render();
   }
 
-  const MODULES = ['Alts', 'Menu', 'Overflow', 'Lab', 'Challenges', 'Desk', 'Blocks', 'Bubble', 'Notes'];
+  const MODULES = ['Alts', 'Menu', 'Overflow', 'Lab', 'Challenges', 'Desk', 'Blocks', 'Bubble', 'Notes', 'Ledger'];
   function each(fn) { for (const n of MODULES) { const m = opt(n); if (m) try { fn(m); } catch (e) { console.error(n, e); } } }
 
   // A fix that returns money gets a moment: the chip ticks down, and a toast says what came back.
   function saveToast(words) {
     UI.toast('Saved ' + UI.money(words * 10), { label: 'Undo', run: () => { Editor.undo(); Editor.focus(); } });
+    scheduleList(0);
     root.classList.remove('is-credit'); void root.offsetWidth; root.classList.add('is-credit');
     setTimeout(() => root.classList.remove('is-credit'), 1200);
   }
@@ -495,6 +501,7 @@
     if (state.mode !== 'edit') {
       Editor.setMarks([], []);
       Editor.render();
+      if (TDW.Ledger) TDW.Ledger.update();
       return;
     }
     state.analysis = analyze(masked());
@@ -503,6 +510,7 @@
     Editor.setHidden(hiddenTypes());
     Editor.render();
     Panel.render(state.analysis, state.draft, state.words);
+    if (TDW.Ledger) TDW.Ledger.update();
   }
   function refreshPanel() { if (state.mode === 'edit') Panel.render(state.analysis, state.draft, state.words); else Panel.updateAI(); }
 
@@ -557,11 +565,13 @@
     applyMode(m === 'edit' ? 'edit' : 'write');
   }
 
+  let modeSeg = null;
   function applyMode(m) {
     const changed = state.mode !== m;
     const anchor = changed ? captureAnchor() : null;
     state.mode = m;
     root.dataset.mode = m;
+    if (modeSeg) modeSeg.set(m);
     updateChrome();
     if (!changed) { refresh(); return; }
     updateAids();
@@ -617,6 +627,8 @@
       movedRaf = 0;
       const b = opt('Bubble');
       if (b && b.reposition) b.reposition();
+      const lg = opt('Ledger');
+      if (lg && lg.reposition) lg.reposition();
       const bl = opt('Blocks');
       if (bl && bl.hideHandle) bl.hideHandle();
     });
@@ -680,7 +692,6 @@
     let s = m ? m[0] : flat;
     const max = 44;
     if (s.length > max) { s = s.slice(0, max + 1); s = s.slice(0, Math.max(s.lastIndexOf(' '), 12)).replace(/[,;:\s-]+$/, '') + '…'; }
-    else s = s.replace(/[.]+$/, '');
     return s;
   }
   function updateTitle() {
@@ -700,6 +711,15 @@
   }
 
   function buildToolbar() {
+    modeSeg = UI.segmented({
+      label: 'Mode', value: state.mode, class: 'mode-seg',
+      options: [
+        { value: 'write', label: 'Write', tip: 'Write: just the page. Folds the library and inspector away' },
+        { value: 'edit', label: 'Review', tip: 'Review: the inspector opens with the fixes marked on the page' }
+      ],
+      onChange: (v) => (v === 'edit' ? setMode('edit', { tab: 'review' }) : setMode('write'))
+    });
+    $('mode-slot').append(modeSeg);
     $('btn-insp').append(icon('inspector'));
     $('btn-insp').addEventListener('click', toggleInspector);
     $('btn-new').append(icon('compose'));
@@ -732,6 +752,7 @@
     d.ann = Editor.getAnnotations();
     each((m) => m.onText && m.onText(text));
     markDirty();
+    scheduleList();
     syncEdit();
     Popover.hide();
     updateAids();
