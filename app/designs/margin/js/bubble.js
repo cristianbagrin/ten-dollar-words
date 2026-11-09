@@ -45,6 +45,8 @@
     const M = button('bub-more', 'More', 'Color, strikethrough, turn into, ghost, stash', TDW.icons.more, (e, b) => moreMenu(b));
     const sep = () => UI.el('span', { class: 'bub-sep', 'aria-hidden': 'true' });
     bar.append(ai, ab, N, sep(), B, I, L, sep(), M);
+    bar.addEventListener('pointerdown', (e) => e.preventDefault());
+    document.body.append(bar);
   }
 
   function moreMenu(b) {
@@ -68,8 +70,6 @@
       else if (v === 'stash') { hide(); TDW.Menu.stash(); }
       return false;
     });
-    bar.addEventListener('pointerdown', (e) => e.preventDefault());
-    document.body.append(bar);
   }
 
   // After a format change the selection is redrawn; put the bar back over it.

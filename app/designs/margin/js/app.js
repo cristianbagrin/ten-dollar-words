@@ -496,6 +496,7 @@
     m = m === 'edit' ? 'edit' : 'write';
     clearTimeout(lensTimer);
     const was = state.mode;
+    const anchor = was !== m ? captureAnchor() : null;
     state.mode = m;
     root.dataset.mode = m;
     updateAids();
@@ -513,6 +514,7 @@
     updateBackspace();
     each((x) => x.onMode && x.onMode(m));
     if (was !== m) spine('render');
+    if (anchor) { restoreAnchor(anchor); requestAnimationFrame(() => { restoreAnchor(anchor); requestAnimationFrame(() => restoreAnchor(anchor)); }); for (const ms of [60, 180, 400]) setTimeout(() => { if (state.mode === m) restoreAnchor(anchor); }, ms); }
   }
 
   const toggleLens = () => setMode(state.mode === 'edit' ? 'write' : 'edit');

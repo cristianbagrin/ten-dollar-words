@@ -76,7 +76,7 @@ html:root .spine-spend.is-over .spend-of { font-weight: 650; }
 .page {
   --measure: 62ch;
   display: block;
-  padding: calc(var(--spine-h) + var(--safe-t) + var(--s9)) 0 55vh;
+  padding: calc(var(--spine-h) + var(--safe-t) + var(--s9)) 0 90vh;
   font-family: var(--font-write); font-size: var(--write);
 }
 html[data-format="linkedin"] .page { --measure: 52ch; }
