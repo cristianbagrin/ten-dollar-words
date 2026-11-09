@@ -272,3 +272,9 @@ html.is-dragging-block, html.is-dragging-block * { cursor: grabbing !important; 
 .ln.is-dragged { opacity: .35; }
 .blk-drop { position: fixed; z-index: 27; height: 2px; border-radius: 1px; background: var(--blue-mark); pointer-events: none; }
 @media (hover: none) { .blk-handle { display: none !important; } }
+@media (max-width: 1079px) and (pointer: coarse), (max-width: 600px) {
+  .spine-title, .spine-spend, .spine-more { height: 44px; }
+  .spine-more, .spine-sync, .spine-nb { min-width: 44px; }
+  .spine-stage { display: none; }
+  .mh-tab, .menu-item { min-height: 44px; }
+}
