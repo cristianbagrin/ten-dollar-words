@@ -1,4 +1,4 @@
-/* Writing challenges on the page: the Challenge button, its menu and picker, and the card with
+/* Writing challenges in the inspector's Challenge tab: today's challenge, roll, the list, and the card with
    the live checklist. Challenges only check; they never stop you typing. The rules live in
    challenges.js (TDW.ChallengeRules). The running challenge is saved on the draft as
    d.challenge, so it survives a reload and travels with the account. */
@@ -14,7 +14,6 @@
   const TICK_MS = 1000;
 
   let draft = null;
-  let btn = null, card = null, picker = null;
   let timer = 0;
   let renderRaf = 0;
   let aiCtrl = null;
@@ -23,7 +22,6 @@
   let ghostedSinceType = false;
   let selfChange = false;   // our own edits (D3's ghost) aren't typing
   let lastTickAt = 0;
-  let collapsed = false;
 
   /* ---------- Small storage helpers (this browser only) ---------- */
 
@@ -91,7 +89,6 @@
       prev: { budget: draft.budget, nb: typeof draft.nb === 'boolean' ? draft.nb : null, off: app() ? app().backspaceOff(draft) : false, changedNb: false }
     };
     draft.challenge = c;
-    collapsed = false;
     // Side effects: the budget, the backspace switch, the first line's alternatives.
     const half = item(c, 'A5');
     if (half && app()) app().setBudget(Math.max(10, half.data.target * 10));
@@ -109,6 +106,7 @@
     save();
     ensureTimer();
     render();
+    if (c.setup === 'topic' && app() && app().openTab) app().openTab('challenge');
   }
 
   // Back to how things were: the budget A5/A6 changed, the switch D2 turned on.
@@ -323,7 +321,7 @@
     else TDW.UI.toast('Put the caret on your first line and open its alternatives to write each opening.');
   }
 
-  /* ---------- Drawing ---------- */
+  /* ---------- Drawing: the Challenge tab and the chip in the toolbar ---------- */
 
   function render() {
     cancelAnimationFrame(renderRaf);
@@ -340,192 +338,154 @@
         return left > 0 ? mmss(left) : '0:00';
       }
     }
-    if (has(c, 'A6')) return R().get('A6').budgetAt(item(c, 'A6').data, c.activeMs || 0) === draft.budget ? TDW.UI.money(draft.budget) : '';
+    if (has(c, 'A6')) return TDW.UI.money(draft.budget);
     return '';
   }
 
+  let tab = null, runEl = null, homeEl = null, chip = null, homeLevel = null;
+
   function draw() {
-    if (btn) {
-      btn.classList.toggle('is-on', !!ch());
-      btn.setAttribute('aria-pressed', String(!!ch()));
-    }
+    if (!tab) return;
     const c = ch();
-    if (!c) { if (card) card.hidden = true; return; }
-    if (!card) buildCard();
-    card.hidden = false;
-    card.classList.toggle('is-collapsed', collapsed);
-    card.classList.toggle('is-met', !!c.metAt);
+    homeEl.hidden = !!c;
+    runEl.hidden = !c;
+    TDW.Inspector.setBadge('challenge', c && !c.metAt ? '•' : '');
+    if (!c) { drawChip(null); if (homeLevel !== level()) drawHome(); return; }
     const res = c.metAt && c.final ? c.final : R().evaluate(c, text(), ctxOf(c));
     if (res.ok && !c.metAt && !c.setup) { met(c); return draw(); }
+    drawChip(c, res);
+    drawRun(c, res);
+  }
 
-    const head = card.querySelector('.ch-head');
+  function drawChip(c, res) {
+    if (!chip) return;
+    if (!c) { chip.hidden = true; return; }
+    const total = res.items.reduce((n, x) => n + x.rules.length, 0);
+    const ok = res.items.reduce((n, x) => n + x.rules.filter((r) => r.ok).length, 0);
+    const name = res.items.map((x) => x.name).join(' + ');
+    chip.hidden = false;
+    chip.classList.toggle('is-met', !!c.metAt);
+    const clock = c.metAt ? '' : clockOf(c);
+    chip.replaceChildren(el('span', { class: 'chc-name', text: name }),
+      el('span', { class: 'chc-state', text: c.metAt ? 'Met' : clock || ok + ' of ' + total }));
+    chip.setAttribute('aria-label', 'Challenge: ' + name + (c.metAt ? ', met' : ', ' + ok + ' of ' + total + ' rules met' + (clock ? ', ' + clock + ' left' : '')) + '. Show it');
+  }
+
+  function drawRun(c, res) {
     const title = res.items.map((x) => x.name).join(' + ');
     const lv = c.items.find((it) => it.level);
-    head.querySelector('.ch-title').textContent = (c.daily ? 'Today: ' : '') + title;
-    head.querySelector('.ch-level').textContent = lv ? R().LEVEL_NAMES[lv.level] : '';
-    head.querySelector('.ch-clock').textContent = c.metAt ? '' : clockOf(c);
-
-    const body = card.querySelector('.ch-body');
-    const kids = [];
+    const kids = [el('div', { class: 'ch-head' },
+      el('div', { class: 'ch-titles' }, el('span', { class: 'rv-label', text: c.daily ? 'Today’s challenge' : c.combo ? 'Combo' : 'Challenge' }),
+        el('h3', { class: 'ch-title', text: title })),
+      el('div', { class: 'ch-side' }, lv ? el('span', { class: 'tag', text: R().LEVEL_NAMES[lv.level] }) : null,
+        !c.metAt && clockOf(c) ? el('span', { class: 'ch-clock', 'aria-label': 'Time left', text: clockOf(c) }) : null))];
     if (c.setup === 'topic') {
-      const input = el('input', { class: 'ch-topic', type: 'text', placeholder: 'What’s this piece about?', 'aria-label': 'What this piece is about', value: c.topic || '' });
-      const go = el('button', { type: 'button', class: 'btn ch-go', text: 'Set it up' });
+      const input = el('input', { class: 'field', type: 'text', placeholder: 'What’s this piece about?', 'aria-label': 'What this piece is about', value: c.topic || '' });
+      const go = el('button', { type: 'button', class: 'btn btn-sm', text: 'Set it up' });
       const submit = () => { c.topic = input.value.trim(); if (!c.topic) { input.focus(); return; } runSet(); };
       go.addEventListener('click', submit);
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } if (e.key === 'Escape') { e.preventDefault(); TDW.Editor.focus(); } });
       kids.push(el('p', { class: 'ch-desc', text: res.items.map((x) => x.desc).join(' ') }),
-        el('p', { class: 'ch-hint', text: 'One line is enough. The AI shapes the challenge around it.' }), el('div', { class: 'ch-row' }, input, go));
-      body.replaceChildren(...kids);
-      if (document.activeElement !== input && !body.contains(document.activeElement)) setTimeout(() => input.focus(), 0);
-      drawActions(c, res);
+        el('p', { class: 'hint', text: 'One line is enough. The AI shapes the challenge around it.' }), el('div', { class: 'ch-row' }, input, go));
+      runEl.replaceChildren(...kids, actions(c));
+      if (TDW.Inspector.tab() === 'challenge' && document.activeElement !== input && !runEl.contains(document.activeElement)) setTimeout(() => input.focus(), 0);
       return;
     }
-    if (c.setup === 'loading') {
-      kids.push(el('p', { class: 'ch-desc ch-dance', text: 'Setting up your challenge…' }));
-    } else if (c.setup === 'error') {
-      kids.push(el('p', { class: 'ch-error', text: c.error }), el('button', { type: 'button', class: 'btn-outline', text: 'Try again', onclick: runSet }));
-    } else {
+    if (c.setup === 'loading') kids.push(el('p', { class: 'ch-desc busy-dots', text: 'Setting up your challenge' }));
+    else if (c.setup === 'error') kids.push(el('p', { class: 'ai-error', text: c.error }), el('button', { type: 'button', class: 'btn btn-outline btn-sm', text: 'Try again', onclick: runSet }));
+    else {
       for (const x of res.items) {
         if (res.items.length > 1) kids.push(el('div', { class: 'ch-sub', text: x.name }));
         kids.push(el('p', { class: 'ch-desc', text: x.desc }));
-        const ul = el('ul', { class: 'ch-rules' });
-        for (const r of x.rules) {
-          ul.append(el('li', { class: 'ch-rule' + (r.ok ? ' is-ok' : '') + (r.judge ? ' is-judge' : '') },
-            el('span', { class: 'ch-mark', 'aria-hidden': 'true', text: r.ok ? '✓' : r.judge ? '?' : '✗' }),
-            el('span', { class: 'ch-label', text: r.label }),
-            r.detail ? el('span', { class: 'ch-detail', text: r.detail }) : null,
-            el('span', { class: 'sr-only', text: r.ok ? ' (done)' : ' (not yet)' })));
-        }
-        kids.push(ul);
+        kids.push(el('ul', { class: 'ch-rules' }, x.rules.map((r) => el('li', { class: 'ch-rule' + (r.ok ? ' is-ok' : '') + (r.judge ? ' is-judge' : '') },
+          el('span', { class: 'ch-mark', 'aria-hidden': 'true' }, r.ok ? TDW.UI.icon('check') : r.judge ? '?' : ''),
+          el('span', { class: 'ch-label', text: r.label }),
+          r.detail ? el('span', { class: 'ch-detail', text: r.detail }) : null,
+          el('span', { class: 'sr-only', text: r.ok ? ' (done)' : ' (not yet)' })))));
         const e9 = x.id === 'E9' ? item(c, 'E9') : null;
-        if (e9 && (e9.data.questions || []).length) {
-          const q = e9.data.questions[e9.data.questions.length - 1];
-          kids.push(el('blockquote', { class: 'ch-question', text: q.q }));
-        }
+        if (e9 && (e9.data.questions || []).length) kids.push(el('blockquote', { class: 'ch-question page-quote', text: e9.data.questions[e9.data.questions.length - 1].q }));
       }
-      if (c.error) kids.push(el('p', { class: 'ch-error', text: c.error }));
-      if (busy) kids.push(el('p', { class: 'ch-hint ch-dance', text: busy === 'judge' ? 'Judging…' : busy === 'skeptic' ? 'The skeptic is reading…' : 'Thinking…' }));
+      if (c.error) kids.push(el('p', { class: 'ai-error', text: c.error }));
+      if (busy) kids.push(el('p', { class: 'hint busy-dots', text: busy === 'judge' ? 'Judging' : busy === 'skeptic' ? 'The skeptic is reading' : 'Thinking' }));
     }
-    if (c.metAt) kids.push(el('div', { class: 'stamp ch-stamp', text: 'Challenge met' }));
-    body.replaceChildren(...kids);
-    drawActions(c, res);
+    if (c.metAt) kids.push(el('div', { class: 'ch-met' }, el('span', { class: 'ch-stamp', text: 'Challenge met' }), streakLine()));
+    runEl.replaceChildren(...kids, actions(c));
   }
 
-  function drawActions(c, res) {
-    const bar = card.querySelector('.ch-actions');
+  function actions(c) {
     const acts = [];
     const judgeable = c.items.some((it) => { const r = R().get(it.id); return r && r.ai && r.ai.includes('judge'); });
-    if (!c.metAt && !c.setup && judgeable) {
-      acts.push(el('button', { type: 'button', class: 'btn', text: 'Judge it', disabled: !!busy || !hasAI(), title: hasAI() ? null : 'Add your Gemini key in Settings', onclick: judge }));
-    }
-    if (!c.metAt && has(c, 'E9') && !c.setup) acts.push(el('button', { type: 'button', class: 'btn-outline', text: 'Ask the skeptic', disabled: !!busy || !hasAI(), onclick: skeptic }));
-    if (!c.metAt && has(c, 'E14')) acts.push(el('button', { type: 'button', class: 'btn-quiet', text: 'Write openings', onclick: openHooks }));
-    acts.push(el('button', { type: 'button', class: 'btn-quiet ch-end', text: c.metAt ? 'Done' : 'Give up', onclick: () => finish() }));
-    if (!res) res = null;
-    bar.replaceChildren(...acts);
+    if (!c.metAt && !c.setup && judgeable) acts.push(el('button', { type: 'button', class: 'btn btn-sm', text: 'Judge it', disabled: !!busy || !hasAI(), onclick: judge }));
+    if (!c.metAt && has(c, 'E9') && !c.setup) acts.push(el('button', { type: 'button', class: 'btn btn-outline btn-sm', text: 'Ask the skeptic', disabled: !!busy || !hasAI(), onclick: skeptic }));
+    if (!c.metAt && has(c, 'E14')) acts.push(el('button', { type: 'button', class: 'btn btn-outline btn-sm', text: 'Write openings', onclick: openHooks }));
+    acts.push(el('button', { type: 'button', class: 'btn btn-sm ' + (c.metAt ? '' : 'btn-quiet ch-end'), text: c.metAt ? 'Done' : 'Give up', onclick: () => finish() }));
+    return el('div', { class: 'row-start ch-actions' }, acts);
   }
 
-  function buildCard() {
-    card = el('section', { class: 'ch-card', 'aria-label': 'Writing challenge', 'aria-live': 'polite', hidden: true },
-      el('header', { class: 'ch-head' },
-        el('button', { type: 'button', class: 'ch-toggle', 'aria-label': 'Show or hide the challenge', onclick: () => { collapsed = !collapsed; render(); } },
-          el('span', { class: 'ch-title' }), el('span', { class: 'ch-level' })),
-        el('span', { class: 'ch-clock', 'aria-label': 'Time left' })),
-      el('div', { class: 'ch-body' }),
-      el('div', { class: 'ch-actions' }));
-    document.body.append(card);
+  function streakLine() {
+    const s = readJSON(STREAK_KEY, null);
+    const n = R().streakNow(s, today());
+    const text = n ? n + (n === 1 ? ' day' : ' days') + ' in a row' + (s.best > n ? ', best ' + s.best : '') : s && s.best ? 'Best streak: ' + s.best + (s.best === 1 ? ' day' : ' days') : 'Meet one today to start a streak.';
+    return el('p', { class: 'ch-streak', text });
   }
 
-  /* ---------- The menu and the picker ---------- */
-
-  function openMenu() {
+  /* ---------- The tab with no challenge running: today's, roll, level, every challenge ---------- */
+  function drawHome() {
     const R_ = R();
     const lv = level();
+    homeLevel = lv;
+    const ai = hasAI();
     const d = R_.daily(today());
     const dc = R_.get(d.id);
-    const ai = hasAI();
-    const items = [
-      { label: 'Roll a challenge', value: 'roll' },
-      { label: 'Roll a combo', value: 'combo', note: '2 or 3 that fit' },
-      { label: 'Pick one…', value: 'pick' },
-      { label: 'Today’s challenge', value: 'daily', note: dc.name },
-      { type: 'sep' }
-    ];
-    for (const l of R_.LEVELS) items.push({ label: R_.LEVEL_NAMES[l], value: 'level:' + l, checked: l === lv });
-    if (ch()) items.push({ type: 'sep' }, { label: ch().metAt ? 'Clear the challenge' : 'Give up this one', value: 'end', danger: !ch().metAt });
-    const s = readJSON(STREAK_KEY, null);
-    const n = R_.streakNow(s, today());
-    const extra = el('div', { class: 'ch-streak' },
-      n ? n + (n === 1 ? ' day' : ' days') + ' in a row' + (s.best > n ? ' · best ' + s.best : '') : s && s.best ? 'Best streak: ' + s.best + (s.best === 1 ? ' day' : ' days') : 'Meet one today to start a streak',
-      ai ? null : el('div', { class: 'ch-note', text: 'Add a Gemini key in Settings for the AI challenges.' }));
-    TDW.UI.menu(btn, items, (it) => {
-      const ctx = { budget: draft ? draft.budget : 2000 };
-      if (it.value === 'roll') start([R_.roll({ ai })], level());
-      else if (it.value === 'combo') start(R_.combo({ ai, ctx, level: level() }), level());
-      else if (it.value === 'pick') { setTimeout(openPicker, 0); }
-      else if (it.value === 'daily') start([d.id], d.level, { daily: today(), seed: d.seed });
-      else if (it.value === 'end') finish();
-      else if (it.value.startsWith('level:')) { writeJSON(LEVEL_KEY, it.value.slice(6)); return true; }
-      return false;
-    }, extra);
-  }
-
-  function openPicker() {
-    closePicker();
-    const R_ = R();
-    const ai = hasAI();
-    const list = el('div', { class: 'ch-picker-list' });
+    const ctx = { budget: draft ? draft.budget : 2000 };
+    const levelSeg = TDW.UI.segmented({
+      label: 'Difficulty', value: lv, options: R_.LEVELS.map((l) => ({ value: l, label: R_.LEVEL_NAMES[l] })),
+      onChange: (v) => { writeJSON(LEVEL_KEY, v); drawHome(); }
+    });
+    const list = el('div', { class: 'ch-list' });
     for (const cat of R_.CATEGORIES) {
-      list.append(el('h3', { class: 'ch-cat', text: cat.name }));
+      list.append(el('h4', { class: 'ch-cat', text: cat.name }));
       for (const c of R_.LIST.filter((x) => x.cat === cat.key)) {
-        const p = R_.paramsOf(c, level());
-        const sample = c.start && !c.set ? '' : '';
-        const desc = c.desc(p, {}, { budget: draft ? draft.budget : 2000 });
+        const p = R_.paramsOf(c, lv);
+        const off = c.ai && !ai;
         list.append(el('button', {
-          type: 'button', class: 'ch-pick' + (c.ai && !ai ? ' is-off' : ''), disabled: c.ai && !ai,
-          title: c.ai && !ai ? 'Needs a Gemini key (Settings)' : null,
-          onclick: () => { closePicker(); start([c.id], level()); TDW.Editor.focus(); }
-        }, el('span', { class: 'ch-pick-name', text: c.name }), el('span', { class: 'ch-pick-desc', text: desc + sample }), c.ai ? el('span', { class: 'ch-pick-ai', text: 'AI' }) : null));
+          type: 'button', class: 'ch-pick', disabled: off, title: off ? 'Needs a Gemini key (Settings, AI)' : null,
+          onclick: () => { start([c.id], level()); }
+        }, el('span', { class: 'ch-pick-name' }, c.name, c.ai ? el('span', { class: 'tag', text: 'AI' }) : null), el('span', { class: 'ch-pick-desc', text: c.desc(p, {}, ctx) })));
       }
     }
-    picker = el('div', { class: 'ch-picker', role: 'dialog', 'aria-label': 'Pick a challenge' },
-      el('div', { class: 'ch-picker-head' }, el('span', { text: 'Pick a challenge' }), el('span', { class: 'ch-level', text: R_.LEVEL_NAMES[level()] }),
-        el('button', { type: 'button', class: 'btn-quiet', text: 'Close', onclick: closePicker })),
-      list);
-    document.body.append(picker);
-    const first = picker.querySelector('.ch-pick:not([disabled])');
-    if (first) first.focus({ preventScroll: true });
-    setTimeout(() => document.addEventListener('pointerdown', outside, true));
-    document.addEventListener('keydown', pickerKey, true);
+    homeEl.replaceChildren(
+      el('section', { class: 'rv-sec ch-today' },
+        el('div', { class: 'rv-label', text: 'Today’s challenge' }),
+        el('div', { class: 'ch-today-row' }, el('div', null, el('h3', { class: 'ch-title', text: dc.name }), el('p', { class: 'ch-desc', text: dc.desc(R_.paramsOf(dc, d.level), {}, ctx) })),
+          el('button', { type: 'button', class: 'btn btn-sm', text: 'Start', disabled: dc.ai && !ai, onclick: () => start([d.id], d.level, { daily: today(), seed: d.seed }) })),
+        streakLine()),
+      el('section', { class: 'rv-sec' },
+        el('div', { class: 'rv-row' }, el('span', { class: 'rv-label', text: 'Difficulty' }), levelSeg),
+        el('div', { class: 'row-start' },
+          el('button', { type: 'button', class: 'btn btn-outline btn-sm', text: 'Roll a challenge', onclick: () => start([R_.roll({ ai })], level()) }),
+          el('button', { type: 'button', class: 'btn btn-outline btn-sm', text: 'Roll a combo', onclick: () => start(R_.combo({ ai, ctx, level: level() }), level()) })),
+        ai ? null : el('p', { class: 'hint' }, 'Add a Gemini key in ', el('button', { type: 'button', class: 'link-btn', text: 'Settings', onclick: () => app().openSettings('ai') }), ' for the challenges marked AI.')),
+      el('section', { class: 'rv-sec' }, el('div', { class: 'rv-label', text: 'Pick one' }), list));
   }
-  function outside(e) { if (picker && !picker.contains(e.target)) closePicker(); }
-  function pickerKey(e) {
-    if (!picker) return;
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePicker(); TDW.Editor.focus(); return; }
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      const all = [...picker.querySelectorAll('.ch-pick:not([disabled])')];
-      const i = all.indexOf(document.activeElement);
-      const n = all[(i + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length];
-      if (n) { e.preventDefault(); n.focus(); }
-    }
-  }
-  function closePicker() {
-    if (!picker) return;
-    picker.remove();
-    picker = null;
-    document.removeEventListener('pointerdown', outside, true);
-    document.removeEventListener('keydown', pickerKey, true);
+
+  function build() {
+    tab = TDW.Inspector.pane('challenge');
+    runEl = el('div', { class: 'ch-run rv-sec', 'aria-live': 'polite', hidden: true });
+    homeEl = el('div', { class: 'ch-home' });
+    tab.append(runEl, homeEl);
+    chip = el('button', { type: 'button', class: 'ch-chip', hidden: true, onclick: () => app().openTab('challenge') });
+    const slot = document.getElementById('tb-challenge-slot');
+    if (slot) slot.append(chip);
+    drawHome();
   }
 
   /* ---------- The module ---------- */
 
   TDW.Challenges = {
     init() {
-      const slot = document.getElementById('dock-center');
-      if (!slot || btn) return;
-      btn = el('button', { type: 'button', class: 'dock-btn ch-btn', 'aria-haspopup': 'menu', title: 'Writing challenges', text: 'Challenge' });
-      btn.addEventListener('click', openMenu);
-      slot.append(btn);
+      if (tab) return;
+      build();
       document.addEventListener('visibilitychange', () => { lastTickAt = Date.now(); });
     },
     load(d) {
@@ -537,23 +497,21 @@
       lastTickAt = Date.now();
       const c = ch();
       if (c && !Array.isArray(c.items)) draft.challenge = null;
-      if (c && c.setup === 'loading') c.setup = 'error', c.error = 'Setting up was interrupted.';
+      if (c && c.setup === 'loading') { c.setup = 'error'; c.error = 'Setting up was interrupted.'; }
       ensureTimer();
+      homeLevel = null;
       render();
     },
-    reload(d) {
-      draft = d;
-      ensureTimer();
-      render();
-    },
-    onText(t) {
+    reload(d) { draft = d; ensureTimer(); render(); },
+    onText() {
       if (!ch()) return;
       if (!selfChange) { lastTypeAt = Date.now(); ghostedSinceType = false; }
       maybeSkeptic(text());
       render();
     },
     onMode() { render(); },
-    // For tests and the console.
+    onTab(t) { if (t === 'challenge' && !ch()) { homeLevel = null; render(); } },
+    open: () => app().openTab('challenge'),
     start: (ids, lv) => start(Array.isArray(ids) ? ids : [ids], lv || level()),
     finish: () => finish(),
     current: () => ch(),

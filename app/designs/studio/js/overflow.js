@@ -1,149 +1,79 @@
-/* Overflow: a per-draft scratch area beside the page for cut passages, notes, links, words you
-   like, an outline. It isn't part of the post: no words, no $, no spelling. Markdown-lite, one
-   paragraph per line, like the draft. In Notion it's one toggle block titled "Overflow" at the
-   bottom of the page (see sync.js). */
+/* Overflow: a per-draft scratch area for cut passages, notes, links, words you like, an outline.
+   It lives in the inspector's Overflow tab. It isn't part of the post: no words, no $, no
+   spelling. Markdown-lite, one paragraph per line, like the draft. In Notion it's one toggle
+   block titled "Overflow" at the bottom of the page (see sync.js). */
 (function () {
   'use strict';
   const TDW = window.TDW = window.TDW || {};
-  const $ = (id) => document.getElementById(id);
   const app = () => TDW.App;
   const UI = () => TDW.UI;
 
   const SOFT_CAP = 50 * 1024;
   const MD_TYPE = 'application/x-tdw-markdown';
   const SAVE_MS = 300;
-  const PEEK_MS = 1600;
 
-  let panel = null, area = null, btn = null;
+  let area = null, countEl = null;
   let draft = null;
-  let open = false;
   let saveTimer = 0;
-  let peekTimer = 0;
   let warned = false;
 
-  const isOpen = () => open;
   const valueOf = (d) => String((d && d.overflow) || '');
-
-  /* ---------- Building ---------- */
+  const isOpen = () => !!TDW.Inspector && TDW.Inspector.isOpen() && TDW.Inspector.tab() === 'overflow' && !TDW.Inspector.pushed();
 
   function build() {
-    panel = document.createElement('aside');
-    panel.id = 'overflow';
-    panel.className = 'overflow';
-    panel.setAttribute('aria-label', 'Overflow');
-    panel.hidden = true;
-
-    const head = document.createElement('div');
-    head.className = 'ov-head';
-    const title = document.createElement('h2');
-    title.className = 'ov-title';
-    title.textContent = 'Overflow';
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'btn-icon ov-close';
-    close.setAttribute('aria-label', 'Close Overflow');
-    close.title = 'Close (Ctrl+Shift+O)';
-    if (UI() && UI().icon) close.append(UI().icon('close')); else close.textContent = '×';
-    close.addEventListener('click', () => setOpen(false, true));
-    head.append(title, close);
-
-    area = document.createElement('textarea');
-    area.className = 'ov-text';
-    area.spellcheck = false;
-    area.setAttribute('autocomplete', 'off');
-    area.setAttribute('autocorrect', 'off');
-    area.setAttribute('autocapitalize', 'sentences');
-    area.setAttribute('aria-label', 'Overflow: spare writing, notes and links for this draft');
-    area.placeholder = 'Spare paragraphs, notes, links, an outline. They stay here, out of the post.';
-    area.addEventListener('input', () => { clearTimeout(peekTimer); schedule(); });
+    const { el } = UI();
+    const host = TDW.Inspector.pane('overflow');
+    area = el('textarea', {
+      class: 'ov-text', spellcheck: 'false', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'sentences',
+      'aria-label': 'Overflow: spare writing, notes and links for this draft',
+      placeholder: 'Spare paragraphs, notes, links, an outline. They stay here, out of the post and out of the bill.'
+    });
+    area.addEventListener('input', () => { schedule(); count(); });
     area.addEventListener('keydown', onAreaKey);
     area.addEventListener('dragstart', onDragStart);
-    area.addEventListener('focus', () => clearTimeout(peekTimer));
     area.addEventListener('blur', () => saveNow());
-
-    const foot = document.createElement('p');
-    foot.className = 'ov-foot';
-    foot.textContent = 'ctrl+return or drag into the page to use';
-
-    panel.append(head, area, foot);
-    document.body.append(panel);
-
-    btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'dock-btn ov-toggle';
-    btn.textContent = 'Overflow';
-    btn.title = 'Overflow (Ctrl+Shift+O)';
-    btn.setAttribute('aria-expanded', 'false');
-    btn.setAttribute('aria-controls', 'overflow');
-    btn.addEventListener('mousedown', (e) => e.preventDefault()); // keep the page's caret
-    btn.addEventListener('click', () => toggle());
-    const slot = $('dock-right');
-    if (slot) slot.append(btn); else panel.prepend(btn);
+    countEl = el('span', { class: 'ov-count' });
+    host.append(
+      el('div', { class: 'ov-head' }, el('p', { class: 'rv-label', text: 'Kept beside this draft' }), countEl),
+      area,
+      el('p', { class: 'ov-foot hint', text: (UI().device.touch ? 'Select a line and drag it into the page to use it.' : UI().ctrlKeys('Ctrl+↩') + ' puts the paragraph at your caret on the page, or drag a selection in.') }));
   }
 
-  /* ---------- Open and close ---------- */
-
-  function setOpen(on, focusPage) {
-    open = !!on;
-    clearTimeout(peekTimer);
-    panel.hidden = !open;
-    panel.classList.toggle('is-peek', false);
-    document.documentElement.classList.toggle('overflow-open', open);
-    btn.setAttribute('aria-expanded', String(open));
-    btn.classList.toggle('is-on', open);
-    if (!open) {
-      saveNow();
-      if (focusPage && TDW.Editor) TDW.Editor.focus();
-    }
-    if (TDW.Editor && TDW.Editor.placeAids) requestAnimationFrame(() => TDW.Editor.placeAids());
+  function count() {
+    const n = area.value.split('\n').filter((l) => l.trim()).length;
+    countEl.textContent = n ? n + (n === 1 ? ' line' : ' lines') : '';
   }
 
-  function toggle() {
-    if (open) { setOpen(false, true); return; }
-    setOpen(true);
-    area.focus();
+  function open() {
+    if (app()) app().openTab('overflow');
+    requestAnimationFrame(() => { if (area) area.focus({ preventScroll: true }); });
   }
+  function close() { if (isOpen()) app().setMode('write', { keepLibrary: true }); }
+  function toggle() { if (isOpen()) close(); else open(); }
 
-  // After a stash: show it for a moment, then go away again unless the writer uses it.
-  function peek() {
-    if (open) { flash(); return; }
-    setOpen(true);
-    panel.classList.add('is-peek');
-    flash();
-    peekTimer = setTimeout(() => {
-      if (panel.matches(':hover') || panel.contains(document.activeElement)) return;
-      setOpen(false);
-    }, PEEK_MS);
-  }
-
+  // After a stash: the tab shows it if it's in front; otherwise a toast confirms it with a way there.
   function flash() {
     area.scrollTop = 0;
-    panel.classList.remove('is-new');
-    void panel.offsetWidth; // restart the animation
-    panel.classList.add('is-new');
+    if (isOpen()) {
+      area.classList.remove('is-new');
+      void area.offsetWidth;
+      area.classList.add('is-new');
+      return;
+    }
+    UI().toast('Moved to Overflow', { label: 'Show', run: open });
   }
 
-  /* ---------- Saving ---------- */
-
-  function schedule() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveNow, SAVE_MS);
-  }
+  function schedule() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, SAVE_MS); }
 
   function write(d, value) {
-    if (!d) return;
-    if (valueOf(d) === value) return;
+    if (!d || valueOf(d) === value) return;
     d.overflow = value;
     if (value.length > SOFT_CAP && !warned) {
       warned = true;
-      UI() && UI().toast("Overflow is getting long (over 50 KB). It still saves, but move what you won't use somewhere else.");
+      UI().toast('Overflow is over 50 KB. It still saves, but move what you won’t use somewhere else.');
     }
-    if (d === (app() && app().state.draft)) {
-      app().markDirty();
-      app().syncEdit();
-    } else if (TDW.Store) {
-      TDW.Store.saveDraft(d);
-    }
+    if (d === (app() && app().state.draft)) { app().markDirty(); app().syncEdit(); }
+    else if (TDW.Store) TDW.Store.saveDraft(d);
   }
 
   function saveNow() {
@@ -156,18 +86,15 @@
     const v = valueOf(d);
     if (area.value === v) return;
     if (document.activeElement === area) {
-      // Keep the caret near where it was while the text changes under it.
       const at = area.selectionStart, end = area.selectionEnd;
       const d0 = v.length - area.value.length;
       area.value = v;
       const move = (i) => Math.max(0, Math.min(v.length, i + (i > 0 ? d0 : 0)));
       area.setSelectionRange(move(at), move(end));
     } else area.value = v;
+    count();
   }
 
-  /* ---------- Using it on the page ---------- */
-
-  // The paragraph at the caret, or the selection when there is one.
   function pickMd() {
     const v = area.value;
     let s = area.selectionStart, e = area.selectionEnd;
@@ -185,8 +112,7 @@
     if (!md.trim()) return;
     const E = TDW.Editor;
     const text = E.getText();
-    const sel = E.getSelection();
-    let at = sel.end;
+    let at = E.getSelection().end;
     const lineStart = text.lastIndexOf('\n', at - 1) + 1;
     let lineEnd = text.indexOf('\n', at);
     if (lineEnd < 0) lineEnd = text.length;
@@ -198,23 +124,14 @@
   }
 
   function onAreaKey(e) {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-      e.preventDefault();
-      usePick();
-      return;
-    }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      setOpen(false, true);
-    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) { e.preventDefault(); usePick(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); saveNow(); TDW.Editor.focus(); }
   }
 
-  // Dragging a selection into the page: the editor's drop reads our markdown type.
   function onDragStart(e) {
     const md = area.value.slice(area.selectionStart, area.selectionEnd);
     if (!md || !e.dataTransfer) return;
-    try { e.dataTransfer.setData(MD_TYPE, md); } catch (_) { /* no custom types: plain text still goes */ }
+    try { e.dataTransfer.setData(MD_TYPE, md); } catch (_) { /* plain text still goes */ }
     e.dataTransfer.setData('text/plain', md);
     e.dataTransfer.effectAllowed = 'copy';
   }
@@ -226,32 +143,28 @@
     toggle();
   }
 
-  /* ---------- Public ---------- */
-
   TDW.Overflow = {
     init() {
-      if (panel) return;
+      if (area) return;
       build();
       document.addEventListener('keydown', onDocKey);
       window.addEventListener('pagehide', saveNow);
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); });
     },
-    // A draft was opened.
     load(d) {
-      if (!panel) return;
+      if (!area) return;
       if (draft && draft !== d) saveNow();
       draft = d;
       warned = valueOf(d).length > SOFT_CAP;
       area.value = valueOf(d);
+      count();
     },
-    // The open draft changed elsewhere (Notion, another tab, the account).
     reload(d) {
-      if (!panel || d !== draft) return;
+      if (!area || d !== draft) return;
       clearTimeout(saveTimer);
       show(d);
     },
     onMode() {},
-    // md goes on top of the open draft's Overflow (the page already let go of it).
     stash(md) {
       const s = String(md || '').replace(/^\n+|\s+$/g, '');
       const d = app() && app().state.draft;
@@ -261,10 +174,10 @@
       const cur = valueOf(d);
       const next = cur.trim() ? s + '\n' + cur : s;
       area.value = next;
+      count();
       write(d, next);
-      peek();
+      flash();
     },
-    // Alternatives whose text vanished keep their options here, one line each: "a / b / c".
     keepLost(lost) {
       const d = app() && app().state.draft;
       const lines = (lost || []).map((a) => (a.options || []).map((o) => o.text).join(' / ')).filter(Boolean);
@@ -274,11 +187,9 @@
       const cur = valueOf(d);
       const next = (cur.trim() ? cur.replace(/\s+$/, '') + '\n' : '') + lines.join('\n');
       area.value = next;
+      count();
       write(d, next);
     },
-    isOpen,
-    open: () => { if (!open) toggle(); },
-    close: () => { if (open) setOpen(false, true); },
-    toggle
+    isOpen, open, close, toggle
   };
 })();

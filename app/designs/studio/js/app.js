@@ -1,10 +1,14 @@
-/* App state, events, and boot. Loaded last. */
+/* App state, events, and boot. Loaded last.
+   Studio's model: the library (left), the page (middle) and the inspector (right).
+   - Focus (setMode('write')): both side panes folded away, no highlights, No backspace applies.
+   - Studio (setMode('edit')): the inspector is open; the fix highlights show on its Review tab.
+   On a phone the library is the home screen and the inspector is a sheet. */
 (function () {
   'use strict';
   const TDW = window.TDW;
-  const { Engine, Editor, UI, Store, Sound, Panel, Popover, Dialogs, Spell, Sync, Formats, Account, Marks } = TDW;
-  // Modules that may or may not be loaded (each sets itself up from boot).
+  const { Engine, Editor, UI, Store, Sound, Panel, Popover, Dialogs, Spell, Sync, Formats, Account, Marks, Inspector, Library } = TDW;
   const opt = (name) => TDW[name] || null;
+  const { el, icon, tip, keys, ctrlKeys, isNarrow } = UI;
 
   const APP_VERSION = '2.1.0';
   const SAMPLE_TEXT = [
@@ -18,70 +22,91 @@
   const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
   const PLACEHOLDER = 'Start typing. Every word costs $10.';
   const BUMP = { pan: 0, gain: 0.6 };
-  const SYNC_LABEL = { syncing: 'Syncing…', synced: 'Synced', offline: 'Offline', error: 'Sync error', 'other-tab': 'Syncing in another tab' };
   const FOLD_TITLE = {
     phone: 'On a phone, LinkedIn shows everything before this mark. The rest hides behind “…see more”.',
     desktop: 'On a computer, LinkedIn shows everything before this mark. The rest hides behind “…see more”.'
   };
-  const CHROME_SHOW = 60;  // the bar slides in when the pointer is this close to the top
-  const CHROME_HIDE = 84;  // and leaves as soon as it moves below this
+  const FORMAT_NOTE = { basic: 'Your font’s own line', linkedin: 'The “…see more” fold', x: 'One window per post', substack: 'A newsletter’s line' };
+  const FONT_OF_SKIN = { typewriter: 'typewriter', ditto: 'serif', night: 'mono' };
+  const THEMES = ['light', 'dark', 'system'];
+  const FONTS = ['serif', 'typewriter', 'sans', 'mono'];
 
   const $ = (id) => document.getElementById(id);
   const root = document.documentElement;
   const editor = $('editor');
-  const chrome = $('chrome');
 
   const state = {
     mode: 'write', draft: null, analysis: null, words: 0, dirty: false,
     settings: null, aiBusy: false, cycle: { type: null, index: -1 }, loading: false
   };
-  const controls = {};
 
-  /* ---------- Settings and theme ---------- */
+  /* ---------- Settings: theme and writing font ---------- */
+  const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
+  // Old settings carry a skin (and auto night); Studio separates the theme from the writing
+  // font. Unknown values fall back, so nothing old can break it.
+  function normalizeLook(s, fresh) {
+    if (!THEMES.includes(s.theme)) s.theme = fresh ? 'system' : s.autoNight ? 'system' : s.skin === 'night' ? 'dark' : 'light';
+    if (!FONTS.includes(s.font)) s.font = fresh ? 'serif' : FONT_OF_SKIN[s.skin] || 'serif';
+    return s;
+  }
+  // Keep the old fields true too, so the settings still make sense to an older copy of the app.
+  function legacyLook(s) {
+    s.autoNight = s.theme === 'system';
+    s.skin = s.theme === 'dark' ? 'night' : s.font === 'typewriter' ? 'typewriter' : s.font === 'mono' ? 'typewriter' : 'ditto';
+  }
+  const themeNow = () => (state.settings.theme === 'system' ? (darkScheme.matches ? 'dark' : 'light') : state.settings.theme);
+
   function setThemeColor() {
-    const v = getComputedStyle(root).getPropertyValue(state.mode === 'edit' ? '--desk' : '--paper').trim();
+    const v = getComputedStyle(root).getPropertyValue(isNarrow() && Library.view() === 'library' ? '--chrome' : '--page').trim();
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta && v) meta.setAttribute('content', v);
   }
 
-  const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
-  const skinOf = (s) => (s.autoNight && darkScheme.matches ? 'night' : s.skin);
-
   function applySettings() {
     const s = state.settings;
-    root.dataset.skin = skinOf(s);
+    root.dataset.theme = themeNow();
+    root.dataset.font = s.font;
     root.style.setProperty('--text-offset', s.textSize + 'px');
     root.classList.toggle('tw-scroll', !!s.typewriterScroll);
     setThemeColor();
   }
 
   function updateSettings(patch) {
-    Object.assign(state.settings, patch);
+    const p = Object.assign({}, patch);
+    if ('skin' in p && !('font' in p)) {
+      p.font = FONT_OF_SKIN[p.skin] || state.settings.font;
+      if (!('theme' in p) && !('autoNight' in p) && state.settings.theme !== 'system') p.theme = p.skin === 'night' ? 'dark' : 'light';
+    }
+    if ('autoNight' in p && !('theme' in p)) p.theme = p.autoNight ? 'system' : (p.skin || state.settings.skin) === 'night' ? 'dark' : 'light';
+    Object.assign(state.settings, p);
+    normalizeLook(state.settings, false);
+    if ('theme' in p || 'font' in p) legacyLook(state.settings);
     Store.saveSettings(state.settings);
     applySettings();
-    if ('sound' in patch) Sound.setProfile(patch.sound);
-    if ('volume' in patch) Sound.setVolume(patch.volume);
-    if ('noBackspace' in patch) updateBackspace();
-    if ('skin' in patch || 'textSize' in patch || 'autoNight' in patch) Editor.render();
+    if ('sound' in p) Sound.setProfile(p.sound);
+    if ('volume' in p) Sound.setVolume(p.volume);
+    if ('noBackspace' in p) updateBackspace();
+    if ('font' in p || 'theme' in p || 'skin' in p || 'textSize' in p || 'autoNight' in p) requestAnimationFrame(() => Editor.render());
+    if (Dialogs.isSettingsOpen && Dialogs.isSettingsOpen() && ('theme' in p || 'sound' in p)) Dialogs.refreshSettings();
   }
 
-  // Settings changed outside this tab: in another tab, or on another device (through the account).
   function reloadSettings() {
-    state.settings = Store.getSettings();
+    state.settings = normalizeLook(Store.getSettings(), false);
     applySettings();
     Sound.setProfile(state.settings.sound);
     Sound.setVolume(state.settings.volume);
     Spell.setPersonal(state.settings.dictionary);
     Editor.setHidden(hiddenTypes());
     updateBackspace();
-    if (state.mode === 'edit') refresh();
-    else Editor.render();
+    refresh();
   }
 
   const hiddenTypes = () => (state.settings.fixHighlights === false ? TYPES.slice() : TYPES.filter((t) => state.settings.highlights[t] === false));
 
   function toggleHighlight(type) {
     state.settings.highlights[type] = state.settings.highlights[type] === false;
+    if (state.settings.highlights[type] && state.settings.fixHighlights === false) state.settings.fixHighlights = true;
     Store.saveSettings(state.settings);
     Editor.setHidden(hiddenTypes());
     Popover.hide();
@@ -91,8 +116,8 @@
 
   /* ---------- Ghosts: still on the page, gone for every other purpose ---------- */
   const ghosts = () => Editor.getAnnotations().ghosts;
-  const masked = (text) => Marks.mask(text == null ? Editor.getText() : text, ghosts());           // offsets kept
-  const publishText = (text) => Marks.stripGhosts(text == null ? Editor.getText() : text, ghosts()); // for posting, saving, copying
+  const masked = (text) => Marks.mask(text == null ? Editor.getText() : text, ghosts());
+  const publishText = (text) => Marks.stripGhosts(text == null ? Editor.getText() : text, ghosts());
   const countNow = () => Engine.countWords(masked());
 
   /* ---------- Personal dictionary ---------- */
@@ -104,34 +129,24 @@
     Spell.addWord(w);
     Store.saveSettings(state.settings);
     Popover.hide();
-    if (state.mode === 'edit') refresh();
+    refresh();
   }
-
   function removeWord(word) {
     state.settings.dictionary = state.settings.dictionary.filter((x) => x !== word);
     Spell.setPersonal(state.settings.dictionary);
     Store.saveSettings(state.settings);
-    if (state.mode === 'edit') refresh();
+    refresh();
   }
 
-  /* ---------- Saving ---------- */
+  /* ---------- Saving: quiet unless it fails ---------- */
   let saveTimer = 0;
-  let statusTimer = 0;
   let saveFailed = false;
-
-  function setSaveStatus(text, ms) {
-    clearTimeout(statusTimer);
-    $('save-status').textContent = text;
-    if (ms) statusTimer = setTimeout(() => { $('save-status').textContent = ''; }, ms);
-  }
-
+  function setSaveStatus(text) { $('save-status').textContent = text; }
   function markDirty() {
     state.dirty = true;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 600);
-    setSaveStatus('Saving…');
   }
-
   function saveNow() {
     clearTimeout(saveTimer);
     if (!state.dirty || !state.draft) return true;
@@ -140,8 +155,9 @@
     d.updatedAt = Date.now();
     if (Store.saveDraft(d)) {
       state.dirty = false;
+      if (saveFailed) setSaveStatus('');
       saveFailed = false;
-      setSaveStatus('Saved', 2000);
+      scheduleList();
       return true;
     }
     setSaveStatus('Not saved: storage is full');
@@ -149,16 +165,16 @@
     saveFailed = true;
     return false;
   }
-
-  // Tell sync about an edit to the open draft (text or title).
   function syncEdit() {
     const d = state.draft;
     if (d && !d.localOnly && Sync.isConnected()) Sync.noteEdit(d.id);
   }
+  // The library's spend and dates follow the typing, a little behind it.
+  let listTimer = 0;
+  function scheduleList() { clearTimeout(listTimer); listTimer = setTimeout(() => { Library.render(); }, 400); }
 
   /* ---------- Formats ---------- */
   const foldCache = new Map();
-
   function foldOf(shown, cfg) {
     const key = cfg.label + '\u0000' + shown.slice(0, cfg.chars + 1);
     if (!foldCache.has(key)) {
@@ -168,7 +184,7 @@
     return foldCache.get(key);
   }
 
-  // The aids: X post windows (both modes); the LinkedIn fold and text past the limit (Edit mode).
+  // X post windows (always); the LinkedIn fold and text past the limit (Studio).
   function updateAids() {
     const d = state.draft;
     if (!d) return;
@@ -198,28 +214,22 @@
     Editor.setAids({
       folds,
       post: f.thread ? (s, e) => {
-        const shown = publishText(real.slice(s, e)) === real.slice(s, e) ? real.slice(s, e) : Marks.stripGhosts(real.slice(s, e), ghosts().filter((g) => g.start < e && g.end > s).map((g) => ({ start: Math.max(0, g.start - s), end: Math.min(e - s, g.end - s) })));
+        const slice = real.slice(s, e);
+        const shown = Marks.stripGhosts(slice, ghosts().filter((g) => g.start < e && g.end > s).map((g) => ({ start: Math.max(0, g.start - s), end: Math.min(e - s, g.end - s) })));
         return { words: Engine.countWords(shown), length: Formats.xPost(shown, 0, shown.length, f.limit).length, limit: f.limit };
       } : null,
-      addPost: UI.device.phone
+      addPost: UI.device.touch
     });
   }
 
   function applyFormat() {
     const f = Formats.get(state.draft.format);
     root.dataset.format = f.key;
-    if (controls.format) controls.format.set(f.key, false);
-    if (controls.formatBtn) controls.formatBtn.firstChild.textContent = f.label;
+    $('format-btn').replaceChildren(el('span', { text: f.label }), icon('chevDown'));
+    $('format-btn').setAttribute('aria-label', 'Format: ' + f.label);
+    $('pb-format').replaceChildren(icon('format'), el('span', { text: f.label }));
     updateAids();
     Editor.render();
-  }
-
-  function threadHint(f) {
-    if (!f.thread || Store.threadHintShown()) return;
-    Store.setThreadHintShown();
-    UI.toast(UI.device.phone
-      ? 'Each window is one post. Tap “New post” (or type --- on a new line) to start the next; backspace at the top of a post joins it to the one above.'
-      : 'Each window is one post. ' + UI.keys('⌘↩') + ' starts the next; backspace at the top of a post joins it to the one above.');
   }
 
   function setFormat(key) {
@@ -233,14 +243,19 @@
     Store.saveDraft(d);
     Account.noteDraft(d);
     applyFormat();
-    threadHint(to);
-    if (state.mode === 'edit') refresh();
+    Panel.renderMoney(d, state.words);
+    refresh();
     restoreAnchor(anchor);
+    Library.renderDraftTab();
     Editor.focus();
   }
 
+  function formatMenu(anchor) {
+    const cur = state.draft && state.draft.format;
+    UI.menu(anchor, Formats.LIST.map((f) => ({ label: f.label, note: FORMAT_NOTE[f.key], value: f.key, checked: f.key === cur })), (it) => { setFormat(it.value); });
+  }
+
   /* ---------- Drafts ---------- */
-  // Save before leaving a draft. If storage is full, stay on it: switching would lose the text.
   function keepUnsaved() {
     if (saveNow()) return true;
     UI.toast('Storage is full, so this draft stays open until it saves. Delete old drafts to make room.');
@@ -255,40 +270,40 @@
     Store.setLast(d.id);
     Popover.hide();
     Panel.closeResults();
-    Panel.closeBudget();
     Editor.setText(d.text, { ann: d.ann });
     state.words = countNow();
     each((m) => m.load && m.load(d));
     setSaveStatus('');
     applyFormat();
     updateBackspace();
-    if (state.mode === 'edit') refresh();
-    if (Dialogs.isDraftsOpen()) Dialogs.renderDraftList();
+    updateTitle();
+    Panel.renderMoney(d, state.words);
+    refresh();
+    Library.render();
+    Library.renderDraftTab();
   }
 
   let openSeq = 0;
   let loadingCount = 0;
-
   function onLoading(on) {
     loadingCount = Math.max(0, loadingCount + (on ? 1 : -1));
     state.loading = loadingCount > 0;
     Editor.setReadOnly(state.loading);
     Editor.setPlaceholder(state.loading ? 'Loading from Notion…' : PLACEHOLDER);
+    root.classList.toggle('is-loading', state.loading);
     if (on) {
       Popover.hide();
       Editor.setText('');
       state.words = 0;
-      if (state.mode === 'edit') refresh();
+      refresh();
     }
   }
 
-  // An empty draft that never reached Notion isn't worth keeping once you leave it.
   function dropIfEmpty(d) {
     if (!d || d.notionId || d.text.trim() || d.title.trim() || Store.getDraft(d.id) !== d) return;
     Store.deleteDraft(d.id);
   }
 
-  // Linked drafts may need their text from Notion first.
   async function openDraft(target) {
     const d = typeof target === 'string' ? Store.getDraft(target) : target;
     if (!d || state.draft === d) return;
@@ -298,9 +313,11 @@
     state.draft = d;
     state.dirty = false;
     Store.setOpen(d.id);
+    Library.render();
     await Sync.prepare(d);
     if (seq !== openSeq || Store.getDraft(d.id) !== d) return;
     loadDraft(d);
+    window.scrollTo(0, 0);
   }
 
   function newDraft(text) {
@@ -311,15 +328,15 @@
     const d = Store.newDraft({ text: text || '', format: f.key, budget: Formats.budgetOf(f, state.settings) });
     dropIfEmpty(prev);
     loadDraft(d);
-    threadHint(f);
+    window.scrollTo(0, 0);
     if (text) syncEdit();
+    if (isNarrow() && Library.view() !== 'page') Library.pushPage({ instant: !!text });
     return d;
   }
 
   function openNewest() {
     const next = Store.listDrafts()[0];
-    if (next) openDraft(next);
-    else newDraft('');
+    if (next) openDraft(next); else newDraft('');
   }
 
   function draftDeleted(id) {
@@ -335,7 +352,8 @@
     markDirty();
     saveNow();
     Account.noteDraft(state.draft);
-    refreshPanel();
+    Panel.renderMoney(state.draft, state.words);
+    Library.renderDraftTab();
   }
 
   function setIntent(text) {
@@ -345,7 +363,6 @@
     Account.noteDraft(state.draft);
   }
 
-  // A Notion property changed in the Drafts drawer.
   function setProp(d, name, value) {
     d.props[name] = value;
     const c = Sync.config();
@@ -355,10 +372,9 @@
     Account.noteDraft(d);
     Sync.noteProp(d.id, name);
     if (d === state.draft) updateBackspace();
+    Library.render();
   }
 
-  // Every programmatic text change goes through here so undo keeps working and cuts can chime.
-  // Every module the app hands the open draft to.
   const MODULES = ['Alts', 'Menu', 'Overflow', 'Lab', 'Challenges', 'Desk', 'Blocks', 'Bubble', 'Notes'];
   function each(fn) { for (const n of MODULES) { const m = opt(n); if (m) try { fn(m); } catch (e) { console.error(n, e); } } }
 
@@ -369,7 +385,6 @@
     if (saved > 0 && state.mode === 'edit' && !(opts && opts.silent)) Sound.play('coin');
     return saved;
   }
-
   function cut(start, end, sentenceStart, opts) {
     const before = state.words;
     Editor.cut(start, end, sentenceStart);
@@ -377,7 +392,6 @@
     if (saved > 0 && state.mode === 'edit' && !(opts && opts.silent)) Sound.play('coin');
     return saved;
   }
-
   function insertSample() {
     const text = Editor.getText();
     if (!text.trim()) Editor.replaceRange(0, text.length, SAMPLE_TEXT);
@@ -385,8 +399,6 @@
   }
 
   /* ---------- Changes from Notion and from other tabs ---------- */
-  // ann: the marks that came with this text (another tab); otherwise the editor finds its own
-  // again. Alternatives that can't be found have their options put in Overflow.
   function replaceText(text, ann) {
     if (Editor.getText() === text) { if (ann) Editor.setAnnotations(ann); return; }
     const lost = Editor.replaceText(text, ann ? { ann } : null);
@@ -395,37 +407,35 @@
     state.words = countNow();
     Popover.hide();
     updateAids();
-    if (state.mode === 'edit') refresh();
-    else Editor.render();
+    updateTitle();
+    Panel.renderMoney(state.draft, state.words);
+    refresh();
   }
 
   function onList() {
-    if (Dialogs.isDraftsOpen()) Dialogs.renderDraftList();
+    Library.render();
+    Library.renderDraftTab();
     if (!state.draft || state.loading) return;
     updateBackspace();
-    updateSyncStatus();
   }
-
   function onRemoteText(d) {
     if (d === state.draft && !state.loading) { replaceText(d.text, d.ann); each((m) => m.reload && m.reload(d)); }
     onList();
   }
-
   function onRemoteDelete(d) {
     if (d === state.draft) {
       clearTimeout(saveTimer);
       state.dirty = false;
       state.draft = null;
       openNewest();
-      UI.toast('“' + Store.displayTitle(d) + '” was deleted in Notion.');
+      UI.toast('“' + Store.displayTitle(d) + '” was deleted in Notion');
     }
     onList();
   }
 
   let conflictWarnedAt = 0;
-
   function onExternal(ch) {
-    if (ch.key === 'tdw.syncWant') return; // sync's business: another tab came to the front
+    if (ch.key === 'tdw.syncWant') return;
     if (ch.key === 'tdw.settings') { reloadSettings(); return; }
     if (ch.key === 'tdw.geminiKey') { Panel.updateAI(); return; }
     if (ch.conflict) {
@@ -440,14 +450,12 @@
         if (root.dataset.format !== Formats.get(d.format).key) applyFormat();
         replaceText(d.text, d.ann);
         each((m) => m.reload && m.reload(d));
-        refreshPanel();
       }
     }
     onList();
   }
 
   /* ---------- Account ---------- */
-  // The account brought changes from another device.
   function onAccountApplied(ch) {
     if (ch.settings) reloadSettings();
     if (ch.notion) Sync.adopt(ch.notion.prev);
@@ -458,53 +466,40 @@
       each((m) => m.reload && m.reload(d));
       applyFormat();
       updateBackspace();
-      refreshPanel();
+      Panel.renderMoney(d, state.words);
+      refresh();
     }
     onList();
-    updateSyncStatus();
+    Library.renderSync();
     Dialogs.refreshSettings();
   }
-
   function onSignedOut(message) {
     UI.toast(message, { label: 'Sign in', run: () => Dialogs.openSettings('account') });
   }
 
-  /* ---------- Sync status ---------- */
-  function updateSyncStatus() {
-    const b = $('sync-status');
-    const s = Sync.status();
-    const show = Sync.isConnected() && !!SYNC_LABEL[s.state];
-    b.hidden = !show;
-    if (!show) return;
-    b.textContent = SYNC_LABEL[s.state];
-    b.dataset.state = s.state;
-  }
-
-  function syncToast() {
-    const s = Sync.status();
-    const what = s.message || SYNC_LABEL[s.state] || '';
-    const when = s.at ? 'Last sync ' + UI.relTime(s.at) + '.' : 'Not synced yet.';
-    UI.toast((what ? what.replace(/\.?$/, '.') + ' ' : '') + when);
-  }
-
-  /* ---------- Analysis and modes ---------- */
+  /* ---------- Analysis, highlights and modes ---------- */
   const isSentence = (i) => i.type === 'hard' || i.type === 'veryHard';
   let analyzeTimer = 0;
+  // Fix highlights show while the Review tab is in front: what's on the page is what the open tab is about.
+  const showsFixes = () => state.mode === 'edit' && Inspector.tab() === 'review' && !Inspector.pushed();
 
   function refresh() {
     clearTimeout(analyzeTimer);
+    if (!state.draft) return;
+    if (state.mode !== 'edit') {
+      Editor.setMarks([], []);
+      Editor.render();
+      return;
+    }
     state.analysis = analyze(masked());
-    Editor.setMarks(state.analysis.issues.filter(isSentence), state.analysis.issues.filter((i) => !isSentence(i)));
+    if (showsFixes()) Editor.setMarks(state.analysis.issues.filter(isSentence), state.analysis.issues.filter((i) => !isSentence(i)));
+    else Editor.setMarks([], []);
     Editor.setHidden(hiddenTypes());
     Editor.render();
     Panel.render(state.analysis, state.draft, state.words);
   }
+  function refreshPanel() { if (state.mode === 'edit') Panel.render(state.analysis, state.draft, state.words); else Panel.updateAI(); }
 
-  function refreshPanel() {
-    if (state.mode === 'edit') Panel.render(state.analysis, state.draft, state.words);
-  }
-
-  // Remember which line sits where on screen, so a layout change can put it back.
   function captureAnchor() {
     const vh = window.innerHeight;
     const caret = Editor.caretIndex();
@@ -516,42 +511,94 @@
     const r = Editor.rectAt(idx);
     return r ? { index: idx, y: r.lineTop } : null;
   }
-
   function restoreAnchor(a) {
     if (!a) return;
     const r = Editor.rectAt(a.index);
     if (r) window.scrollBy(0, r.lineTop - a.y);
   }
 
-  function setMode(m) {
-    if (m === 'edit' && firstHint) { UI.hideToast(); firstHint = false; } // it's done its job
-    const anchor = captureAnchor();
+  // Focus remembers whether the library was open, to bring it back with Studio.
+  let libraryBeforeFocus = null;
+
+  function setMode(m, opts) {
+    const o = opts || {};
+    if (m === 'edit') {
+      if (!o.noLibrary && libraryBeforeFocus && !isNarrow()) Library.show({ transient: true });
+      libraryBeforeFocus = null;
+      Inspector.show(o.tab || 'review', { detent: o.detent });
+      fitPanes('inspector');
+    } else {
+      Inspector.hide({ velocity: o.velocity });
+      if (!o.keepLibrary && !isNarrow()) {
+        libraryBeforeFocus = Library.isOpen();
+        Library.hide({ transient: true });
+      }
+    }
+    applyMode(m === 'edit' ? 'edit' : 'write');
+  }
+
+  function applyMode(m) {
+    const changed = state.mode !== m;
+    const anchor = changed ? captureAnchor() : null;
     state.mode = m;
     root.dataset.mode = m;
-    if (controls.mode) controls.mode.set(m, true);
-    setThemeColor();
+    updateChrome();
+    if (!changed) { refresh(); return; }
     updateAids();
-    if (m === 'edit') {
-      refresh();
-    } else {
-      clearTimeout(analyzeTimer);
-      Editor.setMarks([], []);
-      Editor.render();
+    if (m !== 'edit') {
       Popover.hide();
-      Panel.closeSheet();
       Panel.closeResults();
-      Panel.closeBudget();
-      hideChrome(true);
     }
+    refresh();
     updateBackspace();
     each((x) => x.onMode && x.onMode(m));
     restoreAnchor(anchor);
-    Editor.focus();
+    if (!(document.activeElement && (document.activeElement.closest('#inspector') || document.activeElement.closest('#library')))) Editor.focus();
+  }
+
+  // A tool asks for its tab: Studio opens on it (Focus leaves the library where it is).
+  function openTab(name, opts) {
+    const o = opts || {};
+    if (state.mode !== 'edit' || !Inspector.isOpen()) setMode('edit', { tab: name, noLibrary: true, detent: o.detent });
+    else Inspector.select(name, { keepPushed: o.keepPushed });
+  }
+
+  function onTab() {
+    Popover.hide();
+    refresh();
+    if (Inspector.tab() === 'draft') Library.renderDraftTab();
+    each((x) => x.onTab && x.onTab(Inspector.tab()));
+  }
+
+  // Both side panes need room: on a narrow computer screen, opening one folds the other.
+  function fitPanes(priority) {
+    if (isNarrow()) return;
+    const room = window.innerWidth - (Library.isOpen() ? 264 : 0) - (Inspector.isOpen() ? 352 : 0);
+    if (room >= 620) return;
+    if (priority === 'library' && Inspector.isOpen()) setMode('write', { keepLibrary: true });
+    else if (Library.isOpen()) { libraryBeforeFocus = true; Library.hide({ transient: true }); }
+    updateChrome();
+  }
+
+  // Focus: both panes away. The toolbar fades back until you reach for it.
+  function updateChrome() {
+    const focus = !isNarrow() && !Library.isOpen() && !Inspector.isOpen();
+    root.classList.toggle('is-focus', focus);
+  }
+
+  let movedRaf = 0;
+  function layoutMoved() {
+    if (movedRaf) return;
+    movedRaf = requestAnimationFrame(() => {
+      movedRaf = 0;
+      const b = opt('Bubble');
+      if (b && b.reposition) b.reposition();
+      const bl = opt('Blocks');
+      if (bl && bl.hideHandle) bl.hideHandle();
+    });
   }
 
   /* ---------- No backspace ---------- */
-  let blockWarned = false;
-
   function stageSaysNo(d) {
     const c = Sync.config();
     const schema = (c && c.schema) || {};
@@ -561,66 +608,77 @@
       return (!t || t === 'select' || t === 'status') && typeof v === 'string' && /no backspace/i.test(v);
     });
   }
-
-  // Is backspace off for this draft? The toggle wins; otherwise the Notion stage decides.
   function backspaceOff(d) {
     if (!d) return false;
     if (typeof d.nb === 'boolean') return d.nb;
     return !!state.settings.noBackspace && stageSaysNo(d);
   }
-
   const noBackspace = () => state.mode === 'write' && backspaceOff(state.draft);
 
   function updateBackspace() {
     const on = backspaceOff(state.draft);
-    if (controls.nb) controls.nb.set(on);
+    const b = $('nb-btn');
+    b.setAttribute('aria-pressed', String(on));
+    b.replaceChildren(icon(on ? 'penOff' : 'pen'));
+    tip(b, on ? 'No backspace: on. Typing only moves forward in Focus' : 'No backspace: off');
+    b.setAttribute('aria-label', 'No backspace');
     root.classList.toggle('no-backspace', on);
   }
-
   function setBackspaceOff(on) {
     const d = state.draft;
     if (!d) return;
     d.nb = on === (state.settings.noBackspace && stageSaysNo(d)) ? null : on;
     Store.saveDraft(d);
     Account.noteDraft(d);
-    blockWarned = false;
     updateBackspace();
     Editor.focus();
-    UI.toast(on ? 'Backspace is off' : 'Backspace is on');
   }
-
+  // Backspace was pressed with the pen off: the pen says so, where it lives.
+  let alertTimer = 0;
   function blocked() {
     if (performance.now() - Sound.lastKeyAt > 60) Sound.play('back', BUMP);
-    if (blockWarned) return;
-    blockWarned = true;
-    UI.toast('Backspace is off');
+    const b = $('nb-btn');
+    b.classList.remove('is-pulse');
+    void b.offsetWidth;
+    b.classList.add('is-pulse');
+    root.classList.add('is-alert');
+    clearTimeout(alertTimer);
+    alertTimer = setTimeout(() => { root.classList.remove('is-alert'); b.classList.remove('is-pulse'); }, 1400);
   }
 
-  /* ---------- Top bar in Write mode: only when the pointer is near it ---------- */
-  let chromeTimer = 0;
-  const canHover = window.matchMedia('(hover: hover) and (pointer: fine)');
-
-  function showChrome() {
-    clearTimeout(chromeTimer);
-    chrome.classList.add('is-shown');
+  /* ---------- The toolbar ---------- */
+  let titleRaf = 0;
+  function updateTitle() {
+    if (titleRaf) return;
+    titleRaf = requestAnimationFrame(() => {
+      titleRaf = 0;
+      const d = state.draft;
+      const t = d ? Store.displayTitle(Object.assign({}, d, { text: Editor.getText() })) : '';
+      $('tb-title').textContent = t;
+      $('tb-title').classList.toggle('is-untitled', t === 'Untitled draft');
+      document.title = (t && t !== 'Untitled draft' ? t + ' – ' : '') + 'Ten Dollar Words';
+    });
   }
 
-  function hideChrome(now) {
-    clearTimeout(chromeTimer);
-    const go = () => {
-      if (!now && (chrome.matches(':hover') || chrome.contains(document.activeElement) || UI.menuOpen())) {
-        chromeTimer = setTimeout(go, 500);
-        return;
-      }
-      chrome.classList.remove('is-shown');
-    };
-    if (now) go();
-    else chromeTimer = setTimeout(go, 350);
+  function buildToolbar() {
+    $('btn-insp').append(icon('inspector'));
+    $('btn-insp').addEventListener('click', toggleInspector);
+    $('format-btn').addEventListener('click', (e) => formatMenu(e.currentTarget));
+    $('pb-format').addEventListener('click', (e) => formatMenu(e.currentTarget));
+    $('nb-btn').addEventListener('click', () => setBackspaceOff(!backspaceOff(state.draft)));
+    $('pb-review').append(icon('review'), el('span', { text: 'Review' }));
+    $('pb-review').addEventListener('click', () => (Inspector.isOpen() ? setMode('write', { keepLibrary: true }) : setMode('edit', { tab: 'review' })));
+    tip($('format-btn'), 'Format: sets the line length for each platform');
+    tip($('btn-back'), 'All drafts');
+  }
+
+  function toggleInspector() {
+    if (Inspector.isOpen()) setMode('write', { keepLibrary: true });
+    else setMode('edit', { tab: Inspector.tab(), noLibrary: true });
   }
 
   /* ---------- Editor events ---------- */
   let writeRaf = 0;
-
   function onInput() {
     if (state.loading) return;
     const text = Editor.getText();
@@ -635,20 +693,15 @@
     syncEdit();
     Popover.hide();
     updateAids();
+    updateTitle();
+    Panel.renderMoney(d, words);
+    if (words < prev) Panel.refund(prev - words);
+    const budget = d.budget;
+    if (words > prev && ((prev * 10 <= budget * 0.9 && words * 10 > budget * 0.9) || (prev * 10 <= budget && words * 10 > budget))) Sound.play('bell');
     if (state.mode === 'edit') {
-      if (text.length < 15000) {
-        refresh();
-      } else {
-        clearTimeout(analyzeTimer);
-        analyzeTimer = setTimeout(refresh, 150);
-        Editor.render();
-        Panel.render(state.analysis, d, words);
-      }
-      if (words < prev) Panel.refund(prev - words);
-      const budget = d.budget;
-      if (words > prev && ((prev * 10 <= budget * 0.9 && words * 10 > budget * 0.9) || (prev * 10 <= budget && words * 10 > budget))) {
-        Sound.play('bell');
-      }
+      if (text.length < 15000) refresh();
+      else { clearTimeout(analyzeTimer); analyzeTimer = setTimeout(refresh, 150); Editor.render(); }
+      if (Inspector.tab() === 'draft') Library.renderDraftTab();
     } else {
       Editor.render();
       if (!writeRaf) {
@@ -664,16 +717,13 @@
     if (state.mode === 'edit') {
       const s = Editor.getSelection();
       if (s.start === s.end) Popover.showAt(s.end);
-      each((m) => m.onSelect && m.onSelect(s));
     } else if (state.settings.typewriterScroll && !pointerSelecting && performance.now() - lastPointerAt > 600) {
-      // Only after typing or arrow keys: a click or a selection never moves the page.
       const s = Editor.getSelection();
       if (s.start === s.end) requestAnimationFrame(() => Editor.typewriterScroll());
     }
-    if (state.mode !== 'edit') each((m) => m.onSelect && m.onSelect(Editor.getSelection()));
+    each((m) => m.onSelect && m.onSelect(Editor.getSelection()));
   }
 
-  // Copy: LinkedIn and X get what the post will show; Basic and Substack also get rich text.
   function clipboard(slice) {
     const f = state.draft ? Formats.get(state.draft.format) : Formats.get('basic');
     if (f.social) return { text: Formats.render(slice, f).text };
@@ -681,26 +731,33 @@
   }
 
   function onDocKeydown(e) {
-    const mod = (e.metaKey || e.ctrlKey) && !e.altKey;
+    const mod = (e.metaKey || e.ctrlKey);
     const key = String(e.key || '').toLowerCase();
     const dialogOpen = !!document.querySelector('dialog[open]');
-    if (mod && key === 'e') {
+    if (mod && !e.altKey && !e.shiftKey && key === 'e') {
       e.preventDefault();
       if (!dialogOpen) setMode(state.mode === 'write' ? 'edit' : 'write');
-    } else if (mod && key === 's' && !e.shiftKey) {
+    } else if (mod && !e.altKey && !e.shiftKey && (e.code === 'Backslash' || key === '\\')) {
+      e.preventDefault();
+      if (!dialogOpen) { Library.toggle(); updateChrome(); }
+    } else if (mod && e.altKey && !e.shiftKey && e.code === 'KeyI') {
+      e.preventDefault();
+      if (!dialogOpen) toggleInspector();
+    } else if (mod && !e.altKey && !e.shiftKey && key === ',') {
+      e.preventDefault();
+      if (!dialogOpen) Dialogs.openSettings();
+    } else if (mod && !e.altKey && key === 's' && !e.shiftKey) {
       e.preventDefault();
       state.dirty = state.dirty || !!state.draft;
       if (saveNow()) UI.toast('Saved');
-    } else if (e.key === 'Escape' && !dialogOpen && !UI.menuOpen()) {
-      if (Popover.isOpen()) Popover.hide();
-      else if (Panel.isBudgetOpen()) Panel.closeBudget(true);
-      else if (Panel.isSheetOpen()) Panel.closeSheet();
+    } else if (e.key === 'Escape' && !dialogOpen && !UI.menuOpen() && !e.defaultPrevented) {
+      if (Popover.isOpen() && document.activeElement === editor) Popover.hide();
+      else if (isNarrow() && Inspector.isOpen() && document.activeElement === editor) setMode('write', { keepLibrary: true });
     }
   }
 
   let pointerSelecting = false;
   let lastPointerAt = 0;
-  let firstHint = false;
 
   function wire() {
     editor.addEventListener('keydown', (e) => {
@@ -712,10 +769,7 @@
         e.preventDefault();
         Editor.insertSeparator();
       }
-      if (state.mode === 'write') {
-        hideChrome(true);
-        root.classList.add('is-typing');
-      }
+      if (!e.metaKey && !e.ctrlKey && !NAV_KEYS.has(e.key)) root.classList.add('is-typing');
     });
     editor.addEventListener('beforeinput', (e) => {
       if (!e.inputType || !e.inputType.startsWith('insert') || e.inputType === 'insertCompositionText') return;
@@ -729,91 +783,34 @@
       if (state.mode === 'edit') onCaretMove();
     });
     editor.addEventListener('keyup', (e) => { if (NAV_KEYS.has(e.key)) onCaretMove(); });
-
     document.addEventListener('keydown', onDocKeydown);
     let last = null;
     document.addEventListener('mousemove', (e) => {
       if (last && Math.hypot(e.clientX - last.x, e.clientY - last.y) <= 3) return;
       last = { x: e.clientX, y: e.clientY };
       root.classList.remove('is-typing');
-      if (state.mode !== 'write' || !canHover.matches) return;
-      if (e.clientY <= CHROME_SHOW || chrome.contains(e.target)) showChrome();
-      else if (e.clientY > CHROME_HIDE && chrome.classList.contains('is-shown') && !UI.menuOpen()) hideChrome(true);
-    });
-    // Leaving the window through the top keeps the bar (you overshot it); leaving any other way hides it.
-    document.documentElement.addEventListener('mouseleave', (e) => {
-      if (state.mode !== 'write' || !canHover.matches || UI.menuOpen()) return;
-      if (e.clientY < CHROME_SHOW) showChrome();
-      else hideChrome(true);
     });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); });
     window.addEventListener('pagehide', saveNow);
-    // Closing now would lose text that couldn't be saved: let the browser ask first.
     window.addEventListener('beforeunload', (e) => {
       const unsaved = !saveNow() || (Store.isMemoryOnly() && !!state.draft && !!state.draft.text.trim());
       if (unsaved) { e.preventDefault(); e.returnValue = ''; }
     });
-
-    $('btn-drafts').addEventListener('click', () => Dialogs.openDrafts());
-    $('btn-settings').addEventListener('click', () => Dialogs.openSettings());
-    $('sync-status').addEventListener('click', syncToast);
-
-    const fs = $('btn-fullscreen');
-    fs.hidden = !document.fullscreenEnabled;
-    const fsLabel = () => {
-      const on = !!document.fullscreenElement;
-      fs.replaceChildren(UI.icon(on ? 'shrink' : 'expand'));
-      fs.setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen');
-      fs.title = on ? 'Exit full screen' : 'Full screen';
-    };
-    fsLabel();
-    fs.addEventListener('click', () => {
-      const p = document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen();
-      if (p && p.catch) p.catch(() => {});
+    window.addEventListener('resize', () => { fitPanes('library'); updateChrome(); });
+    UI.narrowQuery.addEventListener('change', () => {
+      if (isNarrow() && state.mode === 'edit' && !Inspector.isOpen()) applyMode('write');
+      updateChrome();
+      setThemeColor();
     });
-    document.addEventListener('fullscreenchange', fsLabel);
-  }
-
-  function buildControls() {
-    controls.mode = UI.segmented({
-      label: 'Mode', value: 'write', class: 'seg-mode',
-      options: [
-        { value: 'write', label: 'Write', title: UI.device.phone ? null : 'Write (' + UI.keys('⌘E') + ')' },
-        { value: 'edit', label: 'Edit', title: UI.device.phone ? null : 'Edit (' + UI.keys('⌘E') + ')' }
-      ],
-      onChange: (v) => setMode(v)
-    });
-    $('mode-slot').append(controls.mode);
-
-    controls.format = UI.segmented({
-      label: 'Format', value: 'basic', class: 'seg-format',
-      options: Formats.LIST.map((f) => ({ value: f.key, label: f.label })),
-      onChange: (v) => setFormat(v)
-    });
-    const btn = UI.el('button', { type: 'button', class: 'btn-quiet format-btn', 'aria-label': 'Format' }, 'Basic', UI.icon('chevDown'));
-    btn.addEventListener('click', () => {
-      const cur = state.draft && state.draft.format;
-      UI.menu(btn, Formats.LIST.map((f) => ({ label: f.label, value: f.key, checked: f.key === cur })), (it) => { setFormat(it.value); });
-    });
-    controls.formatBtn = btn;
-    $('format-slot').append(controls.format, btn);
-
-    controls.nb = UI.toggle({ label: 'No backspace', title: 'No backspace in Write mode', onChange: setBackspaceOff });
-    $('nb-slot').append(UI.el('span', { class: 'nb-label', 'aria-hidden': 'true' },
-      UI.el('span', { class: 'nb-long', text: 'No backspace' }), UI.el('span', { class: 'nb-short', text: 'No ⌫' })), controls.nb);
-    $('nb-slot').querySelector('.nb-label').addEventListener('click', () => controls.nb.click());
   }
 
   /* ---------- Boot ---------- */
   function boot() {
     TDW.mockAI = false; // tests switch the fake AI on from JS
-
-    state.settings = Store.getSettings();
+    state.settings = normalizeLook(Store.getSettings(), !Store.getStoredSettings());
     applySettings();
     Sound.init(state.settings);
-
-    $('btn-settings').append(UI.icon('sliders'));
-    buildControls();
+    buildToolbar();
     Editor.init({
       root: editor, surface: $('surface'), under: $('under'), aids: $('aids'),
       hooks: {
@@ -826,30 +823,31 @@
       }
     });
     Editor.setPlaceholder(PLACEHOLDER);
+    Inspector.init({
+      onTab,
+      onClose: (o) => setMode('write', { keepLibrary: true, velocity: o && o.velocity }),
+      onMove: layoutMoved
+    });
+    Library.init();
     Panel.init();
     Popover.init();
     Dialogs.init();
     each((m) => m.init && m.init());
     Store.setBusyCheck(() => state.dirty);
     Store.onExternal(onExternal);
-    Sync.init({ onRemoteText, onRemoteDelete, onList, onStatus: updateSyncStatus, onLoading, current: () => state.draft });
+    Sync.init({ onRemoteText, onRemoteDelete, onList, onStatus: () => Library.renderSync(), onLoading, current: () => state.draft });
     Account.init({ onApplied: onAccountApplied, onSignedOut });
 
     const lastId = Store.getLast();
     const first = (lastId && Store.getDraft(lastId)) || Store.listDrafts()[0] || null;
-    if (first) openDraft(first);
-    else newDraft('');
+    if (first) openDraft(first); else newDraft('');
 
-    setMode('write');
+    applyMode('write');
+    updateChrome();
     wire();
     if (Sync.isConnected()) Sync.start();
-    updateSyncStatus();
+    Library.renderSync();
 
-    if (!Store.isMemoryOnly() && !Store.hintShown()) {
-      UI.toast(UI.device.touch || !canHover.matches ? 'Tap Edit to see your spend and fixes.' : 'Press ' + UI.keys('⌘E') + ' or click Edit to see your spend and fixes.');
-      Store.setHintShown();
-      firstHint = true;
-    }
     // PREVIEW: no service worker while this direction lives in app/designs/ (the root app's
     // worker serves these files network-first). Remove the `false &&` when it becomes app/.
     if (false && location.protocol === 'https:' && 'serviceWorker' in navigator) {
@@ -857,17 +855,17 @@
     }
     document.fonts.ready.then(() => Editor.render());
     darkScheme.addEventListener('change', () => {
-      if (!state.settings.autoNight) return;
+      if (state.settings.theme !== 'system') return;
       applySettings();
       Editor.render();
     });
     Spell.load('dict/en-us.txt?v=' + APP_VERSION).then(() => {
       Spell.setPersonal(state.settings.dictionary);
-      if (state.mode === 'edit') refresh();
+      refresh();
     }).catch(() => {});
+    requestAnimationFrame(() => root.classList.add('is-ready'));
   }
 
-  // Insert markdown at the caret (Overflow → page), as one undoable paste.
   function insertAtCaret(md) {
     if (state.loading || !md) return;
     Editor.insertMd(md);
@@ -876,12 +874,11 @@
   TDW.App = {
     state, APP_VERSION, SAMPLE_TEXT, masked, publishText, insertAtCaret, refresh, captureAnchor, restoreAnchor,
     noBackspace: () => noBackspace(), markDirty, syncEdit, updateAids,
-    setMode, saveNow, openDraft, newDraft, draftDeleted, analyze, setFormat,
+    setMode, openTab, toggleInspector, saveNow, openDraft, newDraft, draftDeleted, analyze, setFormat, formatMenu,
     updateSettings, toggleHighlight, hiddenTypes, setBudget, setIntent, setProp, edit, cut, insertSample,
-    addWord, removeWord, refreshPanel, updateSyncStatus, openSettings: (section) => Dialogs.openSettings(section),
-    syncChanged() { onList(); },
-    setBackspaceOff, countNow,
-    backspaceOff
+    addWord, removeWord, refreshPanel, updateSyncStatus: () => Library.renderSync(), openSettings: (section) => Dialogs.openSettings(section),
+    syncChanged() { onList(); Library.renderSync(); },
+    setBackspaceOff, countNow, backspaceOff, fitPanes, layoutMoved, updateChrome
   };
   boot();
 })();

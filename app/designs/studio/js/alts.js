@@ -1,8 +1,8 @@
 /* Alternatives: other versions of a word, sentence or paragraph, kept with the draft and read in
    place. Hover an underlined span and use ↑/↓ (or Alt+↑/↓ with the caret in it) to flip through
-   them. The panel (Ctrl+Shift+A) lists them with where each came from: a square for yours, a
-   robot for the AI's, a filled dot for the one on the page. Typing in the list changes the page
-   as you type; Return adds, Esc closes, "??" asks the AI for more. */
+   them. The list (Ctrl+Shift+A) opens in the inspector, pushed over its tabs: a square for your
+   versions, a spark for the AI's, a filled dot for the one on the page. Typing in the list
+   changes the page as you type; Return adds, Esc closes, "??" asks the AI for more. */
 (function () {
   'use strict';
   const TDW = window.TDW = window.TDW || {};
@@ -11,7 +11,8 @@
   const KINDS = ['word', 'sentence', 'paragraph'];
   const LABEL = { word: 'Word', sentence: 'Sentence', paragraph: 'Paragraph' };
 
-  let panel = null, list = null, tabs = {}, hint = null;
+  let panel = null, list = null, seg = null, hint = null;
+  let transient = false; // the inspector opened just for this list, and closes with it
   // The open panel: which alternative, and the point the last undo step was taken from.
   let cur = null; // { id, kind, snap, busy }
   let hoverId = null;
@@ -65,34 +66,22 @@
   /* ---------- The panel ---------- */
 
   function build() {
-    panel = UI.el('aside', { class: 'alts-panel', 'aria-label': 'Alternatives', hidden: true });
-    const bar = UI.el('div', { class: 'alts-tabs', role: 'tablist' });
-    for (const k of KINDS) {
-      tabs[k] = UI.el('button', { type: 'button', role: 'tab', class: 'alts-tab', text: LABEL[k] });
-      tabs[k].addEventListener('mousedown', (e) => e.preventDefault());
-      tabs[k].addEventListener('click', () => retarget(k));
-      bar.append(tabs[k]);
-    }
+    panel = TDW.Inspector.pane('alts');
+    seg = UI.segmented({ label: 'Alternatives for', value: 'sentence', options: KINDS.map((k) => ({ value: k, label: LABEL[k] })), onChange: (k) => retarget(k) });
     list = UI.el('ol', { class: 'alts-list' });
-    hint = UI.el('p', { class: 'alts-hint' });
-    const close = UI.el('button', { type: 'button', class: 'btn-icon alts-close', 'aria-label': 'Close alternatives' }, UI.icon('close'));
-    close.addEventListener('click', () => closePanel());
-    panel.append(close, bar, list, hint);
-    document.body.append(panel);
+    hint = UI.el('p', { class: 'hint alts-hint' });
+    panel.append(UI.el('div', { class: 'alts-seg' }, seg), list, hint);
     panel.addEventListener('keydown', onPanelKey);
   }
 
   function draw() {
     const a = cur && altOf(cur.id);
     if (!a) { closePanel(true); return; }
-    for (const k of KINDS) {
-      tabs[k].classList.toggle('is-on', k === a.kind);
-      tabs[k].setAttribute('aria-selected', String(k === a.kind));
-    }
+    seg.set(a.kind);
     const rows = a.options.map((o, i) => row(o, i, i === a.active));
     rows.push(row({ text: '', by: 'me' }, a.options.length, false, true));
     list.replaceChildren(...rows);
-    hint.textContent = UI.device.phone ? 'tap to try one · ?? asks the AI' : 'return adds · esc closes · ?? asks the AI';
+    hint.textContent = UI.device.touch ? 'Tap a version to read it on the page. Type ?? to ask the AI for more.' : 'Return adds a version. Type ?? and Return to ask the AI for more. Esc closes.';
     sizeAll();
   }
 
@@ -101,7 +90,7 @@
     const li = UI.el('li', { class: 'alts-row ' + mark + (isNew ? ' is-new' : '') });
     li.dataset.i = String(i);
     const m = UI.el('span', { class: 'alts-mark', 'aria-hidden': 'true' });
-    if (!isNew && !on && o.by === 'ai') m.innerHTML = BOT;
+    if (!isNew && !on && o.by === 'ai') m.append(UI.icon('spark'));
     const input = UI.el('textarea', {
       class: 'alts-input', rows: '1', spellcheck: 'true',
       'aria-label': isNew ? 'New alternative' : 'Alternative ' + (i + 1) + (o.by === 'ai' ? ', written by AI' : ', yours') + (on ? ', on the page' : ''),
@@ -115,7 +104,6 @@
     return li;
   }
 
-  const BOT = '<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><rect x="2" y="4" width="8" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 1.5V4" stroke="currentColor" stroke-width="1.2"/><circle cx="4.5" cy="7" r=".8" fill="currentColor"/><circle cx="7.5" cy="7" r=".8" fill="currentColor"/></svg>';
 
   function size(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
   function sizeAll() { for (const t of list.querySelectorAll('textarea')) size(t); }
@@ -145,7 +133,7 @@
       li.classList.toggle('is-ai', i !== a.active && o.by === 'ai');
       li.classList.toggle('is-me', i !== a.active && o.by !== 'ai');
       const m = li.firstChild;
-      m.innerHTML = i !== a.active && o.by === 'ai' ? BOT : '';
+      m.replaceChildren(i !== a.active && o.by === 'ai' ? UI.icon('spark') : '');
     });
   }
 
@@ -349,7 +337,9 @@
     cur.snap = Editor.snapshot();
     Editor.setOpenAlt(got.id);
     if (!panel) build();
-    panel.hidden = false;
+    if (!TDW.Inspector.pushed()) transient = !TDW.Inspector.isOpen();
+    if (!TDW.Inspector.isOpen()) app().openTab(TDW.Inspector.tab());
+    if (TDW.Inspector.pushed() !== 'alts') TDW.Inspector.push('alts', 'Alternatives', () => closePanel());
     document.documentElement.classList.add('alts-open');
     draw();
     if (!(opts && opts.keepFocus)) focusRow(inputs().length - 1);
@@ -389,7 +379,9 @@
     Editor.setOpenAlt(null);
     if (!keepOpenClass) {
       document.documentElement.classList.remove('alts-open');
-      if (panel) panel.hidden = true;
+      if (TDW.Inspector.pushed() === 'alts') TDW.Inspector.pop();
+      if (transient && TDW.Inspector.isOpen()) app().setMode('write', { keepLibrary: true });
+      transient = false;
       if (!silent) Editor.focus();
     }
   }
@@ -485,7 +477,7 @@
     load() { if (cur) closePanel(true); },
     reload() { if (cur && !altOf(cur.id)) closePanel(true); else if (cur) draw(); },
     onText() { if (cur && !altOf(cur.id)) closePanel(true); },
-    onMode() {},
+    onMode(m) { if (m !== 'edit' && cur) closePanel(true); },
     open, aiForSelection, offer, cycle, isOpen,
     close: () => closePanel()
   };
