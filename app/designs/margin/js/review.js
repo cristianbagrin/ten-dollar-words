@@ -155,7 +155,7 @@
         if (n.kind === 'fold') { const r = n.node0.getBoundingClientRect(); const lh = parseFloat(getComputedStyle(n.node0.parentNode).lineHeight) || 32; y = r.top + r.height / 2 - sr.top - 10; void lh; }
         else y = Margin.lineY(n.start);
         const node = pool.get(n.key);
-        return { node, y, h: node.classList.contains('is-open') ? node.firstChild.offsetHeight : null };
+        return { node, y, h: node.classList.contains('is-open') ? node.offsetHeight : null };
       });
       if (Margin.view() === 'review') Margin.place(items);
       else for (const it of items) it.node._pendingY = it.y;
@@ -293,7 +293,7 @@
     node.classList.add('is-open');
     setHover(n.id);
     keepInView(node);
-
+    draw();
   }
 
   function closeNote(refocus) {
@@ -309,6 +309,7 @@
       if (more) more.remove();
     }
     setHover(null);
+    draw();
     if (refocus) Editor.focus();
   }
 

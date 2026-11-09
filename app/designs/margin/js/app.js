@@ -463,6 +463,16 @@
     if (opt('Review')) TDW.Review.render(state.mode === 'edit' ? state.analysis : null);
   }
 
+  // Typewriter scroll: only once the draft is longer than the screen, so a short draft stays put under the spine.
+  function twScroll() {
+    const sheet = $('surface');
+    if (!sheet) return;
+    const top = sheet.getBoundingClientRect().top + window.scrollY;
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    if (top + sheet.offsetHeight + 34 < vh * 0.9) return;
+    Editor.typewriterScroll();
+  }
+
   function captureAnchor() {
     const vh = window.innerHeight;
     const caret = Editor.caretIndex();
@@ -589,7 +599,7 @@
       if (!writeRaf) {
         writeRaf = requestAnimationFrame(() => {
           writeRaf = 0;
-          if (state.settings.typewriterScroll) Editor.typewriterScroll();
+          if (state.settings.typewriterScroll) twScroll();
         });
       }
     }
@@ -599,7 +609,7 @@
   function onCaretMove() {
     if (state.mode !== 'edit' && state.settings.typewriterScroll && !pointerSelecting && performance.now() - lastPointerAt > 600) {
       const s = Editor.getSelection();
-      if (s.start === s.end) requestAnimationFrame(() => Editor.typewriterScroll());
+      if (s.start === s.end) requestAnimationFrame(() => twScroll());
     }
     each((m) => m.onSelect && m.onSelect(Editor.getSelection()));
   }

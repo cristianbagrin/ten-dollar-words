@@ -25,11 +25,12 @@ html[data-margin="alts"] .margin > [data-view="alts"] { display: block; }
 .rn-row {
   position: relative; display: flex; align-items: baseline; gap: 6px; width: 100%; height: 20px; padding: 0 4px 0 13px; margin: 0;
   border: 0; border-radius: var(--r-xs); background: transparent; color: var(--ink-2); text-align: left;
-  font: 400 12.5px/20px var(--font-ui); letter-spacing: -.004em; white-space: nowrap; overflow: hidden;
+  font: italic 400 14px/20px var(--font-serif); letter-spacing: 0; white-space: nowrap; overflow: hidden;
   transition: background-color 120ms ease;
 }
-.rn-row::before { content: ""; position: absolute; left: 0; top: 9.5px; width: 7px; height: 1.5px; border-radius: 1px; background: var(--tone-mark); }
-.rn-kind { flex: none; color: var(--tone); font-weight: 600; }
+.rn-row::before { content: ""; position: absolute; left: 0; top: 8.5px; width: 8px; height: 3px; background: var(--ul-blue) no-repeat 0 50% / 100% 100%; filter: var(--tone-filter, none); }
+.rn.tone-red .rn-row::before { background-image: var(--ul-red); }
+.rn-kind { flex: none; color: var(--tone); font-weight: 600; font-style: italic; }
 .rn-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rn-del { color: var(--ink-3); text-decoration-color: var(--red-mark); text-decoration-thickness: 1.5px; }
 .rn-ins { color: var(--blue); font-weight: 500; }
@@ -37,14 +38,16 @@ html[data-margin="alts"] .margin > [data-view="alts"] { display: block; }
 .rn-row:focus-visible { outline-offset: 0; }
 html.is-typing .rn.is-caret-line:not(.is-open) { opacity: .28; }
 .rn.is-open {
-  z-index: 5; left: -12px; width: calc(100% + 24px); margin-top: -10px; padding: 10px 12px 12px;
-  background: var(--paper); box-shadow: var(--shadow); animation: open-note var(--spring-t) var(--spring);
+  /* Opens in place: the notes below make room instead of being covered. */
+  z-index: 5; margin: 0; padding: 0 0 10px; background: transparent; box-shadow: none;
+  border-left: 2px solid var(--tone-mark); border-radius: 0 var(--r-xs) var(--r-xs) 0; padding-left: 10px; margin-left: -12px; width: calc(100% + 12px);
 }
-@keyframes open-note { from { box-shadow: 0 0 0 0 transparent; } }
+.rn.is-open .rn-row::before { display: none; }
+.rn.is-open .rn-row { padding-left: 0; }
 .rn.is-open .rn-row { padding-left: 13px; white-space: normal; height: auto; min-height: 20px; }
 .rn.is-open .rn-detail { white-space: normal; }
 .rn-more { display: grid; gap: 10px; margin-top: 8px; animation: fade-in 180ms ease; }
-.rn-msg { color: var(--ink); font-size: 13px; line-height: 1.45; }
+.rn-msg { color: var(--ink); font: italic 400 14px/1.45 var(--font-serif); }
 .rn-quote { color: var(--ink-2); font: italic 400 14.5px/1.45 var(--font-serif); }
 .rn-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .rn-ai { display: contents; }
@@ -56,7 +59,7 @@ html.is-typing .rn.is-caret-line:not(.is-open) { opacity: .28; }
 .fix:hover { border-color: var(--ink-3); background: var(--canvas); }
 .fix:active { transform: scale(.97); }
 .fix-word { font: 400 15px/1.2 var(--font-serif); }
-.fix-note { color: var(--red); font: 500 11.5px/1 var(--font-ui); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fix-note { color: var(--ink-2); font: 500 11.5px/1 var(--font-ui); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rn-act {
   display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 9px; margin-left: -2px; border: 0; border-radius: var(--r-sm);
   background: transparent; color: var(--blue); font: 600 12.5px/1.2 var(--font-ui);
@@ -276,13 +279,13 @@ html.has-cards .margin-panel { bottom: 34vh; }
 /* ---------- The narrow layout: chips under paragraphs, cards in a tray ---------- */
 .chip-row { position: absolute; left: 0; right: 0; display: flex; flex-wrap: nowrap; gap: 6px; height: 28px; align-items: center; }
 .rchip {
-  position: relative; pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 9px;
-  border: 1px solid color-mix(in srgb, var(--tone, var(--blue-mark)) 40%, transparent); border-radius: 13px;
-  background: var(--paper); color: var(--tone-ink, var(--blue)); font: 600 12px/1 var(--font-ui); white-space: nowrap;
+  position: relative; pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; height: 44px; margin: -8px 0; padding: 0 10px 0 9px;
+  border: solid transparent; border-width: 9px 0; background-clip: padding-box; border-radius: 22px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone, var(--blue-mark)) 40%, transparent);
+  background-color: var(--paper); color: var(--tone-ink, var(--blue)); font: italic 600 13px/1 var(--font-serif); white-space: nowrap;
   animation: fade-in var(--fade-t) ease;
   transition: transform var(--press-t) ease-out, background-color 120ms ease;
 }
-.rchip::before { content: ""; position: absolute; inset: -9px -3px; }
 .rchip:active { transform: scale(.96); background: var(--blue-wash); }
 .rchip.tone-red { --tone: var(--red-mark); --tone-ink: var(--red); }
 .rchip-tick { width: 6px; height: 1.5px; border-radius: 1px; background: currentColor; }

@@ -8,12 +8,21 @@
   --canvas: #f4f6f9;
   --ink: #22252b;
   --ink-2: #5d636e;
-  --ink-3: #878d98;
+  --ink-3: #6f7580;
   --rule: #e3e7ee;
   --rule-2: #cdd3dc;
-  --blue: #2a6ad1;
-  --blue-mark: #3c8ff6;
-  --blue-wash: color-mix(in srgb, #3c8ff6 9%, var(--paper));
+  /* Blue pencil: a copy-editor's non-photo blue lead, deeper and slightly grey so it is not UI blue. */
+  --blue: #2c5f9e;
+  --blue-mark: #4a86c8;
+  --blue-wash: color-mix(in srgb, #4a86c8 10%, var(--paper));
+  --warn: #965a00;
+  /* Hand-drawn pencil strokes (SVG), drawn slightly off-true like a real lead */
+  --ul-blue: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 52 5' preserveAspectRatio='none'%3E%3Cpath d='M0 3.2 C4 1.6 7 4.4 12 2.6 S19 3.8 24 2.4 S31 4.2 37 2.8 S46 3.6 52 3.2' fill='none' stroke='%234a86c8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  --ul-red: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 52 5' preserveAspectRatio='none'%3E%3Cpath d='M0 3.2 C4 1.6 7 4.4 12 2.6 S19 3.8 24 2.4 S31 4.2 37 2.8 S46 3.6 52 3.2' fill='none' stroke='%23e5420f' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  --ul-graphite: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 4' preserveAspectRatio='none'%3E%3Cpath d='M0 2.6 C10 1.4 20 3.6 32 2.2 S50 3.2 64 2.4' fill='none' stroke='%238a909b' stroke-width='1.6' stroke-linecap='round' preserveAspectRatio='none'/%3E%3C/svg%3E");
+  --ul-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 4' preserveAspectRatio='none'%3E%3Cpath d='M0 2.6 C10 1.4 20 3.6 32 2.2 S50 3.2 64 2.4' fill='none' stroke='%23c07a10' stroke-width='1.6' stroke-linecap='round' preserveAspectRatio='none'/%3E%3C/svg%3E");
+  --br-blue: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 100' preserveAspectRatio='none'%3E%3Cpath d='M8 1.5 C4 2.5 1.8 3.5 2.4 9 C1.8 30 3 55 2.2 91 C2.6 96.5 4 97.5 8 98.5' fill='none' stroke='%234a86c8' stroke-width='1.6' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+
   --red: #c8380b;
   --red-mark: #fb4712;
   --red-wash: color-mix(in srgb, #fb4712 8%, var(--paper));
@@ -72,12 +81,19 @@
   --canvas: #15171a;
   --ink: #e4e6ea;
   --ink-2: #a8aeb8;
-  --ink-3: #727985;
+  --ink-3: #8b929e;
   --rule: #2d3036;
   --rule-2: #3d4148;
-  --blue: #82abff;
-  --blue-mark: #5d95f4;
-  --blue-wash: color-mix(in srgb, #5d95f4 16%, var(--paper));
+  --blue: #8db8ea;
+  --blue-mark: #6a9fd8;
+  --blue-wash: color-mix(in srgb, #6a9fd8 16%, var(--paper));
+  --warn: #e3a553;
+  --ul-blue: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 52 5' preserveAspectRatio='none'%3E%3Cpath d='M0 3.2 C4 1.6 7 4.4 12 2.6 S19 3.8 24 2.4 S31 4.2 37 2.8 S46 3.6 52 3.2' fill='none' stroke='%236a9fd8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  --ul-red: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 52 5' preserveAspectRatio='none'%3E%3Cpath d='M0 3.2 C4 1.6 7 4.4 12 2.6 S19 3.8 24 2.4 S31 4.2 37 2.8 S46 3.6 52 3.2' fill='none' stroke='%23ff6a3d' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  --ul-graphite: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 4' preserveAspectRatio='none'%3E%3Cpath d='M0 2.6 C10 1.4 20 3.6 32 2.2 S50 3.2 64 2.4' fill='none' stroke='%237d8490' stroke-width='1.6' stroke-linecap='round' preserveAspectRatio='none'/%3E%3C/svg%3E");
+  --ul-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 4' preserveAspectRatio='none'%3E%3Cpath d='M0 2.6 C10 1.4 20 3.6 32 2.2 S50 3.2 64 2.4' fill='none' stroke='%23e3a553' stroke-width='1.6' stroke-linecap='round' preserveAspectRatio='none'/%3E%3C/svg%3E");
+  --br-blue: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 100' preserveAspectRatio='none'%3E%3Cpath d='M8 1.5 C4 2.5 1.8 3.5 2.4 9 C1.8 30 3 55 2.2 91 C2.6 96.5 4 97.5 8 98.5' fill='none' stroke='%236a9fd8' stroke-width='1.6' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");
+
   --red: #ff8a63;
   --red-mark: #ff6a3d;
   --red-wash: color-mix(in srgb, #ff6a3d 13%, var(--paper));
