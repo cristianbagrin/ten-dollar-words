@@ -396,3 +396,24 @@ test('overflow lines: new toggle payload and edits through applyOps', async () =
   await M.applyOps('ov', kids, next, M.planOps(kids, next), api);
   assert.deepEqual(M.blocksToEntries(asBlocks(api.state)).map((e) => e.line), next);
 });
+
+/* ---------- Highlights as Notion colors ---------- */
+
+test('highlights go to Notion as colors and come back; ghosts stay gray; taking one off clears it', async () => {
+  const text = 'Mark this and leave that. Ghost here.';
+  const at = (w) => ({ start: text.indexOf(w), end: text.indexOf(w) + w.length });
+  const hls = [Object.assign(at('Mark this'), { color: 'yellow_background' }), Object.assign(at('that'), { color: 'red' })];
+  const ghosts = [at('Ghost')];
+  const masks = M.colorMasks(text, ghosts, hls);
+  const api = simPage([]);
+  const next = await M.applyOps('page', [], [text], M.planOps([], [text], masks), api, masks);
+  const back = M.blocksToEntries(asBlocks(api.state));
+  assert.deepEqual(M.hlsFromEntries(back).map((h) => [text.slice(h.start, h.end), h.color]), [['Mark this', 'yellow_background'], ['that', 'red']]);
+  assert.deepEqual(rangesOf(text, M.ghostsFromEntries(back)), ['Ghost']);
+  assert.equal(M.sameContent(next, [text], masks), true);
+  const none = M.colorMasks(text, [], []);
+  assert.equal(M.sameContent(next, [text], none), false, 'removing every color is a change');
+  const ops = M.planOps(next, [text], none);
+  await M.applyOps('page', next, [text], ops, api, none);
+  assert.equal(M.colorsOf(M.blocksToEntries(asBlocks(api.state))[0].rich), null);
+});

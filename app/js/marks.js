@@ -11,7 +11,17 @@
   const MAX_ALTS = 200;
   const MAX_OPTIONS = 20;
   const MAX_GHOSTS = 400;
-  const EMPTY = Object.freeze({ alts: Object.freeze([]), ghosts: Object.freeze([]) });
+  const MAX_HLS = 600;
+  const MAX_NOTES = 300;
+  const EMPTY = Object.freeze({ alts: Object.freeze([]), ghosts: Object.freeze([]), hls: Object.freeze([]), notes: Object.freeze([]) });
+  // Colors, in Notion's words: a text color, or a background ("yellow_background"). Gray text is
+  // how ghosts look in Notion, so it isn't offered as a color.
+  const HUES = ['brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
+  const COLORS = HUES.concat(['gray'].concat(HUES).map((h) => h + '_background'));
+  const isColor = (c) => COLORS.includes(c);
+  // Every list a set of marks has, so a change to one keeps the others.
+  const withAnn = (ann, patch) => Object.assign({ alts: [], ghosts: [], hls: [], notes: [] }, ann, patch);
+  const hasAny = (ann) => !!ann && (ann.alts.length || ann.ghosts.length || (ann.hls && ann.hls.length) || (ann.notes && ann.notes.length));
 
   const WORD_ONLY = /^[\p{L}\p{N}'’\-]+$/u;
   let seq = 0;
@@ -40,6 +50,7 @@
       const grows = mode === 'paragraph' ? !ins.includes('\n')
         : mode === 'word' ? WORD_ONLY.test(ins)
         : mode === 'sentence' ? !/^\s/.test(ins) && !ins.includes('\n')
+        : mode === 'color' ? !ins.includes('\n')
         : false;
       if (start < s) return { start: s + d, end: e + d };
       if (start > e) return { start: s, end: e };
@@ -61,7 +72,7 @@
   // Alternatives and ghosts after the text went from oldText to newText. Typing inside an
   // alternative rewrites the option that's showing, so the page and the list always agree.
   function applyChange(ann, oldText, newText) {
-    if (!ann || (!ann.alts.length && !ann.ghosts.length) || oldText === newText) return ann || EMPTY;
+    if (!hasAny(ann) || oldText === newText) return ann || EMPTY;
     const c = diff(oldText, newText);
     return shiftAll(ann, c.start, c.end, newText.slice(c.start, c.start + c.len), newText);
   }
@@ -84,7 +95,45 @@
       if (!r || !newText.slice(r.start, r.end).trim()) continue;
       ghosts.push(r.start === g.start && r.end === g.end ? g : Object.assign({}, g, r));
     }
-    return { alts, ghosts: mergeGhosts(ghosts) };
+    // Highlights grow as you type at their end, the way color carries on in Notion.
+    const hls = [];
+    for (const h of ann.hls || []) {
+      const r = shiftRange(h, start, end, ins, 'color');
+      if (!r || !newText.slice(r.start, r.end).trim()) continue;
+      hls.push(r.start === h.start && r.end === h.end ? h : Object.assign({}, h, r));
+    }
+    // A note is never lost with its text: it stays, pinned where the text was.
+    const notes = [];
+    for (const n of ann.notes || []) {
+      let r = n.end > n.start ? shiftRange(n, start, end, ins, 'fixed') : shiftPoint(n.start, start, end, ins);
+      if (!r) r = { start: Math.min(start + ins.length, newText.length), end: Math.min(start + ins.length, newText.length) };
+      notes.push(r.start === n.start && r.end === n.end ? n : Object.assign({}, n, r));
+    }
+    return { alts, ghosts: mergeGhosts(ghosts), hls: mergeColors(hls), notes };
+  }
+
+  function shiftPoint(p, start, end, ins) {
+    const d = ins.length - (end - start);
+    if (p < start || (p === start && start === end)) return { start: p, end: p };
+    if (p >= end) return { start: p + d, end: p + d };
+    return { start: start + ins.length, end: start + ins.length };
+  }
+
+  // Touching highlights of the same color become one; later ones win where they overlap.
+  function mergeColors(list) {
+    if (list.length < 2) return list;
+    const s = list.slice().sort((a, b) => a.start - b.start);
+    const out = [];
+    for (const h of s) {
+      const last = out[out.length - 1];
+      if (last && h.start <= last.end) {
+        if (last.color === h.color) { if (h.end > last.end) out[out.length - 1] = Object.assign({}, last, { end: h.end }); continue; }
+        if (h.start === last.start) { out[out.length - 1] = h; continue; }
+        out[out.length - 1] = Object.assign({}, last, { end: h.start });
+      }
+      out.push(h);
+    }
+    return out;
   }
 
   // Overlapping or touching ghosts become one.
@@ -105,7 +154,7 @@
   // exactly; anything it swallowed is looked for by its text, nearest its old place first.
   // Alternatives that can't be found come back as `lost`, so the caller can keep their options.
   function reanchor(ann, oldText, newText) {
-    if (!ann || (!ann.alts.length && !ann.ghosts.length)) return { ann: ann || EMPTY, lost: [] };
+    if (!hasAny(ann)) return { ann: ann || EMPTY, lost: [] };
     if (oldText === newText) return { ann, lost: [] };
     const c = diff(oldText, newText);
     const shifted = shiftAll(ann, c.start, c.end, newText.slice(c.start, c.start + c.len), newText);
@@ -142,8 +191,25 @@
       const at = want.trim() ? nearest(newText, want, guess(g.start), (s) => !taken(s, s + want.length, ghosts)) : -1;
       if (at >= 0) ghosts.push(Object.assign({}, g, { start: at, end: at + want.length }));
     }
+    const keptH = new Set(shifted.hls.map((h) => h.id));
+    const hls = shifted.hls.slice();
+    for (const h of ann.hls || []) {
+      if (keptH.has(h.id)) continue;
+      const want = oldText.slice(h.start, h.end);
+      const at = want.trim() ? nearest(newText, want, guess(h.start), (s) => !taken(s, s + want.length, hls)) : -1;
+      if (at >= 0) hls.push(Object.assign({}, h, { start: at, end: at + want.length }));
+    }
+    // Notes look for their words again; one that can't find them stays pinned where they were.
+    const was2 = new Map((ann.notes || []).map((n) => [n.id, n]));
+    const notes = shifted.notes.map((n) => {
+      const old = was2.get(n.id);
+      if (!old || old.end <= old.start || n.end > n.start) return n;
+      const want = oldText.slice(old.start, old.end);
+      const at = want.trim() ? nearest(newText, want, guess(old.start), () => true) : -1;
+      return at >= 0 ? Object.assign({}, n, { start: at, end: at + want.length }) : n;
+    });
     alts.sort((x, y) => x.start - y.start);
-    return { ann: { alts, ghosts: mergeGhosts(ghosts) }, lost };
+    return { ann: { alts, ghosts: mergeGhosts(ghosts), hls: mergeColors(hls), notes }, lost };
   }
 
   function nearest(text, want, near, ok) {
@@ -193,17 +259,52 @@
       ghosts.push({ id: typeof g.id === 'string' && g.id ? g.id : newId('g'), start, end });
       if (ghosts.length >= MAX_GHOSTS) break;
     }
+    const hls = [];
+    for (const h of Array.isArray(src.hls) ? src.hls : []) {
+      const start = num(h && h.start), end = num(h && h.end);
+      if (start < 0 || end <= start || end > t.length || !isColor(h.color)) continue;
+      hls.push({ id: typeof h.id === 'string' && h.id ? h.id : newId('h'), start, end, color: h.color });
+      if (hls.length >= MAX_HLS) break;
+    }
+    const notes = [];
+    for (const n of Array.isArray(src.notes) ? src.notes : []) {
+      if (!n || typeof n !== 'object') continue;
+      let start = num(n.start), end = num(n.end);
+      if (start < 0 || start > t.length) start = Math.max(0, Math.min(t.length, start));
+      if (end < start || end > t.length) end = start;
+      // Saved against another copy of the text: find its words again.
+      const quote = typeof n.quote === 'string' ? n.quote : '';
+      if (quote && t.slice(start, end) !== quote) {
+        const at = nearest(t, quote, start, () => true);
+        if (at >= 0) { start = at; end = at + quote.length; }
+      }
+      const thread = (Array.isArray(n.thread) ? n.thread : []).filter((m) => m && typeof m.text === 'string').slice(-60).map((m) => {
+        const o = { by: m.by === 'ai' ? 'ai' : 'me', text: m.text.slice(0, 4000), at: Number.isFinite(m.at) ? m.at : 0 };
+        if (Array.isArray(m.options)) o.options = m.options.filter((x) => typeof x === 'string' && x.trim()).slice(0, 8);
+        return o;
+      });
+      notes.push({
+        id: typeof n.id === 'string' && n.id ? n.id : newId('n'), start, end,
+        body: typeof n.body === 'string' ? n.body.slice(0, 4000) : '',
+        done: !!n.done, ai: !!n.ai,
+        color: isColor(n.color) ? n.color : '',
+        at: Number.isFinite(n.at) ? n.at : 0,
+        thread
+      });
+      if (notes.length >= MAX_NOTES) break;
+    }
     alts.sort((x, y) => x.start - y.start);
-    return { alts, ghosts: mergeGhosts(ghosts) };
+    notes.sort((x, y) => x.start - y.start);
+    return { alts, ghosts: mergeGhosts(ghosts), hls: mergeColors(hls), notes };
   }
 
   // Alternatives with one option left are just text.
   function prune(ann) {
     const alts = ann.alts.filter((a) => a.options.length > 1);
-    return alts.length === ann.alts.length ? ann : { alts, ghosts: ann.ghosts };
+    return alts.length === ann.alts.length ? ann : withAnn(ann, { alts });
   }
 
-  const isEmpty = (ann) => !ann || (!ann.alts.length && !ann.ghosts.length);
+  const isEmpty = (ann) => !hasAny(ann);
 
   /* ---------- a / an ---------- */
 
@@ -260,7 +361,7 @@
     }
     const alts = ann2.alts.concat(Object.assign({}, a, { start, end: start + next.length, active: k }));
     alts.sort((x, y) => x.start - y.start);
-    return { text: t, ann: { alts, ghosts: ann2.ghosts }, start, end: start + next.length };
+    return { text: t, ann: withAnn(ann2, { alts }), start, end: start + next.length };
   }
 
   // A new alternative over [start, end), or the one already there (same kind, overlapping).
@@ -270,11 +371,11 @@
     if (ann.alts.length >= MAX_ALTS) return null;
     const alt = { id: newId('a'), kind, start, end, options: [{ text: text.slice(start, end), by: 'me' }], active: 0 };
     const alts = ann.alts.concat(alt).sort((x, y) => x.start - y.start);
-    return { ann: { alts, ghosts: ann.ghosts }, id: alt.id };
+    return { ann: withAnn(ann, { alts }), id: alt.id };
   }
 
   function updateAlt(ann, id, patch) {
-    return { alts: ann.alts.map((x) => (x.id === id ? Object.assign({}, x, patch) : x)), ghosts: ann.ghosts };
+    return withAnn(ann, { alts: ann.alts.map((x) => (x.id === id ? Object.assign({}, x, patch) : x)) });
   }
 
   // Add options (skipping ones already in the list); returns the new ann.
@@ -296,7 +397,7 @@
 
   function ghost(ann, start, end) {
     if (end <= start) return ann;
-    return { alts: ann.alts, ghosts: mergeGhosts(ann.ghosts.concat({ id: newId('g'), start, end })) };
+    return withAnn(ann, { ghosts: mergeGhosts(ann.ghosts.concat({ id: newId('g'), start, end })) });
   }
 
   // Revive [start, end): ghosts are cut back, or split, around it.
@@ -307,8 +408,47 @@
       if (g.start < start) out.push(Object.assign({}, g, { end: start }));
       if (g.end > end) out.push(Object.assign({}, g, { id: newId('g'), start: end }));
     }
-    return { alts: ann.alts, ghosts: out };
+    return withAnn(ann, { ghosts: out });
   }
+
+  /* ---------- Colors and notes ---------- */
+
+  // Color [start, end): a Notion color name, or null to clear it. Whatever was there is cut back.
+  function setColor(ann, start, end, color) {
+    if (end <= start) return ann;
+    const out = [];
+    for (const h of ann.hls || []) {
+      if (end <= h.start || start >= h.end) { out.push(h); continue; }
+      if (h.start < start) out.push(Object.assign({}, h, { end: start }));
+      if (h.end > end) out.push(Object.assign({}, h, { id: newId('h'), start: end }));
+    }
+    if (color && isColor(color)) out.push({ id: newId('h'), start, end, color });
+    return withAnn(ann, { hls: mergeColors(out) });
+  }
+
+  // The color most of [start, end) has (or the one at a caret), or ''.
+  function colorAt(ann, start, end) {
+    const list = ann.hls || [];
+    if (end <= start) { const h = list.find((x) => start > x.start && start <= x.end); return h ? h.color : ''; }
+    const by = new Map();
+    for (const h of list) {
+      const n = Math.max(0, Math.min(h.end, end) - Math.max(h.start, start));
+      if (n) by.set(h.color, (by.get(h.color) || 0) + n);
+    }
+    let best = '', most = 0;
+    for (const [c, n] of by) if (n > most) { most = n; best = c; }
+    return most * 2 >= end - start ? best : '';
+  }
+
+  function addNote(ann, start, end, fields) {
+    if ((ann.notes || []).length >= MAX_NOTES) return null;
+    const note = Object.assign({ id: newId('n'), start, end, body: '', done: false, ai: false, color: '', at: Date.now(), thread: [] }, fields || {});
+    const notes = (ann.notes || []).concat(note).sort((x, y) => x.start - y.start);
+    return { ann: withAnn(ann, { notes }), id: note.id };
+  }
+  const updateNote = (ann, id, patch) => withAnn(ann, { notes: (ann.notes || []).map((n) => (n.id === id ? Object.assign({}, n, patch) : n)) });
+  const removeNote = (ann, id) => withAnn(ann, { notes: (ann.notes || []).filter((n) => n.id !== id) });
+  const notesAt = (ann, at) => (ann.notes || []).filter((n) => at >= n.start && at <= n.end);
 
   const ghostAt = (ann, start, end) => ann.ghosts.some((g) => (end > start ? start < g.end && end > g.start : start >= g.start && start <= g.end));
 
@@ -407,7 +547,8 @@
   }
 
   return {
-    EMPTY, KINDS, MAX_OPTIONS,
+    EMPTY, KINDS, MAX_OPTIONS, COLORS, HUES, isColor, withAnn,
+    setColor, colorAt, mergeColors, addNote, updateNote, removeNote, notesAt,
     diff, shiftRange, applyChange, reanchor, normalize, prune, isEmpty,
     articleFor, articleFix, swap, ensure, updateAlt, addOptions,
     ghost, revive, ghostAt, stripGhosts, mergeGhosts, mask,

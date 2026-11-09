@@ -232,7 +232,10 @@
       } else {
         cell = Object.assign({}, c, { color: carry.color, u: carry.u, obj: -1, from: -1 });
       }
-      if (mask) {
+      if (mask && mask.colorMode) {
+        // Every color is the draft's to say: ghosts, highlights, or none.
+        cell.color = typeof mask[k] === 'string' && mask[k] ? mask[k] : 'default';
+      } else if (mask) {
         if (mask[k]) cell.color = 'gray';
         else if (cell.color === 'gray') cell.color = 'default';
       }
@@ -287,7 +290,78 @@
     }
     return any ? out : null;
   }
-  const maskKey = (m) => (m && m.some(Boolean) ? '\u0004' + m.map((x) => (x ? 1 : 0)).join('') : '');
+  // A line's colors as a string, ghosts (true or 'gray') and highlights alike; '' when it has none.
+  const colorName = (x) => (x === true ? 'gray' : typeof x === 'string' && x !== 'default' ? x : '');
+  const maskKey = (m) => (m && m.some((x) => colorName(x)) ? '\u0004' + m.map(colorName).join(',') : '');
+
+  // One color name per character of the block's text ('' for the default), or null when it has none.
+  function colorsOf(rich) {
+    const out = [];
+    let any = false;
+    for (const r of rich || []) {
+      const c = r.annotations && r.annotations.color && r.annotations.color !== 'default' ? r.annotations.color : '';
+      if (c) any = true;
+      for (let k = 0; k < display(plainOf(r)).length; k++) out.push(c);
+    }
+    return any ? out : null;
+  }
+
+  // Ghosts (gray) and highlights (any other Notion color) → per line, one color name per visible
+  // character of the line's block text. Lines with none get an empty list, which still says
+  // "no colors here": a highlight taken off in the app comes off in Notion too.
+  const NO_COLOR = Object.freeze(Object.assign([], { colorMode: true }));
+  function colorMasks(text, ghosts, hls) {
+    const lines = String(text || '').split('\n');
+    const out = new Array(lines.length).fill(null);
+    out.colorMode = true;
+    const marks = [].concat((hls || []).map((h) => ({ start: h.start, end: h.end, color: h.color })), (ghosts || []).map((g) => ({ start: g.start, end: g.end, color: 'gray' })));
+    if (!marks.length) return out;
+    let at = 0;
+    lines.forEach((line, i) => {
+      const ls = at;
+      at += line.length + 1;
+      const hits = marks.filter((g) => g.start < ls + line.length && g.end > ls);
+      if (!hits.length || looksOpaque(line)) return;
+      const spec = lineToSpec(line);
+      if (spec.type === 'divider') return;
+      const pre = line.length - spec.text.length;
+      const map = visMap(spec.text);
+      const mask = map.map((c) => {
+        const x = ls + pre + c;
+        let color = '';
+        for (const g of hits) if (x >= g.start && x < g.end) { color = g.color; if (color === 'gray') break; }
+        return color;
+      });
+      if (mask.some(Boolean)) { mask.colorMode = true; out[i] = mask; }
+    });
+    return out;
+  }
+
+  // Colored text in Notion (not gray, which is a ghost) → highlights over the draft text.
+  function hlsFromEntries(entries) {
+    const out = [];
+    let at = 0;
+    for (const e of entries || []) {
+      const ls = at;
+      at += e.line.length + 1;
+      if (e.opaque || e.type === 'divider') continue;
+      const colors = colorsOf(e.rich);
+      if (!colors) continue;
+      const spec = lineToSpec(e.line);
+      const pre = e.line.length - spec.text.length;
+      const map = visMap(spec.text);
+      if (map.length !== colors.length) continue;
+      for (let k = 0; k < map.length;) {
+        const c = colors[k];
+        if (!c || c === 'gray') { k++; continue; }
+        let j = k;
+        while (j + 1 < map.length && colors[j + 1] === c) j++;
+        out.push({ start: ls + pre + map[k], end: ls + pre + map[j] + 1, color: c });
+        k = j + 1;
+      }
+    }
+    return out;
+  }
 
   // Ghost ranges (markdown offsets of the whole draft) → per line, one boolean per visible
   // character of the line's block text, or null for a line with no ghosts.
@@ -376,7 +450,7 @@
     if (e.opaque) return 'opaque\u0000' + e.line;
     if (e.type === 'divider') return 'divider';
     return e.type + '\u0000' + signature((e.rich || []).map(styleRun)) + (e.type === 'to_do' ? '\u0000' + e.checked : '') +
-      (masks ? maskKey(grayOf(e.rich)) : '');
+      (masks ? maskKey(masks.colorMode ? colorsOf(e.rich) : grayOf(e.rich)) : '');
   }
   function keyOfLine(line, mask, masks) {
     if (looksOpaque(line)) return 'opaque\u0000' + line;
@@ -520,7 +594,7 @@
      in Notion. Lines that look like ⟦markers⟧ are never created as text. */
   // masks (optional, from ghostMasks): which characters of each line are ghosted (gray).
   async function applyOps(pageId, entries, lines, ops, api, masks) {
-    const maskOf = (k) => (masks ? masks[k] || NO_GHOST : undefined);
+    const maskOf = (k) => (masks ? masks[k] || (masks.colorMode ? NO_COLOR : NO_GHOST) : undefined);
     const next = [];
     let anchor = null;
     let batch = [];
@@ -616,6 +690,6 @@
   return {
     isOpaqueLine, looksOpaque, blocksToEntries, entriesToText, lineToSpec, richPlain, richToMd, spliceRich,
     richFromText, richFromMd, blockPayload, planOps, applyOps, sameContent, propFromNotion, propToNotion, EDITABLE,
-    ghostMasks, ghostsFromEntries, grayOf, splitPage, isOverflowBlock, overflowLines, overflowBlock, OVERFLOW_TITLE
+    ghostMasks, ghostsFromEntries, grayOf, colorMasks, colorsOf, hlsFromEntries, splitPage, isOverflowBlock, overflowLines, overflowBlock, OVERFLOW_TITLE
   };
 });

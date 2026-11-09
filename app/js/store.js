@@ -139,7 +139,7 @@
       nb: typeof d.nb === 'boolean' ? d.nb : null, // backspace blocked here, or null to follow the stage
       // Alternatives and ghosts laid over the text (marks.js), the Overflow beside it, and the
       // writing challenge, if one is running.
-      ann: TDW.Marks ? TDW.Marks.normalize(d.ann, str(d.text, '')) : { alts: [], ghosts: [] },
+      ann: TDW.Marks ? TDW.Marks.normalize(d.ann, str(d.text, '')) : { alts: [], ghosts: [], hls: [], notes: [] },
       overflow: str(d.overflow, ''),
       challenge: d.challenge && typeof d.challenge === 'object' && !Array.isArray(d.challenge) ? d.challenge : null
     };
