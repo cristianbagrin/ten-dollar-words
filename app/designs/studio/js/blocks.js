@@ -432,7 +432,7 @@
     onText() { checkSlash(); if (slash) requestAnimationFrame(drawSlash); },
     onSelect() { if (slash) requestAnimationFrame(drawSlash); },
     onMode() { hide(); closeSlash(); },
-    TYPES, openSlash, closeSlash, openBlockMenu,
+    TYPES, openSlash, closeSlash, openBlockMenu, hideHandle: () => hide(),
     isSlashOpen: () => !!slash
   };
 })();
