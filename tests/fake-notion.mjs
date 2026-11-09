@@ -1,6 +1,6 @@
 // Fake Notion API for the sync stress tests. It answers the calls the app makes with Notion's
 // shapes, keeps everything in memory, and adds /__admin routes to edit pages "in Notion".
-//   node tests/fake-notion.mjs [--state <file>]
+//   node tests/fake-notion.mjs [--state <file>] [--port <n>]
 // With --state, pages are saved to that file after every change and loaded at start, so a
 // restart keeps the same data (the request log starts empty).
 import http from 'node:http';
@@ -12,7 +12,8 @@ const require = createRequire(import.meta.url);
 const NotionMap = require('../app/js/notion-map.js');
 
 const HOST = '127.0.0.1';
-const PORT = 8787;
+const portAt = process.argv.indexOf('--port');
+const PORT = (portAt > 0 && Number(process.argv[portAt + 1])) || 8787;
 const DB_ID = 'aaaaaaaabbbbccccddddeeeeeeeeeeee';
 const DS_ID = 'ds1';
 const SECRET = 'test-secret';
