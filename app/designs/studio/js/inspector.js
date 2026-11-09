@@ -31,6 +31,8 @@
   let navHead = null, navTitle = null, doneBtn = null;
 
   const pane = (name) => $('tab-' + name);
+  // What's in front, for the page's styles: Lab marks show only with the Lab, and so on.
+  const syncTab = () => { root.dataset.tab = open ? (pushed ? pushed.name : current) : ''; };
 
   /* ---------- Tabs ---------- */
   function build() {
@@ -81,7 +83,8 @@
       if (!pushed) p.hidden = !on;
     }
     if (changed && !pushed) fadeIn(pane(id));
-    btns[id].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    syncTab();
+    if (btns[id].parentNode.scrollWidth > btns[id].parentNode.clientWidth) btns[id].scrollIntoView({ block: 'nearest', inline: 'nearest' });
     if (changed || o.user) { if (hooks.onTab) hooks.onTab(id, !!o.user); }
   }
 
@@ -103,6 +106,8 @@
     p.hidden = false;
     fadeIn(p);
     root.classList.add('insp-pushed');
+    syncTab();
+    if (hooks.onTab) hooks.onTab(current, false);
   }
 
   function pop(silent) {
@@ -114,7 +119,9 @@
     $('insp-tabs').hidden = false;
     root.classList.remove('insp-pushed');
     for (const t of TABS) pane(t.id).hidden = t.id !== current;
+    syncTab();
     if (!silent) fadeIn(pane(current));
+    if (hooks.onTab) hooks.onTab(current, false);
   }
 
   function setBadge(id, text) {
@@ -217,6 +224,7 @@
     if (open && !o.force) { if (isNarrow() && o.detent) setDetent(o.detent); return; }
     open = true;
     root.classList.add('insp-open');
+    syncTab();
     $('inspector').setAttribute('aria-hidden', 'false');
     $('inspector').inert = false;
     if (isNarrow()) {
@@ -235,6 +243,7 @@
     if (!open && !o.force) return;
     open = false;
     root.classList.remove('insp-open');
+    syncTab();
     $('inspector').setAttribute('aria-hidden', 'true');
     if ($('inspector').contains(document.activeElement)) TDW.Editor.focus();
     $('inspector').inert = true;
