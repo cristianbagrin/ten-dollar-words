@@ -103,6 +103,13 @@ rules) stay byte-identical; the directions change markup, styles and the UI modu
 4. **Iterate:** the designer fixes what the graders found, and fresh graders score again.
    A direction is done when **two rounds in a row have every grader at 8 or above**
    (at most five rounds; if one can't get there, I say so and what's still weak).
+
+   **Token budget (revised mid-session):** one grader per direction per round, covering both
+   lenses, working from about 12 key screenshots plus one short check in the running app
+   instead of a long exploration. Fixes go to a Sonnet fixer with the grader's list and the
+   files involved, not to the long-running designer. A direction passes with one round at 8+
+   followed by a cheap confirmation round (screenshots only) also at 8+. At most three
+   rounds per direction.
 5. **Compare:** one page with the three directions side by side (same states), their scores,
    what each removes or changes, and how to try each. Then you pick.
 6. **After the pick:** the chosen folder becomes `app/`, the others are deleted, the README and
