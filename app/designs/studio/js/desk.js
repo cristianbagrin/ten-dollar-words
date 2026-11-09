@@ -1,55 +1,43 @@
-/* The desk around the page: a faint live count (top left), save, open and post to X (bottom
-   left), and the list of shortcuts (top right). No LinkedIn button, on purpose. */
+/* Around the page: the word count in the toolbar, the Share menu (copy for the platform, post
+   to X, save as Markdown, open a file) and the list of shortcuts. */
 (function () {
   'use strict';
   const TDW = window.TDW = window.TDW || {};
-  const { Marks, Editor, UI, Formats, Engine, Inline } = TDW;
+  const { Marks, Editor, UI, Formats, Engine } = TDW;
+  const { el, icon, tip, ctrlKeys, keys } = UI;
   const app = () => TDW.App;
-  const IS_MAC = UI.device.apple;
+  const $ = (id) => document.getElementById(id);
 
-  const svg = (inner) => '<svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">' + inner + '</svg>';
-  const ICONS = {
-    save: svg('<path d="M3 2.5h8l2.5 2.5v8.5h-10.5z" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 2.5v3h5v-3M5 13.5v-4h6v4" stroke-width="1.3" stroke-linejoin="round"/>'),
-    open: svg('<path d="M2 4.5V12.5h12V6H8L6.5 4.5z" stroke-width="1.3" stroke-linejoin="round"/>'),
-    x: '<span class="x-glyph" aria-hidden="true">𝕏</span>',
-    keyboard: svg('<rect x="1.5" y="4" width="13" height="8" rx="1.5" stroke-width="1.2"/><path d="M4 6.5h.01M6.5 6.5h.01M9 6.5h.01M11.5 6.5h.01M4.5 9.5h7" stroke-width="1.3" stroke-linecap="round"/>')
-  };
-
-  let countEl = null;
   let fileInput = null;
-  let sheet = null;
+  let dlg = null;
 
   /* ---------- Live count ---------- */
-
-  // Characters a reader sees: no markdown, no ghosts.
-  const charsOf = (md) => md.split('\n').map((l) => Inline.plain(l)).join('\n').replace(/\n+/g, '\n').trim().length;
-
   function ghostsIn(s, e) {
     return Editor.getAnnotations().ghosts.filter((g) => g.start < e && g.end > s)
       .map((g) => ({ start: Math.max(0, g.start - s), end: Math.min(e - s, g.end - s) }));
   }
-
-  const n = (k, w) => k.toLocaleString() + ' ' + UI.plural(k, w, w + 's');
+  const n = (k, w) => k.toLocaleString('en-US') + ' ' + UI.plural(k, w, w + 's');
   let countRaf = 0;
   function updateCount() {
     if (countRaf) return;
     countRaf = requestAnimationFrame(() => {
       countRaf = 0;
-      if (!countEl) return;
+      const node = $('tb-count');
+      if (!node) return;
       const t = Editor.getText();
       const s = Editor.getSelection();
       if (s.end > s.start) {
-        const shown = Marks.stripGhosts(t.slice(s.start, s.end), ghostsIn(s.start, s.end));
-        countEl.textContent = n(Engine.countWords(shown), 'word') + ' ' + n(charsOf(shown), 'char') + ' selected';
+        const words = Engine.countWords(Marks.stripGhosts(t.slice(s.start, s.end), ghostsIn(s.start, s.end)));
+        node.textContent = n(words, 'word') + ' selected';
+        node.classList.add('is-selection');
       } else {
-        const shown = app().publishText(t);
-        countEl.textContent = t.trim() ? n(Engine.countWords(shown), 'word') + ' ' + n(charsOf(shown), 'char') : '';
+        node.textContent = t.trim() ? n(Engine.countWords(app().publishText(t)), 'word') : '';
+        node.classList.remove('is-selection');
       }
     });
   }
 
-  /* ---------- Save and open ---------- */
-
+  /* ---------- Save, open, copy, post ---------- */
   function fileName() {
     const d = app().state.draft;
     const title = (d ? TDW.Store.displayTitle(d) : 'draft').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
@@ -61,18 +49,17 @@
     app().saveNow();
     const md = app().publishText(Editor.getText());
     const blob = new Blob([md.replace(/\n/g, '\n\n').replace(/\n{3,}/g, '\n\n') + '\n'], { type: 'text/markdown' });
-    const a = UI.el('a', { href: URL.createObjectURL(blob), download: fileName() });
+    const a = el('a', { href: URL.createObjectURL(blob), download: fileName() });
     document.body.append(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     UI.toast('Saved ' + fileName());
   }
 
-  // A markdown or text file opens as a new draft. Paragraphs in a file are separated by blank
-  // lines; here each line is a paragraph.
+  // A markdown or text file opens as a new draft.
   function openFile() {
     if (!fileInput) {
-      fileInput = UI.el('input', { type: 'file', accept: '.md,.markdown,.txt,text/markdown,text/plain', hidden: true });
+      fileInput = el('input', { type: 'file', accept: '.md,.markdown,.txt,text/markdown,text/plain', hidden: true });
       fileInput.addEventListener('change', async () => {
         const f = fileInput.files && fileInput.files[0];
         fileInput.value = '';
@@ -87,8 +74,6 @@
     }
     fileInput.click();
   }
-
-  /* ---------- Post to X ---------- */
 
   function postToX() {
     const t = app().publishText(Editor.getText());
@@ -106,79 +91,99 @@
     window.open(url, '_blank', 'noopener');
   }
 
-  /* ---------- Shortcuts ---------- */
+  // The whole draft the way the platform shows it (LinkedIn and X: Unicode bold, no markdown).
+  function copyFor() {
+    const d = app().state.draft;
+    const f = Formats.get(d ? d.format : 'basic');
+    const md = app().publishText(Editor.getText());
+    if (!md.trim()) { UI.toast('Nothing to copy yet.'); return; }
+    const text = f.social ? Formats.render(md, f).text : Formats.render(md, 'plain').text;
+    const html = f.social ? null : Formats.toHTML(md);
+    const label = f.key === 'basic' ? 'Copied' : 'Copied for ' + f.label;
+    let p;
+    if (html && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      p = navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+    } else p = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject();
+    p.then(() => UI.toast(label), () => UI.toast('The browser didn’t allow copying. Select the text and copy it.'));
+  }
 
+  function shareMenu(anchor) {
+    const d = app().state.draft;
+    const f = Formats.get(d ? d.format : 'basic');
+    UI.menu(anchor, [
+      { label: f.key === 'basic' ? 'Copy the text' : 'Copy for ' + f.label, note: f.social ? 'As it will show' : 'With formatting', value: 'copy', icon: 'share' },
+      { label: 'Post to X', note: ctrlKeys('Ctrl+Shift+P'), value: 'x', icon: 'external' },
+      { type: 'sep' },
+      { label: 'Save as Markdown', value: 'save' },
+      { label: 'Open a file as a new draft…', value: 'open' }
+    ], (it) => {
+      if (it.value === 'copy') copyFor();
+      else if (it.value === 'x') postToX();
+      else if (it.value === 'save') save();
+      else if (it.value === 'open') openFile();
+    }, null, null, { align: anchor.id === 'share-btn' ? 'end' : null });
+  }
+
+  /* ---------- Shortcuts ---------- */
   const SHORTCUTS = [
+    ['The studio', [
+      ['⌘E', 'Focus or Studio'], ['⌘\\', 'Show or hide the library'], ['⌘⌥I', 'Show or hide the inspector'], ['⌘,', 'Settings'], ['⌘S', 'Save now (it saves as you type)']
+    ]],
     ['Writing', [
-      ['⌘E', 'Write and Edit mode'], ['⌘B', 'Bold'], ['⌘I', 'Italic'], ['⌘⇧S', 'Strikethrough'], ['⌘K', 'Link'],
-      ['⌘⌥1', 'Heading 1 (2, 3 the same)'], ['⌘⇧8', 'Bullets'], ['⌘⇧7', 'Numbered list'], ['⌘⇧9', 'To-do'], ['⌘↩', 'New post (X threads)']
+      ['⌘B', 'Bold'], ['⌘I', 'Italic'], ['⌘⇧S', 'Strikethrough'], ['⌘K', 'Link'],
+      ['⌘⌥1', 'Heading 1 (2 and 3 the same)'], ['⌘⇧8', 'Bullets'], ['⌘⇧7', 'Numbered list'], ['⌘⇧9', 'To-do'], ['⌘↩', 'New post, in an X thread']
     ]],
-    ['Blocks, like Notion', [
+    ['Blocks', [
       ['/', 'Commands: headings, lists, to-do, quote, divider, AI, note, colors'], ['⌘⇧↑ ⌘⇧↓', 'Move the block up or down'],
-      ['⌘D', 'Duplicate the block'], ['⌘A', 'Select the block, again for everything'], ['⋮⋮', 'Drag a block by its handle; click it for the menu']
+      ['⌘D', 'Duplicate the block'], ['⌘A', 'Select the block, again for everything']
     ]],
-    ['Notes, colors, AI', [
-      ['Ctrl+J', 'Ask AI about the selection'], ['Ctrl+Shift+M', 'Add a note (nothing selected: the Notes panel)'],
-      ['Ctrl+Shift+H', 'Highlight in the last color used']
+    ['Notes, colors and AI', [
+      ['Ctrl+J', 'Ask AI about the selection'], ['Ctrl+Shift+M', 'Add a note, or show the notes'], ['Ctrl+Shift+H', 'Highlight in the last color used']
     ]],
     ['Alternatives', [
-      ['Ctrl+Shift+A', 'Alternatives for selection'], ['Ctrl+Shift+G', 'AI alternatives for selection'],
+      ['Ctrl+Shift+A', 'Alternatives for the selection'], ['Ctrl+Shift+G', 'Ask the AI for alternatives'],
       ['↑ ↓', 'Flip through them, with the pointer over one'], ['⌥↑ ⌥↓', 'Flip through the one the caret is in'],
-      ['↩', 'In the list: add · ?? asks the AI'], ['⌘⌫', 'In the list: remove one'], ['Esc', 'Close the list']
+      ['↩', 'In the list: add one; type ?? to ask the AI'], ['⌘⌫', 'In the list: remove one']
     ]],
-    ['Desk', [
-      ['Ctrl+/', 'Ghost it / Revive'], ['Ctrl+Shift+X', 'Stash this in Overflow'], ['Ctrl+Shift+O', 'Show or hide Overflow'],
-      ['Ctrl+↩', 'In Overflow: use this paragraph'], ['Ctrl+Shift+L', 'The Lab (Edit mode)'], ['Ctrl+Shift+P', 'Post to X'],
+    ['The desk', [
+      ['Ctrl+/', 'Ghost it, or revive it'], ['Ctrl+Shift+X', 'Stash in Overflow'], ['Ctrl+Shift+O', 'Show Overflow'],
+      ['Ctrl+↩', 'In Overflow: put this paragraph on the page'], ['Ctrl+Shift+L', 'The Lab'], ['Ctrl+Shift+P', 'Post to X'],
       ['⌘Z', 'Undo, alternatives and ghosts included'], ['Ctrl+?', 'This list']
     ]]
   ];
+  const keyText = (k) => (k.startsWith('Ctrl') ? ctrlKeys(k) : keys(k));
 
-  const keyText = (k) => (k.startsWith('Ctrl') ? (IS_MAC ? k.replace(/Ctrl\+/g, '⌃').replace(/Shift\+/g, '⇧') : k) : UI.keys(k));
-
-  function toggleSheet() {
-    if (sheet && !sheet.hidden) { sheet.hidden = true; return; }
-    if (!sheet) {
-      sheet = UI.el('div', { class: 'keys-sheet', role: 'dialog', 'aria-label': 'Keyboard shortcuts', hidden: true });
-      const close = UI.el('button', { type: 'button', class: 'btn-icon keys-close', 'aria-label': 'Close' }, UI.icon('close'));
-      close.addEventListener('click', () => { sheet.hidden = true; });
-      sheet.append(close);
-      for (const [title, rows] of SHORTCUTS) {
-        sheet.append(UI.el('h3', { text: title }));
-        const dl = UI.el('dl');
-        for (const [k, what] of rows) dl.append(UI.el('dt', { text: keyText(k) }), UI.el('dd', { text: what }));
-        sheet.append(dl);
-      }
-      sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); sheet.hidden = true; Editor.focus(); } });
-      document.body.append(sheet);
+  function buildSheet() {
+    dlg = $('keys-dialog');
+    const close = el('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Close' }, icon('close'));
+    close.addEventListener('click', () => dlg.close());
+    const body = el('div', { class: 'keys-body' });
+    for (const [title, rows] of SHORTCUTS) {
+      const dl = el('dl', { class: 'keys-list' });
+      for (const [k, what] of rows) dl.append(el('dt', null, ...keyText(k).split(' ').map((x) => el('kbd', { text: x }))), el('dd', { text: what }));
+      body.append(el('section', { class: 'keys-sec' }, el('h3', { text: title }), dl));
     }
-    sheet.hidden = false;
-    sheet.querySelector('button').focus();
+    dlg.append(el('header', { class: 'keys-head' }, el('h2', { id: 'keys-title', text: 'Keyboard shortcuts' }), close), body);
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+    dlg.addEventListener('close', () => { if (!document.querySelector('dialog[open]')) Editor.focus(); });
   }
 
-  /* ---------- Building it ---------- */
-
-  function button(name, label, keysHint, onClick) {
-    const b = UI.el('button', { type: 'button', class: 'dock-btn', 'aria-label': label, title: label + (keysHint ? ' (' + keysHint + ')' : '') });
-    b.innerHTML = ICONS[name];
-    b.addEventListener('mousedown', (e) => e.preventDefault());
-    b.addEventListener('click', onClick);
-    return b;
+  function toggleSheet() {
+    if (!dlg) buildSheet();
+    if (dlg.open) { dlg.close(); return; }
+    const s = document.getElementById('settings-dialog');
+    if (s && s.open) s.close();
+    dlg.showModal();
   }
 
   function build() {
-    countEl = UI.el('div', { class: 'live-count', 'aria-live': 'off' });
-    document.body.append(countEl);
-    const left = document.getElementById('dock-left');
-    if (left) left.append(
-      button('save', 'Save as a file', null, save),
-      button('open', 'Open a file', null, openFile),
-      button('x', 'Post to X', keyText('Ctrl+Shift+P'), postToX)
-    );
-    const kb = button('keyboard', 'Keyboard shortcuts', keyText('Ctrl+?'), toggleSheet);
-    kb.classList.add('keys-btn');
-    document.body.append(kb);
+    $('share-btn').append(el('span', { text: 'Share' }));
+    $('share-btn').addEventListener('click', (e) => shareMenu(e.currentTarget));
+    $('pb-share').append(icon('share'), el('span', { text: 'Share' }));
+    $('pb-share').addEventListener('click', (e) => shareMenu(e.currentTarget));
+    tip($('share-btn'), 'Copy, post, save or open');
     document.addEventListener('keydown', (e) => {
-      if (document.querySelector('dialog[open]')) return;
+      if (document.querySelector('dialog[open]:not(#keys-dialog)')) return;
       if (e.ctrlKey && !e.metaKey && !e.altKey && e.shiftKey && (e.code === 'KeyP' || String(e.key).toLowerCase() === 'p')) { e.preventDefault(); postToX(); }
       else if (e.ctrlKey && !e.metaKey && (e.key === '?' || (e.shiftKey && e.code === 'Slash'))) { e.preventDefault(); toggleSheet(); }
     });
@@ -191,6 +196,6 @@
     reload() { updateCount(); },
     onText() { updateCount(); },
     onSelect() { updateCount(); },
-    save, openFile, postToX, toggleSheet
+    save, openFile, postToX, copyFor, shareMenu, toggleSheet
   };
 })();
