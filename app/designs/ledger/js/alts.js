@@ -1,7 +1,7 @@
 /* Alternatives: other versions of a word, sentence or paragraph, kept with the draft and read in
    place. Hover an underlined span and use ↑/↓ (or Alt+↑/↓ with the caret in it) to flip through
-   them. The panel (Ctrl+Shift+A) lists them with where each came from: a square for yours, a
-   robot for the AI's, a filled dot for the one on the page. Typing in the list changes the page
+   them. The list (Ctrl+Shift+A) takes over the tape for a while: each version with its price, a
+   square for yours, a robot for the AI's, a filled dot for the one on the page. Typing in the list changes the page
    as you type; Return adds, Esc closes, "??" asks the AI for more. */
 (function () {
   'use strict';
@@ -11,7 +11,7 @@
   const KINDS = ['word', 'sentence', 'paragraph'];
   const LABEL = { word: 'Word', sentence: 'Sentence', paragraph: 'Paragraph' };
 
-  let panel = null, list = null, tabs = {}, hint = null;
+  let panel = null, list = null, kindSeg = null, closing = false;
   // The open panel: which alternative, and the point the last undo step was taken from.
   let cur = null; // { id, kind, snap, busy }
   let hoverId = null;
@@ -65,38 +65,46 @@
   /* ---------- The panel ---------- */
 
   function build() {
-    panel = UI.el('aside', { class: 'alts-panel', 'aria-label': 'Alternatives', hidden: true });
-    const bar = UI.el('div', { class: 'alts-tabs', role: 'tablist' });
-    for (const k of KINDS) {
-      tabs[k] = UI.el('button', { type: 'button', role: 'tab', class: 'alts-tab', text: LABEL[k] });
-      tabs[k].addEventListener('mousedown', (e) => e.preventDefault());
-      tabs[k].addEventListener('click', () => retarget(k));
-      bar.append(tabs[k]);
-    }
+    const ov = TDW.Tape.openOverlay('alts', {
+      title: 'Alternatives',
+      foot: UI.device.phone ? 'Tap a version to read it in place. Type ?? to ask the AI.' : 'Return adds a version. ↑ ↓ tries each one in place. Type ?? to ask the AI. Esc closes.',
+      onClose: () => { if (!closing) { closing = true; closePanel(); closing = false; } }
+    });
+    panel = ov.el;
+    kindSeg = UI.segmented({
+      label: 'Alternatives for', value: 'word', class: 'is-soft alts-kinds',
+      options: KINDS.map((k) => ({ value: k, label: LABEL[k] })),
+      onChange: (k) => retarget(k)
+    });
     list = UI.el('ol', { class: 'alts-list' });
-    hint = UI.el('p', { class: 'alts-hint' });
-    const close = UI.el('button', { type: 'button', class: 'btn-icon alts-close', 'aria-label': 'Close alternatives' }, UI.icon('close'));
-    close.addEventListener('click', () => closePanel());
-    panel.append(close, bar, list, hint);
-    document.body.append(panel);
+    ov.body.append(kindSeg, list);
     panel.addEventListener('keydown', onPanelKey);
   }
 
   function draw() {
     const a = cur && altOf(cur.id);
     if (!a) { closePanel(true); return; }
-    for (const k of KINDS) {
-      tabs[k].classList.toggle('is-on', k === a.kind);
-      tabs[k].setAttribute('aria-selected', String(k === a.kind));
-    }
-    const rows = a.options.map((o, i) => row(o, i, i === a.active));
-    rows.push(row({ text: '', by: 'me' }, a.options.length, false, true));
+    if (!panel) build();
+    kindSeg.set(a.kind, false);
+    const base = TDW.Engine.countWords(a.options[0] ? a.options[0].text : '');
+    const rows = a.options.map((o, i) => row(o, i, i === a.active, false, base));
+    rows.push(row({ text: '', by: 'me' }, a.options.length, false, true, base));
     list.replaceChildren(...rows);
-    hint.textContent = UI.device.phone ? 'tap to try one · ?? asks the AI' : 'return adds · esc closes · ?? asks the AI';
     sizeAll();
   }
 
-  function row(o, i, on, isNew) {
+  // What a version costs, and what it saves against the original.
+  function price(t, base, i) {
+    const w = TDW.Engine.countWords(t);
+    const d = base - w;
+    const kids = [UI.money(w * 10)];
+    if (i > 0 && d > 0) kids.push(' ', UI.el('span', { class: 'is-save', text: 'saves ' + UI.money(d * 10) }));
+    else if (i > 0 && d < 0) kids.push(' ', UI.el('span', { class: 'is-cost', text: UI.money(-d * 10) + ' more' }));
+    else if (i === 0) kids.push(', the original');
+    return kids;
+  }
+
+  function row(o, i, on, isNew, base) {
     const mark = isNew ? '' : on ? 'is-on' : o.by === 'ai' ? 'is-ai' : 'is-me';
     const li = UI.el('li', { class: 'alts-row ' + mark + (isNew ? ' is-new' : '') });
     li.dataset.i = String(i);
@@ -105,12 +113,13 @@
     const input = UI.el('textarea', {
       class: 'alts-input', rows: '1', spellcheck: 'true',
       'aria-label': isNew ? 'New alternative' : 'Alternative ' + (i + 1) + (o.by === 'ai' ? ', written by AI' : ', yours') + (on ? ', on the page' : ''),
-      placeholder: isNew ? (cur && cur.busy ? '' : 'Another way to say it…') : ''
+      placeholder: isNew ? (cur && cur.busy ? 'Asking the AI…' : 'Another way to say it…') : ''
     });
     input.value = o.text;
     input.addEventListener('focus', () => { if (!isNew) preview(i); });
     input.addEventListener('input', () => { size(input); onType(i, input.value, isNew); });
     li.append(m, input);
+    if (!isNew) li.append(UI.el('div', { class: 'alts-price' }, price(o.text, base, i)));
     if (isNew && cur && cur.busy) li.classList.add('is-busy');
     return li;
   }
@@ -343,13 +352,12 @@
     if (app().state.loading) return null;
     if (cur) closePanel(true, true);
     const got = Marks.ensure(text(), ann(), r.kind, r.start, r.end);
+    if (got && !panel) build();
     if (!got) { UI.toast('This draft has as many alternatives as it can hold.'); return null; }
     if (got.ann !== ann()) setAnn(got.ann, false);
     cur = { id: got.id, kind: r.kind, snap: null, busy: false };
     cur.snap = Editor.snapshot();
     Editor.setOpenAlt(got.id);
-    if (!panel) build();
-    panel.hidden = false;
     document.documentElement.classList.add('alts-open');
     draw();
     if (!(opts && opts.keepFocus)) focusRow(inputs().length - 1);
@@ -389,7 +397,8 @@
     Editor.setOpenAlt(null);
     if (!keepOpenClass) {
       document.documentElement.classList.remove('alts-open');
-      if (panel) panel.hidden = true;
+      if (panel && !closing) { closing = true; TDW.Tape.closeOverlay('alts'); closing = false; }
+      panel = null;
       if (!silent) Editor.focus();
     }
   }
@@ -473,7 +482,7 @@
       else if (k === 'g') { e.preventDefault(); aiForSelection(); }
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && cur && !panel.contains(e.target) && !UI.menuOpen() && !document.querySelector('dialog[open]')) {
+      if (e.key === 'Escape' && cur && !(panel && panel.contains(e.target)) && !UI.menuOpen() && !document.querySelector('dialog[open]')) {
         e.preventDefault();
         closePanel();
       }

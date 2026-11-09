@@ -1,5 +1,5 @@
-/* The desk around the page: a faint live count (top left), save, open and post to X (bottom
-   left), and the list of shortcuts (top right). No LinkedIn button, on purpose. */
+/* Share (save a Markdown file, open one, post to X) in the masthead, the price of a selection
+   beside the title, and the list of shortcuts (Settings → Keys). No LinkedIn button, on purpose. */
 (function () {
   'use strict';
   const TDW = window.TDW = window.TDW || {};
@@ -40,10 +40,12 @@
       const s = Editor.getSelection();
       if (s.end > s.start) {
         const shown = Marks.stripGhosts(t.slice(s.start, s.end), ghostsIn(s.start, s.end));
-        countEl.textContent = n(Engine.countWords(shown), 'word') + ' ' + n(charsOf(shown), 'char') + ' selected';
+        const w = Engine.countWords(shown);
+        countEl.textContent = n(w, 'word') + ', ' + n(charsOf(shown), 'char') + ' selected: ' + UI.money(w * 10);
+        countEl.hidden = false;
       } else {
-        const shown = app().publishText(t);
-        countEl.textContent = t.trim() ? n(Engine.countWords(shown), 'word') + ' ' + n(charsOf(shown), 'char') : '';
+        countEl.textContent = '';
+        countEl.hidden = true;
       }
     });
   }
@@ -135,50 +137,38 @@
 
   const keyText = (k) => (k.startsWith('Ctrl') ? (IS_MAC ? k.replace(/Ctrl\+/g, '⌃').replace(/Shift\+/g, '⇧') : k) : UI.keys(k));
 
-  function toggleSheet() {
-    if (sheet && !sheet.hidden) { sheet.hidden = true; return; }
-    if (!sheet) {
-      sheet = UI.el('div', { class: 'keys-sheet', role: 'dialog', 'aria-label': 'Keyboard shortcuts', hidden: true });
-      const close = UI.el('button', { type: 'button', class: 'btn-icon keys-close', 'aria-label': 'Close' }, UI.icon('close'));
-      close.addEventListener('click', () => { sheet.hidden = true; });
-      sheet.append(close);
-      for (const [title, rows] of SHORTCUTS) {
-        sheet.append(UI.el('h3', { text: title }));
-        const dl = UI.el('dl');
-        for (const [k, what] of rows) dl.append(UI.el('dt', { text: keyText(k) }), UI.el('dd', { text: what }));
-        sheet.append(dl);
-      }
-      sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); sheet.hidden = true; Editor.focus(); } });
-      document.body.append(sheet);
-    }
-    sheet.hidden = false;
-    sheet.querySelector('button').focus();
+  function shortcutList() {
+    return UI.el('div', { class: 'keys' }, SHORTCUTS.map(([title, rows]) => UI.el('div', null,
+      UI.el('h4', { text: title }),
+      UI.el('dl', null, rows.map(([k, what]) => [UI.el('dt', { text: keyText(k) }), UI.el('dd', { text: what })])))));
   }
 
-  /* ---------- Building it ---------- */
+  // The old floating sheet is Settings → Keys now.
+  function toggleSheet() {
+    const dlg = document.getElementById('settings-dialog');
+    if (dlg.open && dlg.querySelector('.set-tab[data-sec="keys"][aria-selected="true"]')) { dlg.close(); Editor.focus(); return; }
+    TDW.Dialogs.openSettings('keys');
+  }
 
-  function button(name, label, keysHint, onClick) {
-    const b = UI.el('button', { type: 'button', class: 'dock-btn', 'aria-label': label, title: label + (keysHint ? ' (' + keysHint + ')' : '') });
-    b.innerHTML = ICONS[name];
-    b.addEventListener('mousedown', (e) => e.preventDefault());
-    b.addEventListener('click', onClick);
-    return b;
+  function shareMenu() {
+    const b = document.getElementById('btn-share');
+    b.setAttribute('aria-expanded', 'true');
+    UI.menu(b, [
+      { label: 'Save as a Markdown file', value: 'save', note: '.md' },
+      { label: 'Open a file', value: 'open', note: '.md .txt' },
+      { type: 'sep' },
+      { label: 'Post to X', value: 'x', note: keyText('Ctrl+Shift+P') }
+    ], (it) => { if (it.value === 'save') save(); else if (it.value === 'open') openFile(); else postToX(); }, null,
+    () => b.setAttribute('aria-expanded', 'false'));
   }
 
   function build() {
-    countEl = UI.el('div', { class: 'live-count', 'aria-live': 'off' });
-    document.body.append(countEl);
-    const left = document.getElementById('dock-left');
-    if (left) left.append(
-      button('save', 'Save as a file', null, save),
-      button('open', 'Open a file', null, openFile),
-      button('x', 'Post to X', keyText('Ctrl+Shift+P'), postToX)
-    );
-    const kb = button('keyboard', 'Keyboard shortcuts', keyText('Ctrl+?'), toggleSheet);
-    kb.classList.add('keys-btn');
-    document.body.append(kb);
+    countEl = UI.el('span', { class: 'mh-save mh-sel', 'aria-live': 'off', hidden: true });
+    const where = document.querySelector('.mh-where');
+    if (where) where.append(countEl);
+    document.getElementById('btn-share').addEventListener('click', shareMenu);
     document.addEventListener('keydown', (e) => {
-      if (document.querySelector('dialog[open]')) return;
+      if (document.querySelector('dialog[open]') && !(e.ctrlKey && (e.key === '?' || (e.shiftKey && e.code === 'Slash')))) return;
       if (e.ctrlKey && !e.metaKey && !e.altKey && e.shiftKey && (e.code === 'KeyP' || String(e.key).toLowerCase() === 'p')) { e.preventDefault(); postToX(); }
       else if (e.ctrlKey && !e.metaKey && (e.key === '?' || (e.shiftKey && e.code === 'Slash'))) { e.preventDefault(); toggleSheet(); }
     });
@@ -191,6 +181,6 @@
     reload() { updateCount(); },
     onText() { updateCount(); },
     onSelect() { updateCount(); },
-    save, openFile, postToX, toggleSheet
+    save, openFile, postToX, toggleSheet, shortcutList
   };
 })();

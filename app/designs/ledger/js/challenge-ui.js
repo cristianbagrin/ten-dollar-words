@@ -1,5 +1,5 @@
-/* Writing challenges on the page: the Challenge button, its menu and picker, and the card with
-   the live checklist. Challenges only check; they never stop you typing. The rules live in
+/* Writing challenges: the Challenge button on the tape, its menu and list, and the slip clipped
+   under the balance with the live checklist (it stays there in Write mode too). Challenges only check; they never stop you typing. The rules live in
    challenges.js (TDW.ChallengeRules). The running challenge is saved on the draft as
    d.challenge, so it survives a reload and travels with the account. */
 (function () {
@@ -350,9 +350,9 @@
       btn.setAttribute('aria-pressed', String(!!ch()));
     }
     const c = ch();
-    if (!c) { if (card) card.hidden = true; return; }
+    if (!c) { if (card && card.isConnected) { card.remove(); TDW.Tape.sync(); } return; }
     if (!card) buildCard();
-    card.hidden = false;
+    if (!card.isConnected) { document.getElementById('tape-pinned').prepend(card); TDW.Tape.sync(); }
     card.classList.toggle('is-collapsed', collapsed);
     card.classList.toggle('is-met', !!c.metAt);
     const res = c.metAt && c.final ? c.final : R().evaluate(c, text(), ctxOf(c));
@@ -369,7 +369,7 @@
     const kids = [];
     if (c.setup === 'topic') {
       const input = el('input', { class: 'ch-topic', type: 'text', placeholder: 'What’s this piece about?', 'aria-label': 'What this piece is about', value: c.topic || '' });
-      const go = el('button', { type: 'button', class: 'btn ch-go', text: 'Set it up' });
+      const go = el('button', { type: 'button', class: 'btn btn-sm ch-go', text: 'Set it up' });
       const submit = () => { c.topic = input.value.trim(); if (!c.topic) { input.focus(); return; } runSet(); };
       go.addEventListener('click', submit);
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } if (e.key === 'Escape') { e.preventDefault(); TDW.Editor.focus(); } });
@@ -383,7 +383,7 @@
     if (c.setup === 'loading') {
       kids.push(el('p', { class: 'ch-desc ch-dance', text: 'Setting up your challenge…' }));
     } else if (c.setup === 'error') {
-      kids.push(el('p', { class: 'ch-error', text: c.error }), el('button', { type: 'button', class: 'btn-outline', text: 'Try again', onclick: runSet }));
+      kids.push(el('p', { class: 'ch-error', text: c.error }), el('button', { type: 'button', class: 'btn-outline btn-sm', text: 'Try again', onclick: runSet }));
     } else {
       for (const x of res.items) {
         if (res.items.length > 1) kids.push(el('div', { class: 'ch-sub', text: x.name }));
@@ -416,24 +416,23 @@
     const acts = [];
     const judgeable = c.items.some((it) => { const r = R().get(it.id); return r && r.ai && r.ai.includes('judge'); });
     if (!c.metAt && !c.setup && judgeable) {
-      acts.push(el('button', { type: 'button', class: 'btn', text: 'Judge it', disabled: !!busy || !hasAI(), title: hasAI() ? null : 'Add your Gemini key in Settings', onclick: judge }));
+      acts.push(el('button', { type: 'button', class: 'btn btn-sm', text: 'Judge it', disabled: !!busy || !hasAI(), title: hasAI() ? null : 'Add your Gemini key in Settings', onclick: judge }));
     }
-    if (!c.metAt && has(c, 'E9') && !c.setup) acts.push(el('button', { type: 'button', class: 'btn-outline', text: 'Ask the skeptic', disabled: !!busy || !hasAI(), onclick: skeptic }));
-    if (!c.metAt && has(c, 'E14')) acts.push(el('button', { type: 'button', class: 'btn-quiet', text: 'Write openings', onclick: openHooks }));
-    acts.push(el('button', { type: 'button', class: 'btn-quiet ch-end', text: c.metAt ? 'Done' : 'Give up', onclick: () => finish() }));
+    if (!c.metAt && has(c, 'E9') && !c.setup) acts.push(el('button', { type: 'button', class: 'btn-outline btn-sm', text: 'Ask the skeptic', disabled: !!busy || !hasAI(), onclick: skeptic }));
+    if (!c.metAt && has(c, 'E14')) acts.push(el('button', { type: 'button', class: 'btn-quiet btn-sm', text: 'Write openings', onclick: openHooks }));
+    acts.push(el('button', { type: 'button', class: 'btn-quiet btn-sm ch-end', text: c.metAt ? 'Done' : 'Give up', onclick: () => finish() }));
     if (!res) res = null;
     bar.replaceChildren(...acts);
   }
 
   function buildCard() {
-    card = el('section', { class: 'ch-card', 'aria-label': 'Writing challenge', 'aria-live': 'polite', hidden: true },
+    card = el('section', { class: 'slip ch-card', 'aria-label': 'Writing challenge', 'aria-live': 'polite' },
       el('header', { class: 'ch-head' },
         el('button', { type: 'button', class: 'ch-toggle', 'aria-label': 'Show or hide the challenge', onclick: () => { collapsed = !collapsed; render(); } },
           el('span', { class: 'ch-title' }), el('span', { class: 'ch-level' })),
         el('span', { class: 'ch-clock', 'aria-label': 'Time left' })),
       el('div', { class: 'ch-body' }),
       el('div', { class: 'ch-actions' }));
-    document.body.append(card);
   }
 
   /* ---------- The menu and the picker ---------- */
@@ -458,6 +457,7 @@
     const extra = el('div', { class: 'ch-streak' },
       n ? n + (n === 1 ? ' day' : ' days') + ' in a row' + (s.best > n ? ' · best ' + s.best : '') : s && s.best ? 'Best streak: ' + s.best + (s.best === 1 ? ' day' : ' days') : 'Meet one today to start a streak',
       ai ? null : el('div', { class: 'ch-note', text: 'Add a Gemini key in Settings for the AI challenges.' }));
+    btn.setAttribute('aria-expanded', 'true');
     TDW.UI.menu(btn, items, (it) => {
       const ctx = { budget: draft ? draft.budget : 2000 };
       if (it.value === 'roll') start([R_.roll({ ai })], level());
@@ -467,38 +467,30 @@
       else if (it.value === 'end') finish();
       else if (it.value.startsWith('level:')) { writeJSON(LEVEL_KEY, it.value.slice(6)); return true; }
       return false;
-    }, extra);
+    }, extra, () => btn.setAttribute('aria-expanded', 'false'));
   }
 
   function openPicker() {
-    closePicker();
     const R_ = R();
     const ai = hasAI();
-    const list = el('div', { class: 'ch-picker-list' });
+    const ov = TDW.Tape.openOverlay('challenges', { title: 'Pick a challenge', extra: el('span', { class: 'slip-meta', text: R_.LEVEL_NAMES[level()] }), onClose: () => { picker = null; } });
+    picker = ov.el;
     for (const cat of R_.CATEGORIES) {
-      list.append(el('h3', { class: 'ch-cat', text: cat.name }));
+      ov.body.append(el('h4', { class: 'ch-cat', text: cat.name }));
       for (const c of R_.LIST.filter((x) => x.cat === cat.key)) {
         const p = R_.paramsOf(c, level());
-        const sample = c.start && !c.set ? '' : '';
         const desc = c.desc(p, {}, { budget: draft ? draft.budget : 2000 });
-        list.append(el('button', {
+        ov.body.append(el('button', {
           type: 'button', class: 'ch-pick' + (c.ai && !ai ? ' is-off' : ''), disabled: c.ai && !ai,
           title: c.ai && !ai ? 'Needs a Gemini key (Settings)' : null,
           onclick: () => { closePicker(); start([c.id], level()); TDW.Editor.focus(); }
-        }, el('span', { class: 'ch-pick-name', text: c.name }), el('span', { class: 'ch-pick-desc', text: desc + sample }), c.ai ? el('span', { class: 'ch-pick-ai', text: 'AI' }) : null));
+        }, el('span', { class: 'ch-pick-name', text: c.name }), el('span', { class: 'ch-pick-desc', text: desc }), c.ai ? el('span', { class: 'ch-pick-ai', text: 'AI' }) : null));
       }
     }
-    picker = el('div', { class: 'ch-picker', role: 'dialog', 'aria-label': 'Pick a challenge' },
-      el('div', { class: 'ch-picker-head' }, el('span', { text: 'Pick a challenge' }), el('span', { class: 'ch-level', text: R_.LEVEL_NAMES[level()] }),
-        el('button', { type: 'button', class: 'btn-quiet', text: 'Close', onclick: closePicker })),
-      list);
-    document.body.append(picker);
+    picker.addEventListener('keydown', pickerKey);
     const first = picker.querySelector('.ch-pick:not([disabled])');
     if (first) first.focus({ preventScroll: true });
-    setTimeout(() => document.addEventListener('pointerdown', outside, true));
-    document.addEventListener('keydown', pickerKey, true);
   }
-  function outside(e) { if (picker && !picker.contains(e.target)) closePicker(); }
   function pickerKey(e) {
     if (!picker) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePicker(); TDW.Editor.focus(); return; }
@@ -511,19 +503,17 @@
   }
   function closePicker() {
     if (!picker) return;
-    picker.remove();
     picker = null;
-    document.removeEventListener('pointerdown', outside, true);
-    document.removeEventListener('keydown', pickerKey, true);
+    TDW.Tape.closeOverlay('challenges');
   }
 
   /* ---------- The module ---------- */
 
   TDW.Challenges = {
     init() {
-      const slot = document.getElementById('dock-center');
+      const slot = document.getElementById('tools');
       if (!slot || btn) return;
-      btn = el('button', { type: 'button', class: 'dock-btn ch-btn', 'aria-haspopup': 'menu', title: 'Writing challenges', text: 'Challenge' });
+      btn = el('button', { type: 'button', class: 'btn-outline btn-sm ch-btn', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: 'Writing challenges' }, TDW.UI.icon('check'), 'Challenge');
       btn.addEventListener('click', openMenu);
       slot.append(btn);
       document.addEventListener('visibilitychange', () => { lastTickAt = Date.now(); });

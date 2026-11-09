@@ -5,7 +5,7 @@ const VERSION = 'tdw-2.1.0';
 const FONT_CACHE = 'tdw-fonts';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 const PRECACHE = [
-  './', 'index.html', 'manifest.webmanifest', 'css/app.css', 'css/desk.css', 'css/overflow.css', 'css/lab.css', 'css/challenges.css', 'css/notion.css',
+  './', 'index.html', 'manifest.webmanifest', 'css/tokens.css', 'css/page.css', 'css/ledger.css', 'js/tape.js',
   'js/marks.js', 'js/alts.js', 'js/menu.js', 'js/overflow.js', 'js/lab.js', 'js/challenges.js', 'js/challenge-ui.js', 'js/desk.js', 'js/blocks.js', 'js/notes.js', 'js/bubble.js',
   'js/data.js', 'js/inline.js', 'js/engine.js', 'js/spell.js', 'js/notion-map.js', 'js/sound.js', 'js/store.js', 'js/ai.js',
   'js/ai-mock.js', 'js/notion.js', 'js/sync.js', 'js/vault.js', 'js/account.js', 'js/editor.js', 'js/ui.js', 'js/formats.js', 'js/panel.js',

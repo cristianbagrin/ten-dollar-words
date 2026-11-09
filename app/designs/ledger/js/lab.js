@@ -102,12 +102,12 @@
   const el = (...a) => TDW.UI.el(...a);
 
   const ITEMS = [
-    { id: 'punctuation', type: 'fix', label: 'Fix punctuation and typos', desc: 'Marks typos and punctuation slips. Click one to see its fix; nothing changes until you take it.', local: true, ai: true },
-    { id: 'weakest', type: 'weak', label: 'Mark the weakest sentences', desc: 'Up to five sentences that add the least, are vague, or repeat.', ai: true },
-    { id: 'long', type: 'long', label: 'Mark sentences that run long', desc: 'Hard and very hard sentences. Instant, no AI needed.', local: true },
-    { id: 'convoluted', type: 'convoluted', label: 'Mark convoluted sentences', desc: 'Sentences that are hard to follow because of how they are built, even short ones.', ai: true },
-    { id: 'tone', type: 'tone', label: 'Mark words that don’t fit the tone', desc: 'Fancy words in plain writing, slang in formal writing: words that break the voice.', ai: true },
-    { id: 'hedges', type: 'hedge', label: 'Mark hedges and filler', desc: 'Words that soften or pad without adding meaning.', local: true, ai: true },
+    { id: 'punctuation', type: 'fix', label: 'Typos and punctuation', desc: 'Marks typos and punctuation slips. Click one to see its fix; nothing changes until you take it.', local: true, ai: true },
+    { id: 'weakest', type: 'weak', label: 'The weakest sentences', desc: 'Up to five sentences that add the least, are vague, or repeat.', ai: true },
+    { id: 'long', type: 'long', label: 'Sentences that run long', desc: 'Hard and very hard sentences. Instant, no AI needed.', local: true },
+    { id: 'convoluted', type: 'convoluted', label: 'Convoluted sentences', desc: 'Sentences that are hard to follow because of how they are built, even short ones.', ai: true },
+    { id: 'tone', type: 'tone', label: 'Words off the tone', desc: 'Fancy words in plain writing, slang in formal writing: words that break the voice.', ai: true },
+    { id: 'hedges', type: 'hedge', label: 'Hedges and filler', desc: 'Words that soften or pad without adding meaning.', local: true, ai: true },
     { id: 'message', label: 'Check the message', desc: 'What a busy reader takes away, and whether it’s what you meant.' }
   ];
   const LEVELS = [
@@ -122,7 +122,7 @@
     qualifier: 'Softens without adding meaning.', complex: 'A wordy phrase: a simpler one says it.', adverb: 'An adverb: a stronger verb may do.'
   };
 
-  let pop, card, tip, btn;
+  let pop = null, card, btn;
   let run = null;          // what the marks on the page came from: { kind: 'check', item } | { kind: 'trim', level }
   let info = new Map();    // mark id → { reason, fix }
   let ctrl = null;
@@ -136,75 +136,98 @@
   const marks = () => E().getLab();
   const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
-  /* ---------- Popup ---------- */
-  function buildPop() {
-    pop = el('div', { id: 'lab-pop', class: 'lab-pop', role: 'dialog', 'aria-label': 'The Lab', hidden: true });
-    const descBtn = el('button', { type: 'button', class: 'lab-what', text: 'what each idea does', 'aria-pressed': 'false' });
-    descBtn.addEventListener('click', () => {
-      const on = !pop.classList.contains('show-desc');
-      pop.classList.toggle('show-desc', on);
-      descBtn.setAttribute('aria-pressed', String(on));
-    });
-    const list = el('ul', { class: 'lab-list' }, ITEMS.map((it) => el('li', null,
-      el('button', { type: 'button', class: 'lab-item', 'data-item': it.id, title: it.desc, onclick: () => choose(it) },
-        el('span', { class: 'lab-item-label', text: it.label }),
-        el('span', { class: 'lab-item-desc', text: it.desc })))));
-    const row = el('div', { class: 'lab-levels', role: 'group', 'aria-label': 'Trim' }, LEVELS.map((lv, k) =>
-      el('button', { type: 'button', class: 'lab-level' + (k === 0 ? ' is-on' : ''), 'data-level': String(k), onclick: () => trim(k) },
-        el('span', { class: 'lab-level-label', text: lv.label }),
-        lv.pct ? el('span', { class: 'lab-level-pct', text: '~' + lv.pct + '%' }) : null)));
-    pop.append(el('div', { class: 'lab-head' }, el('span', { class: 'lab-title', text: 'The Lab guide…' }), descBtn), list, row);
-    document.body.append(pop);
-  }
+  let current = null; // the check whose marks are on the page
 
+  /* ---------- The audit: a list of checks that takes over the tape ---------- */
   function openPop() {
     if (app().state.mode !== 'edit') app().setMode('edit');
-    hideTip();
-    card.classList.add('is-under'); // the popup takes the card's place while it's open
-    pop.hidden = false;
+    const ov = TDW.Tape.openOverlay('audit', { title: 'Audit', onClose: () => { pop = null; if (btn) btn.setAttribute('aria-expanded', 'false'); } });
+    pop = ov.el;
+    ov.body.append(
+      el('p', { class: 'hint', style: 'margin-bottom:12px', text: 'Each check only marks the page. Nothing changes until you take a fix.' }),
+      el('ul', { class: 'lab-list' }, ITEMS.map((it) => el('li', null,
+        el('button', { type: 'button', class: 'lab-item', 'data-item': it.id, onclick: () => choose(it) },
+          el('span', { class: 'lab-item-label' }, it.label, it.ai && !it.local ? el('span', { class: 'lab-item-tag', text: 'AI' }) : null),
+          el('span', { class: 'lab-item-desc', text: it.desc }))))));
     btn.setAttribute('aria-expanded', 'true');
-    syncLevels();
     const first = pop.querySelector('.lab-item');
     if (first) first.focus({ preventScroll: true });
   }
   function closePop(refocus) {
-    if (!pop || pop.hidden) return;
-    pop.hidden = true;
-    card.classList.remove('is-under');
-    btn.setAttribute('aria-expanded', 'false');
+    if (!pop) return;
+    TDW.Tape.closeOverlay('audit');
+    pop = null;
     if (refocus) E().focus();
   }
-  const togglePop = () => (pop.hidden ? openPop() : closePop(true));
+  const togglePop = () => (pop ? closePop(true) : openPop());
 
-  function syncLevels() {
-    for (const b of pop.querySelectorAll('.lab-level')) b.classList.toggle('is-on', Number(b.dataset.level) === (run && run.kind === 'trim' ? run.level : 0));
-  }
+  function syncLevels() { if (TDW.Panel && TDW.Panel.levelsChanged) TDW.Panel.levelsChanged(); }
 
-  /* ---------- Card ---------- */
+  /* ---------- The slip clipped to the tape ---------- */
   function showCard(title, line, buttons) {
     card.replaceChildren(
-      el('div', { class: 'lab-card-head' }, el('b', { class: 'lab-card-title', text: title }), line ? el('span', { class: 'lab-card-line', text: line[0] }) : null),
-      line && line[1] ? el('p', { class: 'lab-card-note', text: line[1] }) : null,
-      buttons && buttons.length ? el('div', { class: 'lab-card-actions' }, buttons.map((b) =>
-        el('button', { type: 'button', class: 'lab-card-btn' + (b.primary ? ' is-primary' : ''), text: b.label, onclick: b.run }))) : null);
+      el('div', { class: 'slip-head' }, el('b', { class: 'slip-title', text: title }), line ? el('span', { class: 'slip-meta', text: line[0] }) : null),
+      line && line[1] ? el('p', { class: 'slip-note', text: line[1] }) : null,
+      buttons && buttons.length ? el('div', { class: 'slip-actions' }, buttons.map((b) =>
+        el('button', { type: 'button', class: (b.primary ? 'btn' : 'btn-outline') + ' btn-sm', text: b.label, onclick: b.run }))) : null);
+    if (!card.isConnected) document.getElementById('tape-pinned').append(card);
     card.hidden = false;
+    TDW.Tape.measurePin();
+    requestAnimationFrame(() => { if (TDW.Tape.isPhone()) TDW.Tape.reveal(card); });
   }
-  const hideCard = () => { if (card) card.hidden = true; };
+  const hideCard = () => { if (card) { card.remove(); card.classList.remove('is-busy'); current = null; TDW.Tape.sync(); } };
 
   function busyCard(title, what) {
-    showCard(title, [what], [{ label: 'Stop', run: () => { stop(); done(); } }]);
+    showCard(title, ['', what], [{ label: 'Stop', run: () => { stop(); done(); } }]);
     card.classList.add('is-busy');
   }
 
   function errorCard(title, err, retry) {
     card.classList.remove('is-busy');
-    showCard(title, [TDW.AI.errorMessage(err)], [{ label: 'Try again', primary: true, run: retry }, { label: 'Done', run: done }]);
+    showCard(title, ['', TDW.AI.errorMessage(err)], [{ label: 'Try again', primary: true, run: retry }, { label: 'Done', run: done }]);
   }
 
   function needsKey(title) {
-    showCard(title, ['Connect Gemini in Settings to use this one.'], [
-      { label: 'Open Settings', primary: true, run: () => { done(); app().openSettings('ai'); } },
+    showCard(title, ['', 'This one needs a Gemini key.'], [
+      { label: 'Add a key in Settings', primary: true, run: () => { done(); app().openSettings('ai'); } },
       { label: 'Done', run: done }]);
+  }
+
+  // The marks of a check, each with its reason (and its fix, for typos).
+  function markList() {
+    const t = E().getText();
+    return el('ul', { class: 'lab-marks' }, marks().filter((m) => !/^trim/.test(m.type)).map((m) => {
+      const it = info.get(m.id) || {};
+      const q = TDW.Inline.plain(t.slice(m.start, m.end));
+      const b = el('button', { type: 'button', class: 'lab-mark', dataset: { id: m.id }, onclick: () => pickMark(m.id) },
+        el('span', { class: 'lab-mark-q', text: q.length > 60 ? q.slice(0, 60) + '…' : q }),
+        el('span', { class: 'lab-mark-why', text: it.reason || 'Marked by the audit.' }));
+      return el('li', null, b);
+    }));
+  }
+
+  function pickMark(id) {
+    const m = marks().find((x) => x.id === id);
+    if (!m) return;
+    for (const b of card.querySelectorAll('.lab-mark')) b.classList.toggle('is-on', b.dataset.id === id);
+    const row = card.querySelector('.lab-mark[data-id="' + CSS.escape(id) + '"]');
+    E().setActive(id);
+    E().scrollToIndex(m.start, 0.35, true);
+    const it = info.get(id) || {};
+    const old = card.querySelector('.lab-fixrow');
+    if (old) old.remove();
+    if (row && it.fix && it.fix !== E().getText().slice(m.start, m.end)) {
+      row.parentNode.append(el('div', { class: 'lab-fixrow slip-actions' }, el('button', {
+        type: 'button', class: 'btn btn-sm', text: 'Use “' + it.fix + '”',
+        onclick: () => {
+          const cur = marks().find((x) => x.id === id);
+          if (!cur) return;
+          app().edit(cur.start, cur.end, it.fix, { silent: true });
+          E().focus();
+        }
+      })));
+    }
+    if (row) TDW.Tape.reveal(row);
   }
 
   /* ---------- Running an idea ---------- */
@@ -218,7 +241,7 @@
     level = 0;
     if (E().getLab().length) E().setLab([]);
     hideTip();
-    if (pop) syncLevels();
+    syncLevels();
   }
 
   function done() { clearMarks(); hideCard(); }
@@ -250,6 +273,7 @@
 
   function choose(item) {
     closePop(false);
+    current = item;
     if (item.id === 'message') { done(); TDW.Panel.startMessage(); return; }
     clearMarks();
     const text = E().getText();
@@ -286,8 +310,9 @@
     const all = local.concat(ai).sort((a, b) => a.start - b.start);
     setMarks(all, item.type);
     const n = all.length;
-    showCard(item.label, [n ? n + (n === 1 ? ' mark' : ' marks') : 'Nothing to mark', n ? 'Click a mark to see why.' : 'Nothing stood out.'],
+    showCard(item.label, [n ? n + (n === 1 ? ' mark' : ' marks') : 'Nothing to mark', n ? 'Each one is marked on the page. Pick one to see why.' : 'Nothing stood out.'],
       [{ label: 'Done', primary: !n, run: () => { done(); E().focus(); } }]);
+    if (n) card.append(markList());
   }
 
   /* ---------- Trim ---------- */
@@ -350,7 +375,8 @@
       return;
     }
     const pct = c.before ? Math.round((c.before - c.after) / c.before * 100) : 0;
-    showCard(lv.label, [c.before + ' → ' + c.after + ' words · −' + pct + '%', 'Faded words would go. Click one to keep it.'], [
+    const spent = (c.before - c.after) * 10;
+    showCard('Trim: ' + lv.label.toLowerCase(), ['Saves ' + TDW.UI.money(spent), c.before + ' → ' + c.after + ' words, ' + pct + '% shorter. Struck-out words would go; click one to keep it.'], [
       { label: 'Make the cuts', primary: true, run: makeCuts },
       { label: 'Walk through', run: startWalk },
       { label: 'Done', run: () => { done(); E().focus(); } }
@@ -376,7 +402,7 @@
     const saved = cutNow(list);
     done();
     E().focus();
-    if (saved > 0) TDW.UI.toast('Cut ' + saved + (saved === 1 ? ' word' : ' words') + '. ' + TDW.UI.keys('⌘Z') + ' brings them back.');
+    if (saved > 0) TDW.UI.toast('Cut ' + saved + (saved === 1 ? ' word' : ' words') + ', ' + TDW.UI.money(saved * 10) + ' back. ' + TDW.UI.keys('⌘Z') + ' undoes it.');
   }
 
   function toggleKeep(id) {
@@ -403,7 +429,7 @@
     E().render();
     E().scrollToIndex(cur.start, 0.4, true);
     const k = list.indexOf(cur) + 1;
-    showCard('Walk through', ['Cut ' + k + ' of ' + list.length, 'Return cuts it · Backspace keeps it · Esc stops'], [
+    showCard('Walk through the cuts', ['Cut ' + k + ' of ' + list.length, 'Return cuts it, Backspace keeps it, Esc stops.'], [
       { label: 'Cut', primary: true, run: walkCut },
       { label: 'Keep', run: walkKeep },
       { label: 'Stop', run: () => { endWalk(); trimCard(); } }
@@ -446,43 +472,16 @@
     else if (k === 'escape') { e.preventDefault(); e.stopPropagation(); endWalk(); trimCard(); }
   }
 
-  /* ---------- Clicking a mark ---------- */
-  function hideTip() { if (tip) tip.hidden = true; }
-
-  function showTip(m, anchor) {
-    const it = info.get(m.id) || {};
-    const kids = [el('p', { class: 'lab-tip-why', text: it.reason || 'Marked by the Lab.' })];
-    if (it.fix && it.fix !== E().getText().slice(m.start, m.end)) {
-      kids.push(el('button', {
-        type: 'button', class: 'lab-tip-fix', text: 'Fix: ' + it.fix,
-        onclick: () => {
-          const cur = marks().find((x) => x.id === m.id);
-          hideTip();
-          if (!cur) return;
-          app().edit(cur.start, cur.end, it.fix, { silent: true });
-          E().focus();
-        }
-      }));
-    }
-    tip.replaceChildren(...kids);
-    tip.hidden = false;
-    const r = anchor.getBoundingClientRect();
-    const w = Math.min(320, window.innerWidth - 32);
-    tip.style.maxWidth = w + 'px';
-    const left = Math.max(16, Math.min(r.left, window.innerWidth - w - 16));
-    tip.style.left = left + 'px';
-    tip.style.top = (r.bottom + 6) + 'px';
-    const th = tip.getBoundingClientRect().height;
-    if (r.bottom + 6 + th > window.innerHeight - 8) tip.style.top = Math.max(8, r.top - th - 6) + 'px';
-  }
+  /* ---------- Clicking a mark on the page ---------- */
+  function hideTip() {}
 
   function onEditorClick(e) {
     const node = e.target.closest && e.target.closest('[data-lab]');
-    if (!node) { hideTip(); return; }
+    if (!node) return;
     const m = marks().find((x) => x.id === node.dataset.lab);
     if (!m) return;
     if (m.type === 'trim' || m.type === 'trim-kept') { toggleKeep(m.id); return; }
-    setTimeout(() => { if (TDW.Popover) TDW.Popover.hide(); showTip(m, node); }, 0);
+    setTimeout(() => { if (TDW.Popover) TDW.Popover.hide(); pickMark(m.id); }, 0);
   }
 
   /* ---------- Module hooks ---------- */
@@ -493,31 +492,21 @@
       togglePop();
       return;
     }
-    if (k !== 'escape' || document.querySelector('dialog[open]')) return;
-    if (pop && !pop.hidden) { closePop(true); return; }
-    if (tip && !tip.hidden) { hideTip(); return; }
-    if (card && !card.hidden && !walk) { done(); }
+    if (k !== 'escape' || document.querySelector('dialog[open]') || e.defaultPrevented) return;
+    if (pop) { e.preventDefault(); closePop(true); return; }
+    if (card && card.isConnected && !walk) { e.preventDefault(); done(); }
   }
 
   TDW.Lab = {
     init() {
-      const slot = document.getElementById('dock-center');
-      btn = el('button', { type: 'button', id: 'lab-btn', class: 'lab-btn', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', text: 'LAB',
-        title: 'The Lab (' + (isMac ? '⌃⇧L' : 'Ctrl+Shift+L') + ')' });
+      btn = el('button', { type: 'button', id: 'lab-btn', class: 'btn-outline btn-sm', 'aria-haspopup': 'true', 'aria-expanded': 'false',
+        title: 'Audit the draft: the Lab (' + (isMac ? '⌃⇧L' : 'Ctrl+Shift+L') + ')' }, TDW.UI.icon('spark'), 'Audit');
       btn.addEventListener('click', togglePop);
-      if (slot) slot.append(btn); else document.body.append(btn);
-      buildPop();
-      card = el('div', { id: 'lab-card', class: 'lab-card', role: 'status', 'aria-live': 'polite', hidden: true });
-      tip = el('div', { id: 'lab-tip', class: 'lab-tip', role: 'tooltip', hidden: true });
-      document.body.append(card, tip);
+      document.getElementById('tools').append(btn);
+      card = el('section', { id: 'lab-card', class: 'slip lab-card', role: 'status', 'aria-live': 'polite', 'aria-label': 'Audit' });
       document.getElementById('editor').addEventListener('click', onEditorClick);
       document.addEventListener('keydown', onWalkKey, true);
       document.addEventListener('keydown', onKey);
-      document.addEventListener('pointerdown', (e) => {
-        if (pop && !pop.hidden && !pop.contains(e.target) && e.target !== btn) closePop(false);
-        if (tip && !tip.hidden && !tip.contains(e.target) && !(e.target.closest && e.target.closest('[data-lab]'))) hideTip();
-      });
-      window.addEventListener('scroll', hideTip, { passive: true });
     },
     load() { done(); cache.clear(); cacheText = ''; },
     reload() { done(); },
@@ -530,7 +519,9 @@
     onMode(m) { if (m !== 'edit') { closePop(false); done(); } },
     open: openPop,
     close: () => closePop(false),
-    isOpen: () => !!pop && !pop.hidden,
+    isOpen: () => !!pop,
+    trim: (k) => trim(k),
+    level: () => (run && run.kind === 'trim' ? run.level : 0),
     LEVELS, ITEMS
   };
 })(typeof self !== 'undefined' ? self : this);
