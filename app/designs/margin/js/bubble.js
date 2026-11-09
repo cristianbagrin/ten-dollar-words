@@ -45,6 +45,8 @@
     const M = button('bub-more', 'More', 'Color, strikethrough, turn into, ghost, stash', TDW.icons.more, (e, b) => moreMenu(b));
     const sep = () => UI.el('span', { class: 'bub-sep', 'aria-hidden': 'true' });
     bar.append(ai, ab, N, sep(), B, I, L, sep(), M);
+    bar.addEventListener('pointerdown', (e) => e.preventDefault());
+    document.body.append(bar);
   }
 
   function moreMenu(b) {
@@ -68,8 +70,6 @@
       else if (v === 'stash') { hide(); TDW.Menu.stash(); }
       return false;
     });
-    bar.addEventListener('pointerdown', (e) => e.preventDefault());
-    document.body.append(bar);
   }
 
   // After a format change the selection is redrawn; put the bar back over it.
@@ -115,7 +115,8 @@
     const touch = UI.device.touch;
     // On a touch screen the phone's own menu sits above the selection, so this goes below.
     let top = touch ? (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 12 : top0 - h - 8;
-    if (top < 8) top = (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 8;
+    const spineB = (document.querySelector('.spine') || { getBoundingClientRect: () => ({ bottom: 0 }) }).getBoundingClientRect().bottom;
+    if (top < spineB + 8) top = (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 8;
     const x = r1.lineTop === (r2 && r2.lineTop) ? (r1.left + r2.left) / 2 - w / 2 : r1.left;
     bar.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
     bar.style.top = top + 'px';

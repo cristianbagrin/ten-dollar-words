@@ -73,8 +73,10 @@
     const tl = tally();
     const spend = $('spine-spend');
     const over = tl.spent > tl.budget;
+    const warn = !over && tl.budget > 0 && tl.spent >= tl.budget * 0.9;
     spend.classList.toggle('is-over', over);
-    spend.querySelector('.spend-of').textContent = over ? ' over ' + money(tl.budget) : ' of ' + money(tl.budget);
+    spend.classList.toggle('is-warn', warn);
+    spend.querySelector('.spend-of').textContent = over ? ' \u00b7 ' + money(tl.spent - tl.budget) + ' over' : ' of ' + money(tl.budget);
     spend.setAttribute('aria-label', 'Spent ' + money(tl.spent) + (over ? ', over the ' : ' of a ') + money(tl.budget) + ' budget. ' + countLine(tl) + '.');
     spend.title = countLine(tl);
     if (shown === null || UI.reducedMotion()) { shown = tl.spent; drawAmount(shown); }
@@ -145,8 +147,8 @@
     const grade = tl.grade == null ? '—' : tl.grade + ' ' + ({ Good: 'easy', OK: 'fair', Hard: 'hard' }[Engine.gradeLabel(tl.grade)] || '');
     dlg.replaceChildren(
       el('div', { class: 'tally-head' },
-        el('div', { class: 'tally-amt' + (over ? ' is-over' : '') }, el('span', { class: 'tally-spent', text: money(tl.spent) }),
-          el('span', { class: 'tally-of', text: over ? 'over the ' + money(tl.budget) + ' budget by ' + money(tl.spent - tl.budget) : 'of ' + money(tl.budget) + ', ' + money(tl.budget - tl.spent) + ' left' })),
+        el('div', { class: 'tally-amt' + (over ? ' is-over' : tl.budget > 0 && tl.spent >= tl.budget * 0.9 ? ' is-warn' : '') }, el('span', { class: 'tally-spent', text: money(tl.spent) }),
+          el('span', { class: 'tally-of', text: over ? money(tl.spent - tl.budget) + ' over the ' + money(tl.budget) + ' budget' : 'of ' + money(tl.budget) + ', ' + money(tl.budget - tl.spent) + ' left' })),
         el('div', { class: 'tally-meter', 'aria-hidden': 'true' }, el('span', { style: 'width:' + (pct * 100).toFixed(1) + '%' }))),
       el('dl', { class: 'tally-stats' }, stat('Words', tl.words.toLocaleString()), stat('Characters', tl.chars.toLocaleString()), stat('Reading', tl.read), stat('Grade', grade)),
       el('div', { class: 'tally-budget' },

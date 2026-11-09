@@ -34,7 +34,7 @@ html.is-typing .spine:not(:hover):not(:focus-within) { opacity: .3; }
 .stage-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .spine-nb {
   display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--r-sm);
-  background: transparent; color: var(--red);
+  background: transparent; color: var(--ink-2);
 }
 .spine-nb.is-nudged { animation: nudge 360ms var(--spring); }
 @keyframes nudge { 20% { transform: translateX(-3px); } 45% { transform: translateX(3px); } 70% { transform: translateX(-1.5px); } }
@@ -44,13 +44,20 @@ html.is-typing .spine:not(:hover):not(:focus-within) { opacity: .3; }
   font: 400 13px/1 var(--font-ui); font-variant-numeric: tabular-nums; white-space: nowrap;
   transition: background-color 120ms ease, transform var(--press-t) ease-out;
 }
-.spend-amt { color: var(--red); font-weight: 650; font-size: 14px; letter-spacing: -.01em; }
+.spend-amt { color: var(--ink); font-weight: 650; font-size: 14px; letter-spacing: -.01em; font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "tnum", "lnum"; }
+/* The red pencil's tally: a hand-drawn stroke under the figure; graphite under budget, amber past 90%, red only when over. */
+.spend-amt { background: var(--tally) repeat-x 0 100% / 100% 4px; padding-bottom: 3px; }
+.spine-spend.is-warn .spend-amt { color: var(--warn); }
+.spine-spend.is-warn .spend-of { color: var(--warn); }
+.spine-spend.is-over .spend-amt, .spine-spend.is-over .spend-of { color: var(--red); }
 .spend-of { margin-left: 4px; }
-.spine-spend.is-over .spend-of { color: var(--red); }
-.spine-spend.is-over .spend-amt { text-decoration: underline 1.5px; text-underline-offset: 3px; }
+html:root .spine-spend.is-over .spend-of { font-weight: 650; }
+.spine-spend .spend-amt { --tally: var(--ul-graphite); }
+.spine-spend.is-warn .spend-amt { --tally: var(--ul-warn); }
+.spine-spend.is-over .spend-amt { --tally: var(--ul-red); }
 .refund {
   position: absolute; left: 10px; top: 4px; pointer-events: none;
-  color: var(--red); font: 650 12px/1 var(--font-ui); font-variant-numeric: tabular-nums;
+  color: var(--ink-2); font: 650 12px/1 var(--font-ui); font-variant-numeric: tabular-nums;
   animation: refund 900ms var(--spring) forwards;
 }
 @keyframes refund { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-14px); opacity: 0; } }
@@ -65,16 +72,16 @@ html.is-typing .spine:not(:hover):not(:focus-within) { opacity: .3; }
 @media (prefers-reduced-transparency: reduce) { .spine { background: var(--paper); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 
 /* ---------- The page: one column that never moves ---------- */
+:root { scroll-padding-top: calc(var(--spine-h) + var(--safe-t) + var(--s6)); }
 .page {
   --measure: 62ch;
   display: block;
-  padding: calc(var(--spine-h) + var(--safe-t) + var(--s9)) 0 55vh;
+  padding: calc(var(--spine-h) + var(--safe-t) + var(--s9)) 0 90vh;
   font-family: var(--font-write); font-size: var(--write);
 }
 html[data-format="linkedin"] .page { --measure: 52ch; }
 html[data-format="x"] .page { --measure: 43ch; }
 html[data-format="substack"] .page { --measure: 70ch; }
-html.tw-scroll[data-mode="write"] .page { padding-top: 38vh; }
 .sheet { position: relative; width: var(--measure); }
 @media (min-width: 1080px) {
   /* Centered when the margin fits on the right; otherwise left of center so that it does. */
@@ -150,20 +157,27 @@ html.tw-scroll[data-mode="write"] .page { padding-top: 38vh; }
 /* ---------- The lens: pencil marks. They cross-fade in 200ms; the text never moves. ---------- */
 .editor mark { background: none; color: inherit; }
 .hl, .hs, .lab, .nt { -webkit-box-decoration-break: clone; box-decoration-break: clone; border-radius: 2px; transition: background-color 160ms ease, text-decoration-color var(--fade-t) ease; }
-.hl {
-  text-decoration-line: underline; text-decoration-thickness: 1.5px; text-underline-offset: .24em;
-  text-decoration-skip-ink: none; text-decoration-color: transparent;
+.editor mark.hl {
+  background: var(--ul-blue) repeat-x 0 calc(100% + 1px) / 52px 0; padding-bottom: 1px;
+  transition: background-size var(--fade-t) ease, background-color 160ms ease;
 }
-html.lens .hl { text-decoration-color: color-mix(in srgb, var(--blue-mark) 80%, transparent); }
-.hl-spelling { text-decoration-style: wavy; text-decoration-thickness: 1.25px; text-underline-offset: .2em; }
-html.lens .hl-spelling { text-decoration-color: var(--red-mark); }
-.editor.hide-complex .hl-complex, .editor.hide-adverb .hl-adverb, .editor.hide-passive .hl-passive,
-.editor.hide-qualifier .hl-qualifier, .editor.hide-spelling .hl-spelling { text-decoration-color: transparent !important; }
+html.lens .editor mark.hl { background-size: 52px 5px; }
+.editor mark.hl-spelling { background-image: var(--ul-red); }
+.editor.hide-complex mark.hl-complex, .editor.hide-adverb mark.hl-adverb, .editor.hide-passive mark.hl-passive,
+.editor.hide-qualifier mark.hl-qualifier, .editor.hide-spelling mark.hl-spelling { background-size: 52px 0 !important; }
+/* The paragraph you're typing in: its marks step back. */
+html.lens.is-typing .ln.is-caret .hl { opacity: .45; }
+/* The words of the note you're on, in highlighter. */
+.editor mark.hl.is-active, .editor .hs.is-active, .editor .lab.is-active { background-color: var(--highlight); }
+html.lens-pre .hl { transition: none; }
+
+.editor.hide-complex mark.hl-complex, .editor.hide-adverb mark.hl-adverb, .editor.hide-passive mark.hl-passive,
+.editor.hide-qualifier mark.hl-qualifier, .editor.hide-spelling mark.hl-spelling { text-decoration-color: transparent !important; }
 /* The paragraph you're typing in: its marks step back. */
 html.lens.is-typing .ln.is-caret .hl { text-decoration-color: color-mix(in srgb, var(--blue-mark) 22%, transparent); }
 html.lens.is-typing .ln.is-caret .hl-spelling { text-decoration-color: color-mix(in srgb, var(--red-mark) 30%, transparent); }
 /* The words of the note you're on, in highlighter. */
-.editor .hl.is-active, .editor .hs.is-active, .editor .lab.is-active { background: var(--highlight); }
+.editor mark.hl.is-active, .editor .hs.is-active, .editor .lab.is-active { background: var(--highlight); }
 html.lens-pre .hl { transition: none; }
 
 /* Lab marks: dashed blue pencil; a typo in red. Trim strikes in red what it would cut. */
@@ -179,12 +193,12 @@ html.lens-pre .hl { transition: none; }
 
 /* A pencil bracket in the left gutter beside a hard sentence; a double one when it's very hard. */
 .bracket {
-  position: absolute; left: -19px; width: 7px; border: 1.5px solid var(--blue-mark); border-right: 0; border-radius: 3px 0 0 3px;
-  opacity: 0; transition: opacity var(--fade-t) ease, border-color 160ms ease;
+  position: absolute; left: -21px; width: 9px; background: var(--br-blue) no-repeat 0 0 / 100% 100%;
+  opacity: 0; transition: opacity var(--fade-t) ease;
 }
-html.lens .bracket { opacity: .85; }
-.bracket.b-veryHard::before { content: ""; position: absolute; left: -6px; top: 4px; bottom: 4px; border-left: 1.5px solid var(--blue-mark); }
-.bracket.is-active { opacity: 1; border-color: var(--blue); }
+html.lens .bracket { opacity: .9; }
+.bracket.b-veryHard::before { content: ""; position: absolute; left: -7px; top: 3px; bottom: 3px; width: 8px; background: var(--br-blue) no-repeat 0 0 / 100% 100%; }
+.bracket.is-active { opacity: 1; filter: saturate(1.4) brightness(.85); }
 .editor.hide-hard ~ .gutter .b-hard, .editor.hide-veryHard ~ .gutter .b-veryHard { display: none; }
 
 /* Owner notes: a quiet graphite underline, highlighter when open. */
@@ -219,8 +233,8 @@ html.is-typing .note-pin { opacity: .3; }
 .editor .hc[class*="_background"] { border-radius: var(--r-mark); box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 0 1px; margin: 0 -1px; }
 
 /* Ghosts and alternatives */
-.gh { opacity: .16; transition: opacity 120ms ease; }
-.gh:hover { opacity: .34; }
+.gh { opacity: .5; transition: opacity 120ms ease; }
+.gh:hover { opacity: .75; }
 .alt { text-decoration: underline wavy 1px color-mix(in srgb, var(--blue-mark) 45%, transparent); text-underline-offset: .3em; text-decoration-skip-ink: none; }
 .alt.is-open { text-decoration-color: var(--blue-mark); }
 .alt-pager { position: absolute; display: flex; gap: 2px; transform: translateX(-100%); pointer-events: auto; cursor: pointer; padding: 3px 0 6px; color: var(--ink-3); }
@@ -230,7 +244,7 @@ html.is-typing .note-pin { opacity: .3; }
 .alt-pager.is-paragraph::before { content: ""; position: absolute; left: 1px; top: 0; bottom: 0; width: 1px; background: color-mix(in srgb, var(--blue-mark) 45%, transparent); }
 .alt-pager.is-paragraph i { position: relative; margin-left: -1px; }
 html.is-typing .alt-pager { opacity: .35; }
-html.alts-open .editor .ln { color: color-mix(in srgb, var(--ink) 40%, transparent); transition: color 200ms ease; }
+html.alts-open .editor .ln { color: color-mix(in srgb, var(--ink) 66%, transparent); transition: color 200ms ease; }
 html.alts-open .editor .alt.is-open, html.alts-open .editor .ln.has-palt.is-open { color: var(--ink); }
 
 /* ---------- Formats ---------- */
@@ -260,7 +274,7 @@ html[data-format="x"] .page { padding-top: calc(var(--spine-h) + var(--safe-t) +
 
 /* ---------- Block handles (quiet until you reach for them) ---------- */
 .blk-handle { position: fixed; z-index: 26; display: flex; align-items: center; height: 24px; transition: opacity 160ms ease; }
-html.is-typing .blk-handle, html.is-dragging-block .blk-plus { opacity: 0; pointer-events: none; }
+html.is-typing .blk-handle, html.is-dragging-block .blk-plus, html:has(dialog[open]) .blk-handle, html.alts-open .blk-handle, body:has(.menu) .blk-handle { opacity: 0; pointer-events: none; }
 .blk-btn {
   display: grid; place-items: center; width: 22px; height: 24px; padding: 0; border: 0; border-radius: var(--r-xs);
   background: transparent; color: color-mix(in srgb, var(--ink) 28%, transparent); cursor: pointer;

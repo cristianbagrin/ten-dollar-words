@@ -213,6 +213,8 @@
     dlg = $('palette');
     input = el('input', { type: 'text', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'pal-list', 'aria-label': 'Command', autocomplete: 'off', spellcheck: 'false' });
     input.addEventListener('input', () => { sel = 0; draw(); });
+    // However it closes (Esc, a click outside, a command), the caret goes back to the page.
+    dlg.addEventListener('close', () => setTimeout(() => { if (!document.querySelector('dialog[open]') && (document.activeElement === input || document.activeElement === document.body)) Editor.focus(); }, 0));
     input.addEventListener('keydown', onKey);
     list = el('div', { class: 'pal-list', id: 'pal-list', role: 'listbox', 'aria-label': 'Commands' });
     list.addEventListener('keydown', onKey);
