@@ -4,8 +4,8 @@
 /* ---------- Tokens ---------- */
 :root {
   --font-ui: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-money: "Bodoni Moda", "Bodoni 72", Didot, Georgia, serif;
-  --font-tape: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-money: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif; /* figures: the one sans, lining tabular */
+  --font-tape: var(--font-ui);
   --font-code: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* type scale (UI) */
@@ -36,7 +36,7 @@
   --surface: #fbfdfc;       /* menus, sheets, slips */
   --ink: #0e2a5c;
   --text: #1a2437;
-  --slate: #636a7d;
+  --slate: #565d70;
   --rule: #8d94a7;
   --debit: #7d3929;
   --credit: #0b6e78;
@@ -61,7 +61,6 @@
   --shadow-float: 0 0 0 1px rgba(14, 42, 92, .08), 0 2px 6px -2px rgba(14, 42, 92, .1), 0 14px 34px -14px rgba(14, 42, 92, .34);
   --scrim: rgba(14, 42, 92, .22);
   --material: color-mix(in srgb, var(--desk) 84%, transparent);
-  --guilloche: rgba(14, 42, 92, .075);
 }
 
 /* ---------- Dark: night note ---------- */
@@ -72,7 +71,7 @@
   --surface: #15223a;
   --ink: #dcecee;
   --text: #d4dfe8;
-  --slate: #93a0b8;
+  --slate: #a0acc2;
   --rule: #6d7d9c;
   --debit: #e58b73;
   --credit: #52c7d1;
@@ -98,7 +97,6 @@
   --shadow-float: 0 0 0 1px rgba(220, 236, 238, .09), 0 2px 8px rgba(0, 0, 0, .35), 0 18px 40px -16px rgba(0, 0, 0, .7);
   --scrim: rgba(2, 6, 14, .5);
   --material: color-mix(in srgb, var(--desk) 80%, transparent);
-  --guilloche: rgba(220, 236, 238, .07);
 }
 
 /* ---------- Writing faces ---------- */
@@ -123,7 +121,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: clip;
 body {
   margin: 0; min-height: 100vh; overflow-x: clip;
   background: var(--desk); color: var(--text);
-  font: 400 var(--t-13)/1.4 var(--font-ui); font-variant-numeric: tabular-nums;
+  font: 400 var(--t-13)/1.4 var(--font-ui); font-variant-numeric: lining-nums tabular-nums;
   -webkit-font-smoothing: antialiased;
   transition: background-color var(--t-slow) var(--ease-out), color var(--t-slow) var(--ease-out);
 }
@@ -205,7 +203,7 @@ input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color:
   font-family: var(--font-money); font-size: 17px;
 }
 .money-input input { height: 100%; border: 0; background: transparent; padding: 0 8px 0 3px; box-shadow: none !important;
-  font: 500 17px/1 var(--font-money); color: var(--ink); font-variant-numeric: lining-nums tabular-nums; }
+  font: 600 17px/1 var(--font-money); color: var(--ink); font-variant-numeric: lining-nums tabular-nums; }
 .money-input:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent); }
 .row-end { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .row-start { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -318,12 +316,11 @@ dialog.is-closing::backdrop { animation: fade-out 180ms var(--ease-out) forwards
   display: inline-block; padding: 5px 9px 4px;
   font: 700 var(--t-11)/1 var(--font-ui); letter-spacing: .16em; text-transform: uppercase;
   color: var(--stamp); border: 1.5px solid currentColor; border-radius: var(--r-tag);
-  box-shadow: inset 0 0 0 2px var(--page), inset 0 0 0 3px currentColor;
-  transform: rotate(-6deg); opacity: .9; mix-blend-mode: multiply;
+  transform: none; opacity: .85;
   animation: stamp-in 320ms var(--ease);
 }
 [data-theme="dark"] .stamp { mix-blend-mode: normal; }
-@keyframes stamp-in { from { opacity: 0; transform: rotate(-6deg) scale(1.4); } }
+@keyframes stamp-in { from { opacity: 0; } }
 
 /* ---------- Accessibility preferences ---------- */
 @media (prefers-reduced-motion: reduce) {

@@ -52,12 +52,13 @@
     const bal = budget - spent;
     const over = bal < 0;
     fig.set(money(Math.abs(bal)), true);
-    $('reg-label').textContent = over ? 'Over by' : 'Balance';
+    $('reg-label').textContent = over ? 'Over budget' : 'Balance';
     $('reg-fill').style.width = Math.min(spent / budget, 1) * 100 + '%';
     $('register').classList.toggle('is-over', over);
     $('reg-spent').textContent = money(spent);
     $('reg-budget').textContent = money(budget);
     $('reg-stamp').hidden = !over;
+    $('reg-stamp').textContent = money(Math.abs(bal)) + ' over';
     $('reg-main').setAttribute('aria-label', (over ? 'Over budget by ' : 'Balance ') + money(Math.abs(bal)) + ', ' + money(spent) + ' spent of ' + money(budget));
     const pill = $('balance-pill');
     pill.classList.toggle('is-over', over);
@@ -297,7 +298,7 @@
       },
       el('span', { class: 'refund-sw sw-' + i.type, 'aria-hidden': 'true' }),
       el('span', { class: 'refund-what' }, p.what, el('span', { class: 'refund-kind', text: KIND[i.type] })),
-      el('span', { class: 'refund-amt' + (p.amt ? '' : ' is-word'), text: p.amt ? 'Save ' + money(p.amt) : p.word }));
+      el('span', { class: 'refund-amt' + (p.amt ? ' is-save' : ' is-word'), text: p.amt ? 'Save ' + money(p.amt) : 'Show' }));
       line.title = p.what;
       const quick = p.amt ? quickFix(i, a) : null;
       if (quick) line.classList.add('is-quick');
@@ -453,7 +454,6 @@
   /* ---------- Init ---------- */
   function init() {
     fig = TDW.UI.odometer($('reg-figure'));
-    $('register').querySelector('.reg-guilloche').append(guilloche());
     $('reg-main').addEventListener('click', () => { if (app().state.mode !== 'edit') app().setMode('edit'); });
     $('balance-pill').addEventListener('click', () => {
       if (app().state.mode !== 'edit') { app().setMode('edit'); return; }

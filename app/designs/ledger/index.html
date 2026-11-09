@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- One request: engraved figures, the UI grotesk, the receipt mono, the three writing faces, and the Traditional Chinese fallbacks. -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400..700&amp;family=Public+Sans:ital,wght@0,300..700;1,400..600&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&amp;family=Cactus+Classical+Serif&amp;family=Noto+Serif+TC:wght@400;700&amp;family=Noto+Sans+TC:wght@400;700&amp;display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300..700;1,400..600&amp;family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&amp;family=Cactus+Classical+Serif&amp;family=Noto+Serif+TC:wght@400;700&amp;family=Noto+Sans+TC:wght@400;700&amp;display=swap">
   <link rel="stylesheet" href="css/tokens.css?v=2.1.0">
   <link rel="stylesheet" href="css/page.css?v=2.1.0">
   <link rel="stylesheet" href="css/ledger.css?v=2.1.0">
@@ -59,11 +59,11 @@
       <span id="panel-summary" class="grip-summary"></span>
     </button>
     <section id="register" class="register" aria-label="Balance">
-      <div class="reg-guilloche" aria-hidden="true"></div>
       <button id="reg-main" class="reg-main" type="button" title="Show the tape (⌘E)">
         <span id="reg-label" class="reg-label">Balance</span>
         <span id="reg-figure" class="reg-figure"></span>
       </button>
+      <div id="reg-challenge" class="reg-ch" hidden></div>
       <div class="reg-meter" aria-hidden="true"><div id="reg-fill" class="reg-fill"></div></div>
       <div class="reg-foot">
         <span class="reg-line"><span id="reg-spent">$0</span> spent of <button id="reg-budget" class="reg-budget" type="button" title="Change the budget">$2,000</button></span>
