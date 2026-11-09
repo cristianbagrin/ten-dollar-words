@@ -369,6 +369,7 @@
     const b = $('btn-lib');
     b.setAttribute('aria-pressed', String(open));
     tip(b, open ? 'Hide the library' : 'Show the library', keys('⌘\\'));
+    if (TDW.App && TDW.App.updateChrome) TDW.App.updateChrome();
   }
 
   /* ---------- Phone: the library is home; a draft is pushed over it ---------- */
