@@ -42,9 +42,10 @@
   const hasContent = (d) => !!(d.text.trim() || d.title.trim() || String(d.overflow || '').trim());
   const Marks = () => TDW.Marks;
   const ghostsOf = (d) => (d.ann && Array.isArray(d.ann.ghosts) ? d.ann.ghosts : []);
-  const masksOf = (text, d) => M.ghostMasks(text, ghostsOf(d));
+  const hlsOf = (d) => (d.ann && Array.isArray(d.ann.hls) ? d.ann.hls : []);
+  const masksOf = (text, d) => (d.colorsSynced || !d.notionId ? M.colorMasks(text, ghostsOf(d), hlsOf(d)) : M.ghostMasks(text, ghostsOf(d)));
   // What a push sends, so a push can tell whether the draft changed while it ran.
-  const sentOf = (d) => JSON.stringify([d.text, d.overflow || '', ghostsOf(d).map((g) => [g.start, g.end])]);
+  const sentOf = (d) => JSON.stringify([d.text, d.overflow || '', ghostsOf(d).map((g) => [g.start, g.end]), hlsOf(d).map((h) => [h.start, h.end, h.color])]);
   const alive = (d) => Store.getDraft(d.id) === d;
   const plain = (rich) => (Array.isArray(rich) ? rich : []).map((r) => r.plain_text || (r.text && r.text.content) || '').join('').trim();
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -359,27 +360,37 @@
     const ovLines = M.overflowLines(d.overflow);
     const ovChanged = free && !(ov ? M.sameContent(ov.entries, ovLines) : !ovLines.length);
     let overflow = ovChanged ? ovText : String(d.overflow || '');
+    let colorsTaken = false;
+    if (!textChanged && free && !d.colorsSynced && TDW.Marks) {
+      // The first read since highlights came in: Notion's colors become the draft's highlights.
+      const hls = M.hlsFromEntries(entries);
+      d.colorsSynced = true;
+      if (hls.length) { d.ann = TDW.Marks.normalize(TDW.Marks.withAnn(d.ann, { hls }), d.text); colorsTaken = true; }
+    }
     if (textChanged) {
+      d.colorsSynced = true;
       const old = d.text;
       d.text = text;
       const ghosts = M.ghostsFromEntries(entries);
+      const hls = M.hlsFromEntries(entries);
       const K = Marks();
       if (K) {
         const r = K.reanchor(d.ann || K.EMPTY, old, text);
-        let alts = r.ann.alts;
-        // A page first seen here: the account may hold alternatives another device made.
-        const meta = first && !alts.length && TDW.Account ? TDW.Account.draftMeta(d.notionId) : null;
-        if (meta && Array.isArray(meta.alts) && meta.alts.length) alts = meta.alts;
-        d.ann = K.normalize({ alts, ghosts }, text);
+        let alts = r.ann.alts, notes = r.ann.notes;
+        // A page first seen here: the account may hold alternatives and notes another device made.
+        const meta = first && TDW.Account ? TDW.Account.draftMeta(d.notionId) : null;
+        if (meta && !alts.length && Array.isArray(meta.alts) && meta.alts.length) alts = meta.alts;
+        if (meta && !notes.length && Array.isArray(meta.notes) && meta.notes.length) notes = meta.notes;
+        d.ann = K.normalize({ alts, ghosts, hls, notes }, text);
         if (r.lost.length) {
           overflow = keepLost(overflow, r.lost);
           d.dirty = d.dirty || overflow !== ovText; // the kept options go back to Notion too
         }
-      } else d.ann = { alts: [], ghosts };
+      } else d.ann = { alts: [], ghosts, hls, notes: [] };
     }
     d.overflow = overflow;
     Store.saveDraft(d);
-    if (textChanged || ovChanged) call('onRemoteText', d);
+    if (textChanged || ovChanged || colorsTaken) call('onRemoteText', d);
     if (d.dirty && leader) schedulePush(d.id);
   }
 
@@ -480,6 +491,7 @@
     });
     if (!alive(d)) { queueTrash(page.id); return; } // deleted here while Notion was creating it
     d.notionId = page.id;
+    d.colorsSynced = true;
     d.url = typeof page.url === 'string' ? page.url : null;
     d.remoteTitle = title;
     d.propsDirty = false;

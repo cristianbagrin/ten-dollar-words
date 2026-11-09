@@ -110,7 +110,7 @@ test('normalize: drops what no longer fits the text', () => {
   const moved = M.normalize(ann, 'Intro. ' + TEXT);
   assert.equal(moved.alts.length, 1, 'found again when the text moved');
   assert.equal(('Intro. ' + TEXT).slice(moved.alts[0].start, moved.alts[0].end), 'tension');
-  assert.deepEqual(M.normalize(null, 'x'), { alts: [], ghosts: [] });
+  assert.deepEqual(M.normalize(null, 'x'), { alts: [], ghosts: [], hls: [], notes: [] });
 });
 
 test('stripGhosts: no double spaces, lines that only held ghosts go', () => {
@@ -155,4 +155,36 @@ test('reanchor: a word rewritten in Notion keeps the old one as an option', () =
   assert.equal(shown(remote, a), 'rest');
   assert.deepEqual(a.options.map((o) => o.text), ['tension', 'rest', 'pressure']);
   assert.equal(a.active, 1);
+});
+
+/* ---------- Highlights and notes ---------- */
+
+test('setColor splits and replaces; highlights grow as you type at their end', () => {
+  let ann = M.setColor(M.EMPTY, 0, 10, 'yellow_background');
+  ann = M.setColor(ann, 4, 6, 'red');
+  assert.deepEqual(ann.hls.map((h) => [h.start, h.end, h.color]), [[0, 4, 'yellow_background'], [4, 6, 'red'], [6, 10, 'yellow_background']]);
+  assert.equal(M.colorAt(ann, 0, 10), 'yellow_background');
+  ann = M.setColor(ann, 0, 10, null);
+  assert.equal(ann.hls.length, 0);
+  const t = 'abc def ghi';
+  const a2 = M.setColor(M.EMPTY, 4, 7, 'blue');
+  const out = M.applyChange(a2, t, 'abc defx ghi');
+  assert.deepEqual([out.hls[0].start, out.hls[0].end], [4, 8]);
+  assert.equal(M.normalize({ hls: [{ start: 0, end: 3, color: 'nope' }] }, t).hls.length, 0, 'unknown colors go');
+});
+
+test('a note survives its text being deleted, and keeps the other lists', () => {
+  const t = 'One two three four.';
+  const r = at(t, 'two three');
+  const got = M.addNote(M.setColor(M.EMPTY, 0, 3, 'green'), r.start, r.end, { body: 'fix this' });
+  const t2 = t.slice(0, r.start) + t.slice(r.end);
+  const out = M.applyChange(got.ann, t, t2);
+  assert.equal(out.notes.length, 1);
+  assert.equal(out.notes[0].start, out.notes[0].end, 'pinned where the text was');
+  assert.equal(out.hls.length, 1);
+  const g = M.ghost(got.ann, 0, 3);
+  assert.equal(g.notes.length, 1, 'ghosting keeps notes');
+  const n = M.normalize({ notes: [{ start: 99, end: 100, quote: 'three', body: 'x', thread: [{ by: 'ai', text: 'hi', options: ['a'] }] }] }, t);
+  assert.equal(t.slice(n.notes[0].start, n.notes[0].end), 'three', 'found again by its words');
+  assert.deepEqual(n.notes[0].thread[0].options, ['a']);
 });

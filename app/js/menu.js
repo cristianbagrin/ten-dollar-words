@@ -94,6 +94,10 @@
     const list = [
       { label: 'Alternatives for selection', note: hint('Ctrl+Shift+A'), value: 'alts' },
       { label: 'AI alternatives for selection', note: hint('Ctrl+Shift+G'), value: 'ai' },
+      { label: 'Ask AI about this', note: hint('Ctrl+J'), value: 'talk', disabled: !has },
+      { label: 'Add a note', note: hint('Ctrl+Shift+M'), value: 'note' },
+      { label: 'Color…', value: 'color', disabled: !has },
+      { type: 'sep' },
       { label: ghosted ? 'Revive' : 'Ghost it', note: hint('Ctrl+/'), value: 'ghost', disabled: !r },
       { label: 'Stash this in Overflow', note: hint('Ctrl+Shift+X'), value: 'stash' },
       { type: 'sep' },
@@ -108,6 +112,9 @@
     if (v === 'alts') TDW.Alts && TDW.Alts.open();
     else if (v === 'ai') TDW.Alts && TDW.Alts.aiForSelection();
     else if (v === 'ghost') toggleGhost();
+    else if (v === 'talk') TDW.Notes && TDW.Notes.compose({ ai: true });
+    else if (v === 'note') TDW.Notes && TDW.Notes.compose({ ai: false });
+    else if (v === 'color' && TDW.Notes) { const s = Editor.getSelection(); TDW.Notes.colorMenu(anchor, s.start, s.end); }
     else if (v === 'stash') stash();
     else if (v === 'cut' || v === 'copy') { Editor.focus(); document.execCommand(v); }
     else if (v === 'paste') {
@@ -134,7 +141,7 @@
   /* ---------- Touch: a button by the selection ---------- */
   let touchBtn = null;
   function placeTouchButton() {
-    if (!UI.device.touch) return;
+    if (!UI.device.touch || TDW.Bubble) return; // the bar over the selection has a ⋯ of its own
     const s = Editor.getSelection();
     if (!touchBtn) {
       touchBtn = UI.el('button', { type: 'button', class: 'ctx-touch', 'aria-label': 'More for this selection', hidden: true, text: '⋯' });

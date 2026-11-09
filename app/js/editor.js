@@ -18,7 +18,7 @@
   const PREFIX = { p: '', h1: '# ', h2: '## ', h3: '### ', li: '- ', quote: '> ' };
   const PLACEHOLDER = { h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', li: 'List', ol: 'List', todo: 'To-do', quote: 'Quote' };
   const LISTY = new Set(['li', 'ol', 'todo', 'quote']);
-  const FREE_UNDO = new Set(['marks', 'stash', 'swap']); // undone even with backspace off: nothing typed is lost
+  const FREE_UNDO = new Set(['marks', 'stash', 'swap', 'move']); // undone even with backspace off: nothing typed is lost
 
   let root = null;       // the contenteditable
   let surface = null;    // positioned parent of root, under and aids
@@ -44,6 +44,7 @@
   let ann = Marks.EMPTY;  // alternatives and ghosts: they follow every edit and live in the undo history
   let labMarks = [];      // the Lab's marks and trim's cuts: { start, end, type, id }; an edit over one drops it
   let openAlt = null;     // the alternative the panel is working on (underlined even with one option)
+  let openNote = null;    // the note whose card is open
   let activeId = null;
   let resizeRaf = 0;
   let reconcileTimer = 0;
@@ -223,6 +224,8 @@
   // Outer to inner. Each layer's marks never overlap each other.
   const OPEN = [
     (m) => '<span class="gh">',
+    (m) => '<span class="hc hc-' + m.color + '">',
+    (m) => '<span class="nt' + (m.id === openNote ? ' is-open' : '') + (m.done ? ' is-done' : '') + '" data-note="' + esc(m.id) + '">',
     (m) => '<span class="alt alt-sentence' + (m.id === openAlt ? ' is-open' : '') + '" data-alt="' + esc(m.id) + '">',
     (m) => '<span class="alt alt-word' + (m.id === openAlt ? ' is-open' : '') + '" data-alt="' + esc(m.id) + '">',
     (m) => '<span class="fx fx-' + m.type + '">',
@@ -230,7 +233,7 @@
     (m) => '<span class="hs hs-' + m.type + (isActive(m) ? ' is-active' : '') + '" data-id="' + esc(m.id) + '">',
     (m) => '<mark class="hl hl-' + m.type + (isActive(m) ? ' is-active' : '') + '" data-id="' + esc(m.id) + '">'
   ];
-  const CLOSE = ['</span>', '</span>', '</span>', '</span>', '</span>', '</span>', '</mark>'];
+  const CLOSE = ['</span>', '</span>', '</span>', '</span>', '</span>', '</span>', '</span>', '</span>', '</mark>'];
   const LAYERS = OPEN.length;
   const shownAlt = (a) => a.options.length > 1 || a.id === openAlt;
   // Each layer's marks, in markdown offsets, from what the editor holds now.
@@ -240,7 +243,25 @@
       if (!shownAlt(a)) continue;
       if (a.kind === 'sentence') sen.push(a); else if (a.kind === 'word') word.push(a);
     }
-    return [ann.ghosts, sen, word, fxMarks, labMarks, sentMarks, wordMarks];
+    return [ann.ghosts, ann.hls || NONE, noteSegments(), sen, word, fxMarks, labMarks, sentMarks, wordMarks];
+  }
+
+  // Notes can overlap; the page shows each stretch once, under the note that starts first.
+  let noteSegs = { notes: null, open: null, list: [] };
+  function noteSegments() {
+    const notes = ann.notes || NONE;
+    if (noteSegs.notes === notes && noteSegs.open === openNote) return noteSegs.list;
+    const list = [];
+    let last = 0;
+    for (const n of notes.slice().sort((a, b) => a.start - b.start)) {
+      if (n.end <= n.start) continue;
+      const s = Math.max(n.start, last);
+      if (n.end <= s) continue;
+      list.push({ start: s, end: n.end, id: n.id, done: n.done, type: 'note' });
+      last = n.end;
+    }
+    noteSegs = { notes, open: openNote, list };
+    return list;
   }
 
   function styleRuns(p) {
@@ -290,7 +311,7 @@
       for (const m of markers) key += m.index + m.html;
       for (const Ls of layers) {
         key += '\u0001';
-        for (const r of Ls) key += r.start + ',' + r.end + ',' + r.m.type + ',' + (r.m.id || '') + (isActive(r.m) || r.m.id === openAlt ? '!' : '') + ';';
+        for (const r of Ls) key += r.start + ',' + r.end + ',' + (r.m.type || r.m.color || '') + ',' + (r.m.id || '') + (isActive(r.m) || r.m.id === openAlt || r.m.id === openNote ? '!' : '') + (r.m.done ? 'd' : '') + ';';
       }
       const hit = htmlMemo.get(key);
       if (hit !== undefined) return hit;
@@ -314,7 +335,7 @@
     const folds = aids && aids.folds;
     const d = drawn;
     if (d && d.text === text && d.fx === fxMarks && d.sm === sentMarks && d.wm === wordMarks && d.folds === folds &&
-      d.ann === ann && d.lab === labMarks && d.openAlt === openAlt &&
+      d.ann === ann && d.lab === labMarks && d.openAlt === openAlt && d.openNote === openNote &&
       d.active === activeId && d.thread === thread && d.rendered === rendered && root.childNodes.length === rendered.length) {
       placeAids();
       return;
@@ -341,10 +362,20 @@
       items[i] = a;
     }
     const touched = commit(items);
-    drawn = { text, fx: fxMarks, sm: sentMarks, wm: wordMarks, folds, active: activeId, thread, rendered, ann, lab: labMarks, openAlt };
+    drawn = { text, fx: fxMarks, sm: sentMarks, wm: wordMarks, folds, active: activeId, thread, rendered, ann, lab: labMarks, openAlt, openNote };
     root.classList.toggle('is-empty', text === '');
     if (touched && document.activeElement === root) applySel();
+    markCaretLine();
     placeAids();
+  }
+
+  // The empty line the caret is on says "Type '/' for commands", like Notion.
+  let caretEl = null;
+  function markCaretLine() {
+    const el = sel.start === sel.end ? root.children[vLineOf(sel.end)] || null : null;
+    if (caretEl && caretEl !== el) caretEl.classList.remove('is-caret');
+    if (el && !el.classList.contains('is-caret')) el.classList.add('is-caret');
+    caretEl = el;
   }
 
   function paint(node, a) {
@@ -456,6 +487,7 @@
       sel = { start: to, end: to, backward: false };
       applySel();
     }
+    markCaretLine();
     if (prev.start !== sel.start || prev.end !== sel.end) call('onSelect');
   }
 
@@ -505,7 +537,7 @@
 
   /* ---------- Aids: fold ticks, X post windows ---------- */
 
-  const aidPool = { tick: [], label: [], box: [], foot: [], pager: [] };
+  const aidPool = { tick: [], label: [], box: [], foot: [], pager: [], pin: [] };
   function pooled(kind, host, make) {
     const list = aidPool[kind];
     return (i) => {
@@ -571,10 +603,58 @@
     hideFrom('pager', k);
   }
 
+  const PIN_SVG = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 3.5h11v7.5H7l-3.5 2.5V11h-1z" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+  // A small speech mark in the right margin by each note's last line; a note whose words were
+  // deleted keeps its mark where they were.
+  function placePins(sr) {
+    const pin = pooled('pin', aidsEl, () => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'note-pin';
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => call('onNote', b._ids));
+      return b;
+    });
+    const byRow = new Map();
+    for (const n of ann.notes || NONE) {
+      let r = null;
+      if (n.end > n.start) {
+        const els = root.querySelectorAll('[data-note="' + CSS.escape(n.id) + '"]');
+        const last = els[els.length - 1];
+        const rs = last ? last.getClientRects() : [];
+        r = rs.length ? rs[rs.length - 1] : null;
+      }
+      if (!r) { const rc = rectAtVis(mdToVis(n.start)); if (rc) r = { top: rc.lineTop, bottom: rc.lineTop + rc.lh }; }
+      if (!r) continue;
+      const key = Math.round(r.top - sr.top);
+      if (!byRow.has(key)) byRow.set(key, { top: key, h: r.bottom - r.top, ids: [], done: true, ai: false, color: n.color });
+      const row = byRow.get(key);
+      row.ids.push(n.id);
+      if (!n.done) row.done = false;
+      if (n.ai) row.ai = true;
+    }
+    let k = 0;
+    for (const row of byRow.values()) {
+      const b = pin(k++);
+      b._ids = row.ids;
+      b.className = 'note-pin' + (row.done ? ' is-done' : '') + (row.ai ? ' is-ai' : '') + (row.ids.includes(openNote) ? ' is-open' : '');
+      b.style.cssText = 'top:' + (row.top + row.h / 2 - 11) + 'px';
+      const label = row.ids.length > 1 ? String(row.ids.length) : '';
+      if (b._label !== label) {
+        b._label = label;
+        b.innerHTML = PIN_SVG + (label ? '<span class="note-pin-n">' + label + '</span>' : '');
+      }
+      b.setAttribute('aria-label', row.ids.length > 1 ? row.ids.length + ' notes' : 'Note');
+      b.title = row.ids.length > 1 ? row.ids.length + ' notes' : 'Open the note';
+    }
+    hideFrom('pin', k);
+  }
+
   function placeAids() {
     if (!aidsEl || !root.children.length) return;
     const sr = surface.getBoundingClientRect();
     placePagers(sr);
+    placePins(sr);
     const folds = [...root.querySelectorAll('.mk-fold')];
     const tick = pooled('tick', aidsEl, () => Object.assign(document.createElement('span'), { className: 'fold-tick' }));
     const label = pooled('label', aidsEl, () => Object.assign(document.createElement('span'), { className: 'fold-label margin-aid' }));
@@ -854,7 +934,7 @@
         if ((m = /^(#{1,3}) $/.exec(pre))) blk = { type: 'h' + m[1].length };
         else if (/^[-*+•] $/.test(pre)) blk = { type: 'li' };
         else if ((m = /^(\d+)[.)] $/.exec(pre))) blk = { type: 'ol', num: Number(m[1]) };
-        else if (/^> $/.test(pre)) blk = { type: 'quote' };
+        else if (/^[>"“] $/.test(pre)) blk = { type: 'quote' };
         else if (/^\[ ?\] $/.test(pre)) blk = { type: 'todo', checked: false };
         else if (/^\[[xX]\] $/.test(pre)) blk = { type: 'todo', checked: true };
       } else if (ch === ']' && /^\[ ?\]$/.test(pre) && plain(0, k)) {
@@ -1088,6 +1168,109 @@
     commitLines(a, b, objs, { sel: keep }, 'format');
   }
 
+  /* ---------- Blocks, like Notion's: move, duplicate, delete, turn into ---------- */
+
+  // In an X thread a block can't cross a post divider.
+  function postBounds(i) {
+    if (!thread) return [0, lines.length - 1];
+    let a = i, b = i;
+    while (a > 0 && !isSep(a - 1)) a--;
+    while (b + 1 < lines.length && !isSep(b + 1)) b++;
+    return [a, b];
+  }
+
+  // Move lines a..b so the first one lands at line `to` (counted in the text without them).
+  // The selection moves with them; marks follow as the text changes (one region per move).
+  function moveLines(a, b, to) {
+    if (readOnly) return false;
+    const n = lines.length;
+    if (a < 0 || b >= n || a > b) return false;
+    to = Math.max(0, Math.min(to, n - (b - a + 1)));
+    if (to === a) return false;
+    const order = [];
+    for (let k = 0; k < n; k++) if (k < a || k > b) order.push(k);
+    const ids = order.slice(0, to).concat(Array.from({ length: b - a + 1 }, (_, k) => a + k), order.slice(to));
+    const next = ids.map((k) => lines[k]);
+    const selLine = vLineOf(sel.start), selLine2 = vLineOf(sel.end);
+    const selCol = sel.start - vstarts[selLine], selCol2 = sel.end - vstarts[selLine2];
+    const before = { text, sel: Object.assign({}, sel), ann };
+    const oldStarts = starts.slice();
+    const where = new Array(n);
+    ids.forEach((k, pos) => { where[k] = pos; });
+    setModel(next.join('\n'));
+    // Each old offset lands on its line's new place. A mark whose two ends no longer sit the
+    // same distance apart crossed a moved edge: it can't stay whole.
+    const at = (x) => { const li = search(oldStarts, x); return starts[where[li]] + (x - oldStarts[li]); };
+    const map = (m) => {
+      const st = at(m.start), en = at(m.end);
+      return en - st === m.end - m.start ? Object.assign({}, m, { start: st, end: en }) : null;
+    };
+    const keep = (list) => list.map(map).filter(Boolean).sort((x, y) => x.start - y.start);
+    const a0 = before.ann;
+    if (!Marks.isEmpty(a0)) {
+      ann = Marks.withAnn(a0, {
+        alts: keep(a0.alts),
+        ghosts: Marks.mergeGhosts(keep(a0.ghosts)),
+        hls: Marks.mergeColors(keep(a0.hls || [])),
+        notes: (a0.notes || []).map((x) => map(x) || Object.assign({}, x, { start: at(x.start), end: at(x.start) }))
+      });
+    }
+    fxMarks = sentMarks = wordMarks = labMarks = [];
+    const nl = (li) => where[li];
+    sel = { start: vstarts[nl(selLine)] + selCol, end: vstarts[nl(selLine2)] + selCol2, backward: false };
+    if (sel.end < sel.start) sel = { start: sel.end, end: sel.end, backward: false };
+    expectSel = { start: sel.start, end: sel.end };
+    record(before, 'move', '');
+    render();
+    focus();
+    call('onChange', { kind: 'move' });
+    return true;
+  }
+
+  function moveSelBlocks(dir) {
+    const [a, b] = linesInSel();
+    const [lo, hi] = postBounds(a);
+    if (dir < 0 && a <= lo) return false;
+    if (dir > 0 && b >= hi) return false;
+    return moveLines(a, b, dir < 0 ? a - 1 : a + 1);
+  }
+
+  function duplicateLines(a, b) {
+    if (readOnly) return;
+    const md = lines.slice(a, b + 1);
+    const objs = md.map((m) => ({ md: m })).concat(md.map((m) => ({ md: m })));
+    const li = Math.max(a, Math.min(b, vLineOf(sel.start)));
+    commitLines(a, b, objs, { line: b + 1 + (li - a), col: Math.max(0, sel.start - vstarts[li]) }, 'edit');
+  }
+
+  function deleteLines(a, b) {
+    if (readOnly) return;
+    if (call('canDelete') === false) { call('onBlocked'); return; }
+    commitLines(a, b, [], { line: Math.max(0, a - 1), col: a > 0 ? P[a - 1].vis.length : 0 }, 'delete');
+  }
+
+  // Turn lines a..b into a block type (Notion's "Turn into"). 'hr' adds a divider after.
+  function turnInto(a, b, type) {
+    if (readOnly) return;
+    if (type === 'hr') {
+      // On an empty text block the divider takes its place; otherwise it goes under the block.
+      if (P[b].blk.type === 'p' && !P[b].vis) commitLines(b, b, [{ blk: { type: 'hr' }, chars: [] }, { blk: { type: 'p' }, chars: [] }], { line: b + 1, col: 0 }, 'format');
+      else commitLines(b, b, [{ md: lines[b] }, { blk: { type: 'hr' }, chars: [] }, { blk: { type: 'p' }, chars: [] }], { line: b + 2, col: 0 }, 'format');
+      return;
+    }
+    const objs = [];
+    let num = 0;
+    for (let i = a; i <= b; i++) {
+      const p = P[i];
+      if (p.blk.type === 'hr' || p.blk.type === 'opaque') { objs.push({ md: lines[i] }); continue; }
+      const blk = type === 'ol' ? { type: 'ol', num: ++num } : type === 'todo' ? { type: 'todo', checked: false } : { type };
+      objs.push({ blk, chars: p.chars });
+    }
+    const caretLine = vLineOf(sel.start);
+    const keep = caretLine >= a && caretLine <= b ? { start: sel.start, end: sel.end } : { start: vstarts[b] + P[b].vis.length, end: vstarts[b] + P[b].vis.length };
+    commitLines(a, b, objs, { sel: keep }, 'format');
+  }
+
   function toggleTodo(i) {
     const p = P[i];
     if (p.blk.type !== 'todo') return;
@@ -1195,14 +1378,60 @@
     insertText(data, one ? 'type' : 'edit');
   }
 
+  // Backspace at the very start of a line is ours to handle: Safari sends no beforeinput when
+  // there's nothing before the caret in the page, so a bullet on the first line could never go.
+  // Turning a block back into text deletes nothing, so it works with No backspace on too.
+  function lineStartBackspace(e) {
+    if (e.key !== 'Backspace' || e.altKey || e.metaKey || e.ctrlKey || e.shiftKey || readOnly) return false;
+    syncSel();
+    if (sel.start !== sel.end) return false;
+    const i = vLineOf(sel.start);
+    if (sel.start !== vstarts[i]) return false;
+    const t = P[i].blk.type;
+    if (t !== 'p' && t !== 'hr' && t !== 'opaque') {
+      e.preventDefault();
+      commitLines(i, i, [{ blk: { type: 'p' }, chars: P[i].chars }], { line: i, col: 0 }, 'format');
+      return true;
+    }
+    if (i === 0) { e.preventDefault(); return true; } // nothing above to join
+    return false;
+  }
+
   function onKeyDown(e) {
     if (e.defaultPrevented || e.isComposing) return;
+    if (lineStartBackspace(e)) return;
     const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+    // Notion's block moves: ⌘⇧↑/↓ moves the block, ⌘D duplicates it.
+    if (mod && e.shiftKey && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !readOnly) {
+      e.preventDefault();
+      syncSel();
+      moveSelBlocks(e.key === 'ArrowUp' ? -1 : 1);
+      return;
+    }
+    if (mod && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 'd' && !readOnly) {
+      e.preventDefault();
+      syncSel();
+      const [a, b] = linesInSel();
+      duplicateLines(a, b);
+      return;
+    }
     if (!mod) return;
     syncSel();
     const key = String(e.key || '').toLowerCase();
     const code = e.code || '';
     let done = true;
+    if (key === 'a' && !e.shiftKey && !e.altKey) {
+      // Like Notion: the block first, then everything.
+      const i = vLineOf(sel.start);
+      const a = vstarts[i], b = vstarts[i] + P[i].vis.length;
+      if (vLineOf(sel.end) === i && P[i].vis && !(sel.start === a && sel.end === b)) {
+        e.preventDefault();
+        sel = { start: a, end: b, backward: false };
+        applySel();
+        call('onSelect');
+      }
+      return;
+    }
     if (key === 'z' && !e.shiftKey && !e.altKey) undo();
     else if ((key === 'z' && e.shiftKey) || (key === 'y' && !IS_MAC)) redo();
     else if (readOnly) done = false;
@@ -1467,6 +1696,13 @@
         if (readOnly) return;
         const data = fromTransfer(e.clipboardData);
         if (!data) return;
+        // A link pasted over a selection links it, like Notion.
+        if (sel.end > sel.start && /^https?:\/\/\S+$/.test(data.trim()) && vLineOf(sel.start) === vLineOf(sel.end)) {
+          const i = vLineOf(sel.start), a = sel.start - vstarts[i], b = sel.end - vstarts[i];
+          const keep = { start: sel.start, end: sel.end };
+          commitLines(i, i, [{ blk: P[i].blk, chars: P[i].chars.map((c, k) => (k >= a && k < b ? { ch: c.ch, f: c.f, link: data.trim() } : c)) }], { sel: keep }, 'format');
+          return;
+        }
         if (sel.end > sel.start && call('canDelete') === false) { call('onBlocked'); return; }
         insertText(data, 'paste');
       });
@@ -1594,6 +1830,39 @@
     },
     // The alternative the panel has open: underlined while it has only the one option.
     setOpenAlt(id) { openAlt = id || null; render(); },
+    setOpenNote(id) { openNote = id || null; render(); },
+    // Blocks (lines), for the handles, the slash menu and the block menu.
+    blockCount() { return lines.length; },
+    block(i) {
+      if (i < 0 || i >= lines.length) return null;
+      const p = P[i];
+      return { type: p.blk.type, checked: !!p.blk.checked, md: lines[i], vis: p.vis, start: starts[i], end: lineEnd(i), el: root.children[i] || null };
+    },
+    blockIndexOf(el) { const e = lineEl(el); return e ? Array.prototype.indexOf.call(root.children, e) : -1; },
+    lineOfIndex(m) { return lineOf(Math.max(0, Math.min(m, text.length))); },
+    selLines() { syncSel(); return linesInSel(); },
+    caretLine() { return vLineOf(sel.end); },
+    caretCol() { return sel.end - vstarts[vLineOf(sel.end)]; },
+    moveBlocks(a, b, to) { return moveLines(a, b, to); },
+    moveSelBlocks,
+    postBounds,
+    duplicateBlocks(a, b) { duplicateLines(a, b); },
+    deleteBlocks(a, b) { deleteLines(a, b); },
+    turnInto(a, b, type) { turnInto(a, b, type); },
+    // A new empty block after line i (Notion's "+"), with the caret in it.
+    insertBlockAfter(i, type) {
+      if (readOnly) return;
+      const blk = type && type !== 'p' ? (type === 'ol' ? { type: 'ol', num: 1 } : type === 'todo' ? { type: 'todo', checked: false } : { type }) : { type: 'p' };
+      commitLines(i, i, [{ md: lines[i] }, { blk, chars: [] }], { line: i + 1, col: 0 }, 'enter');
+      focus();
+    },
+    // Replace visible columns [a, b) of line i with nothing (the slash command's "/text").
+    clearInLine(i, a, b) {
+      if (readOnly || i < 0 || i >= lines.length) return;
+      const p = P[i];
+      const chars = p.chars.slice(0, a).concat(p.chars.slice(b));
+      commitLines(i, i, [{ blk: p.blk, chars }], { line: i, col: a }, 'format');
+    },
     setLab(list) { labMarks = list && list.length ? list : []; render(); },
     getLab() { return labMarks; },
     // Visible text of the page, and markdown <-> visible offsets, for things laid over it.
@@ -1699,7 +1968,8 @@
     },
     undo,
     redo,
-    toggleStyle(name) { toggleStyle({ bold: B, italic: I, strike: S, code: C }[name]); },
+    toggleStyle(name) { syncSel(); toggleStyle({ bold: B, italic: I, strike: S, code: C }[name]); },
+    link() { syncSel(); linkPrompt(); },
     setBlock,
     htmlToMd,
     cutPlan,

@@ -61,7 +61,19 @@
 
   // Alternatives go as [kind, start, end, active, [[text, by]…]]; ghosts travel through Notion (gray text).
   const altsOf = (d) => (d.ann && d.ann.alts.length ? d.ann.alts.map((a) => [a.kind, a.start, a.end, a.active, a.options.map((o) => [o.text, o.by])]) : null);
-  const metaOf = (d) => ({ f: d.format, b: d.budget, i: d.intent || '', nb: typeof d.nb === 'boolean' ? d.nb : null, al: altsOf(d), ch: d.challenge || null });
+  // Notes go with the words they're on (q), so another device can find them; highlights travel through Notion (colors).
+  const notesOf = (d) => (d.ann && d.ann.notes && d.ann.notes.length ? d.ann.notes.map((n) => ({
+    s: n.start, e: n.end, q: d.text.slice(n.start, n.end), b: n.body, d: n.done ? 1 : 0, ai: n.ai ? 1 : 0, c: n.color || '', at: n.at,
+    t: n.thread.map((m) => [m.by, m.text, m.at, m.options || null])
+  })) : null);
+  function notesFrom(v) {
+    if (!Array.isArray(v)) return [];
+    return v.filter((x) => x && typeof x === 'object').map((x) => ({
+      start: x.s, end: x.e, quote: x.q, body: x.b, done: !!x.d, ai: !!x.ai, color: x.c, at: x.at,
+      thread: (Array.isArray(x.t) ? x.t : []).filter(Array.isArray).map((m) => ({ by: m[0], text: m[1], at: m[2], options: m[3] || undefined }))
+    }));
+  }
+  const metaOf = (d) => ({ f: d.format, b: d.budget, i: d.intent || '', nb: typeof d.nb === 'boolean' ? d.nb : null, al: altsOf(d), no: notesOf(d), ch: d.challenge || null });
   function altsFrom(v) {
     if (!Array.isArray(v)) return [];
     return v.filter((x) => Array.isArray(x) && Array.isArray(x[4])).map((x) => ({
@@ -156,6 +168,7 @@
       intent: typeof v.i === 'string' ? v.i : '',
       nb: typeof v.nb === 'boolean' ? v.nb : null,
       alts: altsFrom(v.al),
+      notes: notesFrom(v.no),
       challenge: v.ch && typeof v.ch === 'object' && !Array.isArray(v.ch) ? v.ch : null
     };
   }
@@ -204,7 +217,7 @@
         const d = Store.findByNotionId(n.slice(6));
         const m = draftMetaFrom(merged[n].v);
         if (!d || d.localOnly || !m) continue;
-        if (TDW.Marks) m.ann = TDW.Marks.normalize({ alts: altsFrom(merged[n].v.al), ghosts: (d.ann && d.ann.ghosts) || [] }, d.text);
+        if (TDW.Marks) m.ann = TDW.Marks.normalize(TDW.Marks.withAnn(d.ann, { alts: altsFrom(merged[n].v.al), notes: notesFrom(merged[n].v.no) }), d.text);
         if (Vault.same(metaOf(d), metaOf(Object.assign({}, d, m)))) continue;
         Object.assign(d, m);
         Store.saveDraft(d);

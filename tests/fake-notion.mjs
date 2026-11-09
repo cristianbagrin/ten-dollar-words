@@ -371,9 +371,10 @@ function dump() {
       text: NotionMap.entriesToText(NotionMap.blocksToEntries(split.blocks)),
       overflow: ov ? NotionMap.entriesToText(NotionMap.blocksToEntries(ov.children.map((b) => blockOut(b, p.id)))) : null,
       ghosts: NotionMap.ghostsFromEntries(NotionMap.blocksToEntries(split.blocks)).map((g) => [g.start, g.end]),
+      hls: NotionMap.hlsFromEntries(NotionMap.blocksToEntries(split.blocks)).map((h) => [h.start, h.end, h.color]),
       blocks: p.blocks.map((b) => ({
         id: b.id, type: b.type,
-        rich: TEXT_TYPES.has(b.type) ? b.body.rich_text.map((r) => ({ t: r.type, text: r.plain_text, bold: r.annotations.bold || undefined })) : undefined
+        rich: TEXT_TYPES.has(b.type) ? b.body.rich_text.map((r) => ({ t: r.type, text: r.plain_text, bold: r.annotations.bold || undefined, color: r.annotations.color !== 'default' ? r.annotations.color : undefined })) : undefined
       }))
     };
   });
@@ -406,6 +407,16 @@ function admin(method, action, body) {
       const b = p.blocks[body.index];
       if (!b || !TEXT_TYPES.has(b.type)) throw bad('No text block at that index.');
       for (const r of b.body.rich_text) r.annotations.color = body.off ? 'default' : 'gray';
+      b.edited = Date.now();
+      touch(p);
+      return { ok: true };
+    }
+    case 'color': {
+      // Color a text block's whole text (any Notion color, "red" or "yellow_background").
+      const p = page();
+      const b = p.blocks[body.index];
+      if (!b || !TEXT_TYPES.has(b.type)) throw bad('No text block at that index.');
+      for (const r of b.body.rich_text) r.annotations.color = String(body.color || 'default');
       b.edited = Date.now();
       touch(p);
       return { ok: true };

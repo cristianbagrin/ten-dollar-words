@@ -251,6 +251,7 @@
     const buttons = [];
     for (const it of items) {
       if (it.type === 'sep') { node.append(el('div', { class: 'menu-sep', role: 'separator' })); continue; }
+      if (it.type === 'head') { node.append(el('div', { class: 'menu-head', role: 'presentation', text: it.label })); continue; }
       const b = el('button', {
         type: 'button', class: 'menu-item' + (it.danger ? ' danger' : ''),
         role: it.checked != null ? 'menuitemcheckbox' : 'menuitem',

@@ -180,7 +180,7 @@
       const nt = t.slice(0, a.start) + v + t.slice(a.end);
       const others = Marks.applyChange(Object.assign({}, ann(), { alts: ann().alts.filter((x) => x.id !== a.id) }), t, nt);
       const alts = others.alts.concat(Object.assign({}, a, { end: a.start + v.length, options })).sort((x, y) => x.start - y.start);
-      Editor.change({ text: nt, ann: { alts, ghosts: others.ghosts }, kind: 'swap', history: false });
+      Editor.change({ text: nt, ann: Marks.withAnn(others, { alts }), kind: 'swap', history: false });
     } else setAnn(Marks.updateAlt(ann(), a.id, { options }), false);
   }
 
@@ -383,7 +383,7 @@
     // An alternative left with only its original is just text again.
     const a = altOf(cur.id);
     if (a && a.options.length < 2) {
-      Editor.change({ ann: { alts: ann().alts.filter((x) => x.id !== a.id), ghosts: ann().ghosts }, kind: 'marks', history: false });
+      Editor.change({ ann: Marks.withAnn(ann(), { alts: ann().alts.filter((x) => x.id !== a.id) }), kind: 'marks', history: false });
     }
     cur = null;
     Editor.setOpenAlt(null);

@@ -6,6 +6,25 @@ An account (Settings → Account) keeps your Notion connection, Gemini key, sett
 
 It's plain HTML, CSS, and JavaScript with no build step. The one piece that runs on a server is the account, a Netlify Function in `netlify/`.
 
+## The editor, like Notion
+
+Version 2.1 makes the page work like Notion's: every line is a block you can grab, turn into something else, color, comment on, or ask the AI about.
+
+- **Block handles.** Hover a block: a **+** and a grip (⋮⋮) appear in the left margin. **+** adds a block under it and opens the command menu (Alt+click adds one above). Drag the grip to move the block, or the selected blocks; a blue line shows where it lands. Click the grip for the block menu: Turn into, Color, Ask AI, Alternatives for this paragraph, Add a note, Duplicate, Move up, Move down, Delete.
+- **The "/" menu.** Type **/** at the start of a block or after a space: Text, Heading 1–3, Bulleted list, Numbered list, To-do list, Quote, Divider, Ask AI, Alternatives, Note, and every color ("/red", "/yellow back"). Keep typing to filter, ↑/↓ to choose, Return or Tab to run, Esc to close. The empty line you're on says "Type '/' for commands".
+- **The bar over a selection.** Select text and a bar appears above it: **✦ Ask AI**, **A/B** (alternatives), **Turn into**, bold, italic, strikethrough, code, link, **color** (A), **note**, and ⋯ for Ghost it, Stash and the rest. On a phone it sits under the selection, out of the way of the phone's own menu.
+- **Keys.** ⌘⇧↑/↓ moves the block, ⌘D duplicates it, ⌘A selects the block (again for everything). `"` and a space starts a quote. A link pasted over selected text links it.
+- **Backspace** at the start of a heading, list item, to-do or quote turns it back into text, on the first line too (Safari used to ignore it there), and with No backspace on, since nothing is deleted.
+
+### Colors
+Select text and pick a text color or a background from the bar's **A**, the block menu's Color (the whole block), or the "/" menu. **Ctrl+Shift+H** colors the selection with the last color you used, and again takes it off. They're Notion's colors, and they sync both ways: a color set in Notion shows here, and one set here shows in Notion. Gray text stays reserved for ghosts. Colors that were already in your Notion pages are kept: the app reads them once as highlights before it manages them.
+
+### Notes for future you
+Select some words and add a note: the bar's speech mark, **Ctrl+Shift+M**, right-click → Add a note, or "/note". The words get a yellow underline and a speech mark in the right margin; click either to open the note. Every note is a to-do you can tick off. If you delete the words, the note stays, pinned where they were. **Ctrl+Shift+M** with nothing selected (or the **Notes** button at the bottom right) opens the Notes panel: Open, Done or All, and a click takes you to the note. Notes stay out of Notion's text and out of the counts; signed in, your account carries them to your other devices.
+
+### Talk to the AI about a passage
+Select text and press **✦ Ask AI** (or **Ctrl+J**, or "/ai"). Type what you want, like a comment in a design tool: "other ways to say this", "make it punchier", "is this clear?", or tap one of the suggestions. The AI answers in a thread on that text, and when it suggests wording, its versions join the text's **alternatives**: click one in the thread to put it on the page, or flip through them in place with ↑/↓ (A/B, Jason Fried's way), and "Back to the original" returns. Reply to keep going. It never changes the page by itself, and the thread stays as a note you can come back to.
+
 ## The writing desk
 
 Version 2 adds the ideas in Jason Fried's demo of his own writing tool (`PLAN-v4.md`). The rule behind all of them: the tool marks, suggests and keeps things; it never rewrites your text unless you pick the words. Nothing you set aside is lost, and ⌘Z undoes all of it.
@@ -197,7 +216,7 @@ Edit mode underlines unknown words with a red wavy line. Click one for fixes, or
     js/panel.js            Edit-mode panel: register, grade, fixes, AI results
     js/popover.js          tips on highlighted text
     js/dialogs.js          Drafts drawer (with Notion properties) and Settings
-    js/marks.js            alternatives and ghosts over the text: following edits, a/an, swapping, ghosts (pure, tested)
+    js/marks.js            alternatives, ghosts, colors and notes over the text: following edits, a/an, swapping (pure, tested)
     js/alts.js             the alternatives panel, cycling in place, AI alternatives
     js/menu.js             the right-click menu, Ghost it, Stash this in Overflow
     js/overflow.js         the Overflow panel
@@ -205,6 +224,10 @@ Edit mode underlines unknown words with a red wavy line. Click one for fixes, or
     js/challenges.js       writing challenges: the catalog and its checks (pure, tested)
     js/challenge-ui.js     the Challenge button, picker and card
     js/desk.js             the live count, save/open/post to X, the shortcut list
+    js/blocks.js           Notion-style blocks: the handle, dragging, the block menu, the "/" menu
+    js/bubble.js           the bar over a selection
+    js/notes.js            colors, notes, the Notes panel, and AI threads on a passage
+    css/notion.css         their styles, with Notion's colors
     css/desk.css, overflow.css, lab.css, challenges.css   their styles (placeholders until the redesign)
     js/app.js              state, events, startup (loads last)
 ```

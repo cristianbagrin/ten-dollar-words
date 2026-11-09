@@ -63,6 +63,10 @@
         return { options: input.kind === 'word'
           ? ['judgments', 'decisions', 'trade-offs', 'choices', 'bets']
           : ['A plainer way to say it.', 'Another take, in the same voice.', 'The short version.'] };
+      case 'talk':
+        return /\?\s*$/.test(input.message || '') && !/rewrite|other way|say it/i.test(input.message || '')
+          ? { reply: 'It reads fine to me; the point lands.', options: [] }
+          : { reply: 'Here are a few tighter takes.', options: input.kind === 'word' ? ['choices', 'bets'] : ['A tighter version.', 'A bolder version.', 'A plainer version.'] };
       case 'stronger':
         return { options: [{ text: 'remarkable', note: 'Mock option' }, { text: 'striking', note: 'Mock option' }] };
       case 'activeVoice':
