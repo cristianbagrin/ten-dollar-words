@@ -344,13 +344,38 @@
     return '';
   }
 
+  // The balance block shows the challenge: its goal, live progress and a check per rule.
+  function drawReg(c, res) {
+    const box = document.getElementById('reg-challenge');
+    if (!box) return;
+    const rules = c.setup ? [] : res.items.flatMap((x) => x.rules);
+    const open = !(collapsed && !c.setup);
+    const name = (c.daily ? 'Today: ' : '') + res.items.map((x) => x.name).join(' + ');
+    const todo = rules.find((r) => !r.ok);
+    const goal = c.metAt ? 'met' : c.setup ? 'set it up' : todo ? (todo.detail || todo.label) : 'ready';
+    const done = rules.filter((r) => r.ok).length;
+    const head = el('button', { type: 'button', class: 'reg-ch-head', 'aria-expanded': String(open), title: 'Show or hide the challenge details',
+      onclick: () => { collapsed = !collapsed; render(); } },
+    el('span', { class: 'reg-ch-name', text: name }),
+    el('span', { class: 'reg-ch-goal', text: goal }),
+    rules.length ? el('span', { class: 'reg-ch-count', text: done + '/' + rules.length }) : null);
+    const list = el('ul', { class: 'reg-ch-rules', 'aria-label': 'Challenge rules' },
+      ...rules.map((r) => el('li', { class: r.ok ? 'is-ok' : '' },
+        el('span', { class: 'reg-ch-mark', 'aria-hidden': 'true', text: r.ok ? '✓' : r.judge ? '?' : '○' }),
+        el('span', { text: r.label }),
+        r.detail && !r.ok && r !== todo ? el('span', { class: 'reg-ch-detail', text: r.detail }) : null)));
+    box.classList.toggle('is-met', !!c.metAt);
+    box.replaceChildren(head, list);
+    box.hidden = false;
+  }
+
   function draw() {
     if (btn) {
       btn.classList.toggle('is-on', !!ch());
       btn.setAttribute('aria-pressed', String(!!ch()));
     }
     const c = ch();
-    if (!c) { if (card && card.isConnected) { card.remove(); TDW.Tape.sync(); } return; }
+    if (!c) { const rb = document.getElementById('reg-challenge'); if (rb) rb.hidden = true; if (card && card.isConnected) { card.remove(); TDW.Tape.sync(); } return; }
     if (!card) buildCard();
     if (!card.isConnected) { document.getElementById('tape-pinned').prepend(card); TDW.Tape.sync(); }
     card.classList.toggle('is-collapsed', collapsed && !c.setup);
@@ -358,6 +383,7 @@
     const res = c.metAt && c.final ? c.final : R().evaluate(c, text(), ctxOf(c));
     if (res.ok && !c.metAt && !c.setup) { met(c); return draw(); }
 
+    drawReg(c, res);
     const head = card.querySelector('.ch-head');
     const title = res.items.map((x) => x.name).join(' + ');
     const lv = c.items.find((it) => it.level);
