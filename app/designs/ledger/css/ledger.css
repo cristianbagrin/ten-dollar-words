@@ -598,3 +598,10 @@ a.e-title:hover { text-decoration: underline; text-underline-offset: 3px; text-d
   .register, .tape-body { box-shadow: inset 1px 0 0 var(--rule); }
   .paper { box-shadow: 1px 0 0 var(--rule), -1px 0 0 var(--rule); }
 }
+
+/* Section titles live in the Settings header; the ones inside stay for screen readers. */
+.set-body .set-sec > h3.label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.btn-fig { font: 500 14px/1 var(--font-money); font-variant-numeric: lining-nums tabular-nums; }
+.notes-row.is-new { animation: feed 260ms var(--ease) both; background: var(--wash-credit); }
+.trim-row { display: flex; flex-wrap: nowrap; }
+.trim-row .lab-level { flex: 1; min-width: 0; }

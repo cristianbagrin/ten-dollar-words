@@ -235,7 +235,7 @@
       }, el('span', { class: 'lab-level-label', text: '−' + money(cut) }), el('span', { class: 'lab-level-pct', text: lv.pct === 50 ? 'half' : lv.pct + '%' }));
       return b;
     });
-    box.replaceChildren(el('span', { class: 'trim-k', title: 'Trim (the Lab): the AI fades what it would cut. Nothing goes until you say.', text: 'Trim' }), ...btns);
+    box.replaceChildren(el('span', { class: 'trim-k', title: 'Trim (the Lab): the AI fades what it would cut. Nothing goes until you say.', text: 'Trim' }), ...btns.filter(Boolean));
   }
 
   /* ---------- Refunds ---------- */
