@@ -59,7 +59,7 @@
     t.textContent = empty ? 'Untitled' : title;
     $('spine-title').classList.toggle('is-untitled', empty);
     $('spine-title').setAttribute('aria-label', 'Drafts. Open: ' + (empty ? 'Untitled' : title));
-    document.title = (empty ? 'Untitled' : title) + ' · Ten Dollar Words';
+    document.title = (empty ? 'Untitled' : title) + ' - Ten Dollar Words';
 
     const st = stageOf(d);
     const stage = $('spine-stage');
@@ -76,7 +76,11 @@
     const warn = !over && tl.budget > 0 && tl.spent >= tl.budget * 0.9;
     spend.classList.toggle('is-over', over);
     spend.classList.toggle('is-warn', warn);
-    spend.querySelector('.spend-of').textContent = over ? ' \u00b7 ' + money(tl.spent - tl.budget) + ' over' : ' of ' + money(tl.budget);
+    spend.querySelector('.spend-of').textContent = ' of ' + money(tl.budget);
+    let ov = spend.querySelector('.spend-over');
+    if (!ov) { ov = el('span', { class: 'spend-over' }); spend.querySelector('.spend-of').after(ov); }
+    ov.hidden = !over;
+    ov.textContent = over ? money(tl.spent - tl.budget) + ' over' : '';
     spend.setAttribute('aria-label', 'Spent ' + money(tl.spent) + (over ? ', over the ' : ' of a ') + money(tl.budget) + ' budget. ' + countLine(tl) + '.');
     spend.title = countLine(tl);
     if (shown === null || UI.reducedMotion()) { shown = tl.spent; drawAmount(shown); }
@@ -171,11 +175,13 @@
     if (on && !UI.isNarrow()) on.focus({ preventScroll: true });
   }
 
+  const plainName = (t) => String(t || '').replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, '').replace(/\s+/g, ' ').trim();
+
   function syncMenu() {
     const s = Sync.status();
     const c = Sync.config();
     const items = [
-      { type: 'head', label: (SYNC_TEXT[s.state] || 'Notion') + (c ? ': ' + c.dbTitle : '') },
+      { type: 'head', label: (SYNC_TEXT[s.state] || 'Notion') + (c ? ': ' + plainName(c.dbTitle) : '') },
       s.message ? { type: 'head', label: s.message } : null,
       { label: s.at ? 'Last sync ' + UI.relTime(s.at) : 'Not synced yet', value: 'none', icon: 'sync' },
       { type: 'sep' },

@@ -40,7 +40,8 @@
   let hoverTimer = 0, leaveTimer = 0;
   let raf = 0;
   let aiCtrl = null;
-  let brackets = [], chipRows = [];
+  let brackets = [], dots = [], costs = [];
+  let changedOn = false, changedTimer = 0;
   let msg = null;          // the message check: { state, intent, out, error }
 
   /* ---------- What the notes are ---------- */
@@ -136,9 +137,12 @@
       fadeOut(node);
     }
     if (openKey && !live.has(openKey)) { openKey = null; pinned = false; }
-    Margin.setCount('review', notes.filter((n) => n.kind !== 'fold').length);
+    const nCount = notes.filter((n) => n.kind !== 'fold').length;
+    Margin.setCount('review', nCount);
     drawSub();
-    if (!on) { drawBrackets([]); drawChips([]); return; }
+    const sn = $('spine-notes');
+    if (sn) { sn.hidden = !(on && narrow && nCount); sn.textContent = nCount + ' ' + plural(nCount, 'note', 'notes'); }
+    if (!on) { drawBrackets([]); drawChips([]); drawCosts(false); return; }
     for (const n of notes) {
       n.line = n.kind === 'fold' ? Editor.blockIndexOf(n.node0) : Editor.lineOfIndex(n.start);
       if (!narrow) nodeFor(n);
@@ -147,8 +151,10 @@
       for (const node of pool.values()) node.remove();
       pool.clear();
       drawChips(notes);
+      drawCosts(false);
     } else {
       drawChips([]);
+      drawCosts(true);
       const sr = $('surface').getBoundingClientRect();
       const items = notes.map((n) => {
         let y = null;
@@ -192,35 +198,84 @@
     for (let i = k; i < brackets.length; i++) brackets[i].hidden = true;
   }
 
-  // The narrow layout: a row of pencil chips under each paragraph that has notes.
+  // The narrow layout: a pencil dot at the right end of each line that has notes (a 44px tap area
+  // that reaches the screen edge, the dot itself in the gutter). A tap opens the paragraph's notes.
   function drawChips(list) {
     const layer = $('chips');
-    const byLine = new Map();
+    const sr = $('surface').getBoundingClientRect();
+    const groups = new Map();
     for (const n of list) {
       if (n.line < 0) continue;
-      if (!byLine.has(n.line)) byLine.set(n.line, []);
-      byLine.get(n.line).push(n);
+      let top = null;
+      const h = 24;
+      if (n.kind === 'fold') { const r = n.node0.getBoundingClientRect(); top = r.top + r.height / 2 - sr.top - 12; }
+      else { const rc = Editor.rectAt(n.start); if (rc) top = rc.lineTop - sr.top + (rc.lh - h) / 2; }
+      if (top == null) continue;
+      const k = n.line + ':' + Math.round(top);
+      if (!groups.has(k)) groups.set(k, { line: n.line, top, ns: [] });
+      groups.get(k).ns.push(n);
     }
-    const sr = $('surface').getBoundingClientRect();
     let k = 0;
-    for (const [line, ns] of byLine) {
-      const b = Editor.block(line);
-      if (!b || !b.el) continue;
-      const r = b.el.getBoundingClientRect();
-      let row = chipRows[k];
-      if (!row) { row = el('div', { class: 'chip-row' }); layer.append(row); chipRows[k] = row; }
-      row.hidden = false;
-      row.style.top = (r.bottom - sr.top - 34) + 'px';
-      const shown = ns.slice(0, 3);
-      row.replaceChildren(...shown.map((n) => {
-        const h = headParts(n);
-        const label = n.kind === 'issue' ? SHORT[n.issue.type] : h.kind;
-        return el('button', { type: 'button', class: 'rchip tone-' + h.tone, 'aria-label': h.kind + ': ' + (typeof h.detail === 'string' ? h.detail : h.detail.textContent), onclick: () => openSheet(line, n.key) },
-          el('span', { class: 'rchip-tick', 'aria-hidden': 'true' }), label);
-      }), ...(ns.length > 3 ? [el('button', { type: 'button', class: 'rchip rchip-more', text: '+' + (ns.length - 3), 'aria-label': (ns.length - 3) + ' more notes', onclick: () => openSheet(line, null) })] : []));
+    for (const g of groups.values()) {
+      let b = dots[k];
+      if (!b) { b = el('button', { type: 'button', class: 'pdot' }, el('span', { class: 'pdot-mark', 'aria-hidden': 'true' })); layer.append(b); dots[k] = b; }
+      b.hidden = false;
+      b.style.top = Math.round(g.top - 10) + 'px';
+      const red = g.ns.some((n) => headParts(n).tone === 'red');
+      b.classList.toggle('tone-red', red);
+      const first = g.ns[0];
+      b.setAttribute('aria-label', g.ns.length + ' ' + plural(g.ns.length, 'note', 'notes') + ' on this line: ' + headParts(first).kind);
+      b.onclick = () => openSheet(g.line, first.key);
       k++;
     }
-    for (let i = k; i < chipRows.length; i++) chipRows[i].hidden = true;
+    for (let i = k; i < dots.length; i++) dots[i].hidden = true;
+  }
+
+  /* ---------- The red pencil's tally in the left gutter: what each paragraph costs ---------- */
+  function drawCosts(show) {
+    const g = $('gutter');
+    const sr = $('surface').getBoundingClientRect();
+    let k = 0;
+    if (show) {
+      let off = 0;
+      for (const ln of Editor.getText().split('\n')) {
+        const start = off;
+        off += ln.length + 1;
+        const words = Engine.countWords(TDW.Inline.plain(ln));
+        if (!words) continue;
+        const rc = Editor.rectAt(start);
+        if (!rc) continue;
+        let c = costs[k];
+        if (!c) { c = el('span', { class: 'cost' }); g.append(c); costs[k] = c; }
+        c.hidden = false;
+        c.textContent = money(words * 10);
+        c.style.top = Math.round(rc.lineTop - sr.top) + 'px';
+        c.style.height = c.style.lineHeight = Math.round(rc.lh) + 'px';
+        k++;
+      }
+    }
+    for (let i = k; i < costs.length; i++) costs[i].hidden = true;
+  }
+
+  // Words a fix would save, so the margin can say what the cuts add up to.
+  function saveWords(i) {
+    const w = Engine.countWords(i.text);
+    if (i.type === 'adverb') return w;
+    if (i.type === 'qualifier') {
+      if (i.suggestion && i.cut) return Math.max(Engine.countWords(i.text.slice(0, i.cut.end - i.cut.start)), w - Engine.countWords(i.suggestion.split(', ')[0]));
+      return w;
+    }
+    if (i.type === 'complex') return i.suggestion ? Math.max(0, w - Engine.countWords(i.suggestion.split(', ')[0])) : w;
+    return 0;
+  }
+
+  // The fix you just applied: a margin note with Undo, for a few seconds.
+  function changed(saved) {
+    if (Margin.isNarrow()) { toast('Changed.' + (saved > 0 ? ' ' + money(saved * 10) + ' saved.' : ''), { label: 'Undo', run: () => Editor.undo() }); return; }
+    changedOn = true;
+    clearTimeout(changedTimer);
+    changedTimer = setTimeout(() => { changedOn = false; drawSub(); }, 6000);
+    drawSub();
   }
 
   // While you type with the lens on, the notes on the paragraph you're in step back.
@@ -240,10 +295,13 @@
     const check = el('button', { type: 'button', class: 'mh-action', onclick: startMessage }, icon('target'), el('span', { text: 'Check the message' }));
     check.addEventListener('mousedown', (e) => e.preventDefault());
     const n = notes.filter((x) => x.kind !== 'fold').length;
-    sub.replaceChildren(
+    const save = notes.reduce((t, x) => t + (x.kind === 'issue' ? saveWords(x.issue) : 0), 0);
+    sub.replaceChildren(...[
       el('p', { class: 'mh-grade' }, a.words ? el('b', { text: 'Grade ' + a.grade }) : el('b', { text: 'Nothing to review yet' }), a.words ? ' ' + label : '',
         el('span', { class: 'mh-count', text: lab ? '' : (n ? n + ' ' + plural(n, 'note', 'notes') : a.words ? 'Nothing to fix' : '') })),
-      a.words ? check : null);
+      save > 0 && !lab ? el('p', { class: 'mh-save' }, 'Cuts here would save ', el('b', { text: money(save * 10) })) : null,
+      changedOn ? el('p', { class: 'mh-changed' }, 'Changed. ', el('button', { type: 'button', class: 'mh-undo', text: 'Undo', onclick: () => { changedOn = false; Editor.undo(); drawSub(); } })) : null,
+      a.words ? check : null].filter(Boolean));
   }
 
   /* ---------- Opening a note ---------- */
@@ -350,14 +408,16 @@
   function cutRange(i, start, end) {
     if (!stillThere(i)) { done(); return; }
     done();
-    const saved = app().cut(start, end, sentenceStartOf(start));
-    if (saved > 0 && Margin.isNarrow()) toast('Cut. ' + money(saved * 10) + ' saved.', { label: 'Undo', run: () => Editor.undo() });
+    const w = Engine.countWords(Editor.getText().slice(start, end));
+    app().cut(start, end, sentenceStartOf(start));
+    changed(w);
   }
 
   function swap(i, word) {
     if (!stillThere(i)) { done(); return; }
     done();
     app().edit(i.start, i.end, word);
+    changed(Math.max(0, Engine.countWords(i.text) - Engine.countWords(word)));
   }
 
   const chip = (word, savedWords, onclick, note) => el('button', { type: 'button', class: 'fix', title: note || null, onclick },
