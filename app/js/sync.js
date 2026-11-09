@@ -43,7 +43,7 @@
   const Marks = () => TDW.Marks;
   const ghostsOf = (d) => (d.ann && Array.isArray(d.ann.ghosts) ? d.ann.ghosts : []);
   const hlsOf = (d) => (d.ann && Array.isArray(d.ann.hls) ? d.ann.hls : []);
-  const masksOf = (text, d) => M.colorMasks(text, ghostsOf(d), hlsOf(d));
+  const masksOf = (text, d) => (d.colorsSynced || !d.notionId ? M.colorMasks(text, ghostsOf(d), hlsOf(d)) : M.ghostMasks(text, ghostsOf(d)));
   // What a push sends, so a push can tell whether the draft changed while it ran.
   const sentOf = (d) => JSON.stringify([d.text, d.overflow || '', ghostsOf(d).map((g) => [g.start, g.end]), hlsOf(d).map((h) => [h.start, h.end, h.color])]);
   const alive = (d) => Store.getDraft(d.id) === d;
@@ -360,7 +360,15 @@
     const ovLines = M.overflowLines(d.overflow);
     const ovChanged = free && !(ov ? M.sameContent(ov.entries, ovLines) : !ovLines.length);
     let overflow = ovChanged ? ovText : String(d.overflow || '');
+    let colorsTaken = false;
+    if (!textChanged && free && !d.colorsSynced && TDW.Marks) {
+      // The first read since highlights came in: Notion's colors become the draft's highlights.
+      const hls = M.hlsFromEntries(entries);
+      d.colorsSynced = true;
+      if (hls.length) { d.ann = TDW.Marks.normalize(TDW.Marks.withAnn(d.ann, { hls }), d.text); colorsTaken = true; }
+    }
     if (textChanged) {
+      d.colorsSynced = true;
       const old = d.text;
       d.text = text;
       const ghosts = M.ghostsFromEntries(entries);
@@ -382,7 +390,7 @@
     }
     d.overflow = overflow;
     Store.saveDraft(d);
-    if (textChanged || ovChanged) call('onRemoteText', d);
+    if (textChanged || ovChanged || colorsTaken) call('onRemoteText', d);
     if (d.dirty && leader) schedulePush(d.id);
   }
 
@@ -483,6 +491,7 @@
     });
     if (!alive(d)) { queueTrash(page.id); return; } // deleted here while Notion was creating it
     d.notionId = page.id;
+    d.colorsSynced = true;
     d.url = typeof page.url === 'string' ? page.url : null;
     d.remoteTitle = title;
     d.propsDirty = false;

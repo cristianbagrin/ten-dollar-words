@@ -6,7 +6,7 @@
   // Modules that may or may not be loaded (each sets itself up from boot).
   const opt = (name) => TDW[name] || null;
 
-  const APP_VERSION = '2.0.0';
+  const APP_VERSION = '2.1.0';
   const SAMPLE_TEXT = [
     'Every word you type costs ten dollars. That sounds harsh, but it is really the fastest way to learn to cut.',
     'Most people write long sentences because they are afraid that short ones will make them look simple to readers.',
@@ -359,7 +359,7 @@
 
   // Every programmatic text change goes through here so undo keeps working and cuts can chime.
   // Every module the app hands the open draft to.
-  const MODULES = ['Alts', 'Menu', 'Overflow', 'Lab', 'Challenges', 'Desk'];
+  const MODULES = ['Alts', 'Menu', 'Overflow', 'Lab', 'Challenges', 'Desk', 'Blocks', 'Bubble', 'Notes'];
   function each(fn) { for (const n of MODULES) { const m = opt(n); if (m) try { fn(m); } catch (e) { console.error(n, e); } } }
 
   function edit(start, end, text, opts) {
@@ -821,6 +821,7 @@
         onSelect: () => { if (!pointerSelecting) onCaretMove(); else each((m) => m.onSelect && m.onSelect(Editor.getSelection())); },
         canDelete: () => !noBackspace(),
         onBlocked: blocked,
+        onNote: (ids) => opt('Notes') && TDW.Notes.openPins(ids),
         clipboard
       }
     });

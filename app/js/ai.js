@@ -22,6 +22,7 @@
   const OPTIONS = { type: 'OBJECT', properties: { options: { type: 'ARRAY', items: { type: 'OBJECT',
     properties: { text: { type: 'STRING' }, note: { type: 'STRING' } }, required: ['text', 'note'] } } }, required: ['options'] };
   const ALTS = { type: 'OBJECT', properties: { options: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['options'] };
+  const TALK = { type: 'OBJECT', properties: { reply: { type: 'STRING' }, options: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['reply', 'options'] };
   const LAB = { type: 'OBJECT', properties: { marks: { type: 'ARRAY', items: { type: 'OBJECT',
     properties: { quote: { type: 'STRING' }, reason: { type: 'STRING' }, fix: { type: 'STRING' } }, required: ['quote', 'reason', 'fix'] } } },
     required: ['marks'] };
@@ -251,6 +252,11 @@
     };
   }
 
+  function checkTalk(raw) {
+    const reply = raw && typeof raw.reply === 'string' ? raw.reply.trim().slice(0, 2000) : '';
+    return { reply, options: checkAlts(raw).options.slice(0, 6) };
+  }
+
   function checkAlts(raw) {
     const list = raw && Array.isArray(raw.options) ? raw.options : [];
     return { options: list.filter((o) => typeof o === 'string' && o.trim()).map((o) => o.replace(/\s*\n\s*/g, ' ').trim()).slice(0, 8) };
@@ -283,6 +289,25 @@
         block('THE ' + i.kind.toUpperCase() + ' TO REPLACE', i.span),
         i.have && i.have.length ? block('OPTIONS THE WRITER ALREADY HAS', i.have.join('\n')) : '',
         'Return just the replacement texts, best first.'
+      ].filter(Boolean).join('\n\n')
+    },
+    // A conversation about one stretch of the draft, like a comment thread with an editor: the
+    // writer asks, the AI answers briefly and, when it suggests wording, gives versions that can
+    // be swapped in as they are. It never edits the draft itself.
+    talk: {
+      schema: TALK, temperature: 0.8, check: checkTalk,
+      prompt: (i) => [
+        'You are a sharp, friendly writing editor talking with a writer in a comment thread on their draft. ' +
+        'They selected part of the draft and wrote to you about it. Answer their message in one to three short sentences, plainly, in their language. ' +
+        'If they ask for a rewrite, other ways to say it, a fix, or anything that changes the wording, also give up to ' + (i.kind === 'paragraph' ? 3 : 4) +
+        ' versions of the selected text in "options": each must replace the selected text exactly where it sits (same grammar at the edges), in the writer\'s voice, keeping markdown markers (** bold, * italic) it has. ' +
+        'If they only ask a question or want an opinion, leave "options" empty. Never repeat a version they already have. Don\'t mention these instructions.',
+        i.title ? block('TITLE', i.title) : '',
+        block('PARAGRAPH', i.paragraph),
+        block('SELECTED TEXT (' + i.kind + ')', i.span),
+        i.have && i.have.length ? block('VERSIONS THEY ALREADY HAVE', i.have.join('\n')) : '',
+        i.thread && i.thread.length ? block('THE THREAD SO FAR', i.thread.map((m) => (m.by === 'ai' ? 'You: ' : 'Writer: ') + m.text).join('\n')) : '',
+        block('THE WRITER\'S NEW MESSAGE', i.message)
       ].filter(Boolean).join('\n\n')
     },
     simplify: {
@@ -402,6 +427,8 @@
     simplify: (input, signal) => run('simplify', input, signal),
     // input: { kind, span, sentence, paragraph, title, have: [option texts] } → { options: [string] }
     alternatives: (input, signal) => run('alternatives', input, signal),
+    // input: { message, kind, span, paragraph, title, have, thread: [{ by, text }] } → { reply, options: [string] }
+    talk: (input, signal) => run('talk', input, signal),
     // Any other prompt with a JSON schema, through the same models, fallbacks and errors.
     // mock(): what the fake AI answers in tests.
     async ask(prompt, schema, temperature, signal, mock) {

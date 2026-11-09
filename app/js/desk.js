@@ -113,6 +113,14 @@
       ['⌘E', 'Write and Edit mode'], ['⌘B', 'Bold'], ['⌘I', 'Italic'], ['⌘⇧S', 'Strikethrough'], ['⌘K', 'Link'],
       ['⌘⌥1', 'Heading 1 (2, 3 the same)'], ['⌘⇧8', 'Bullets'], ['⌘⇧7', 'Numbered list'], ['⌘⇧9', 'To-do'], ['⌘↩', 'New post (X threads)']
     ]],
+    ['Blocks, like Notion', [
+      ['/', 'Commands: headings, lists, to-do, quote, divider, AI, note, colors'], ['⌘⇧↑ ⌘⇧↓', 'Move the block up or down'],
+      ['⌘D', 'Duplicate the block'], ['⌘A', 'Select the block, again for everything'], ['⋮⋮', 'Drag a block by its handle; click it for the menu']
+    ]],
+    ['Notes, colors, AI', [
+      ['Ctrl+J', 'Ask AI about the selection'], ['Ctrl+Shift+M', 'Add a note (nothing selected: the Notes panel)'],
+      ['Ctrl+Shift+H', 'Highlight in the last color used']
+    ]],
     ['Alternatives', [
       ['Ctrl+Shift+A', 'Alternatives for selection'], ['Ctrl+Shift+G', 'AI alternatives for selection'],
       ['↑ ↓', 'Flip through them, with the pointer over one'], ['⌥↑ ⌥↓', 'Flip through the one the caret is in'],

@@ -1,0 +1,247 @@
+/* The Notion-style editor: block handles, the "/" menu, the bar over a selection, colors,
+   notes and the AI thread. Colors are Notion's own, so text looks the same in both places. */
+
+:root, [data-skin] {
+  --n-gray: #787774;   --n-brown: #9f6b53;  --n-orange: #d9730d; --n-yellow: #cb912f; --n-green: #448361;
+  --n-blue: #337ea9;   --n-purple: #9065b0; --n-pink: #c14c8a;   --n-red: #d44c47;
+  --nb-gray: #f1f1ef;  --nb-brown: #f4eeee; --nb-orange: #fbecdd; --nb-yellow: #fbf3db; --nb-green: #edf3ec;
+  --nb-blue: #e7f3f8;  --nb-purple: #f6f3f9; --nb-pink: #f9f0f5;  --nb-red: #fdebec;
+  --note-line: color-mix(in srgb, #e0a800 75%, transparent);
+  --note-bg: color-mix(in srgb, #ffd84d 22%, transparent);
+  --pop-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 9%, transparent), 0 3px 6px color-mix(in srgb, var(--ink) 8%, transparent), 0 9px 24px color-mix(in srgb, var(--ink) 16%, transparent);
+}
+[data-skin="night"] {
+  --n-gray: #9b9b9b;   --n-brown: #ba856f;  --n-orange: #c77d48; --n-yellow: #ca9849; --n-green: #529e72;
+  --n-blue: #5e87c9;   --n-purple: #9d68d3; --n-pink: #d15796;   --n-red: #df5452;
+  --nb-gray: #2f2f2f;  --nb-brown: #4a3228; --nb-orange: #5c3b23; --nb-yellow: #564328; --nb-green: #243d30;
+  --nb-blue: #143a4e;  --nb-purple: #3c2d49; --nb-pink: #4e2c3c;  --nb-red: #522e2a;
+  --note-line: color-mix(in srgb, #e0bc5b 80%, transparent);
+  --note-bg: color-mix(in srgb, #e0bc5b 18%, transparent);
+  --pop-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 3px 6px rgba(0, 0, 0, .3), 0 9px 24px rgba(0, 0, 0, .45);
+}
+
+/* ---------- Colors on the page (and on swatches) ---------- */
+.hc-brown, .sw-brown { color: var(--n-brown); }
+.hc-orange, .sw-orange { color: var(--n-orange); }
+.hc-yellow, .sw-yellow { color: var(--n-yellow); }
+.hc-green, .sw-green { color: var(--n-green); }
+.hc-blue, .sw-blue { color: var(--n-blue); }
+.hc-purple, .sw-purple { color: var(--n-purple); }
+.hc-pink, .sw-pink { color: var(--n-pink); }
+.hc-red, .sw-red { color: var(--n-red); }
+.hc-gray_background, .sw-gray_background { background: var(--nb-gray); }
+.hc-brown_background, .sw-brown_background { background: var(--nb-brown); }
+.hc-orange_background, .sw-orange_background { background: var(--nb-orange); }
+.hc-yellow_background, .sw-yellow_background { background: var(--nb-yellow); }
+.hc-green_background, .sw-green_background { background: var(--nb-green); }
+.hc-blue_background, .sw-blue_background { background: var(--nb-blue); }
+.hc-purple_background, .sw-purple_background { background: var(--nb-purple); }
+.hc-pink_background, .sw-pink_background { background: var(--nb-pink); }
+.hc-red_background, .sw-red_background { background: var(--nb-red); }
+.editor .hc[class*="_background"] { border-radius: 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 0 1px; margin: 0 -1px; }
+
+/* ---------- Notes on the page ---------- */
+/* Notes underline their words (a highlight is a color you chose; a note is a thing to come back to). */
+.nt { box-shadow: inset 0 -2px 0 var(--note-line); cursor: pointer; transition: background var(--t-fast); }
+.nt:hover, .nt.is-open { background: var(--note-bg); }
+.nt.is-done { background: transparent; box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ink-3) 45%, transparent); }
+.lab-note-target { background: var(--note-bg); box-shadow: inset 0 -2px 0 var(--note-line); }
+html.is-typing .nt:not(.is-open) { background: transparent; }
+
+.note-pin {
+  position: absolute; right: -40px; width: 22px; height: 22px; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 6px; background: transparent; color: var(--note-line); cursor: pointer; pointer-events: auto;
+  font: 700 10px/1 var(--font-ui);
+}
+.note-pin::before {
+  content: ""; position: absolute; inset: 4px; border-radius: 4px 4px 4px 1px; background: currentColor; opacity: .9;
+  -webkit-mask: none;
+}
+.note-pin:not(:empty)::before { opacity: .25; }
+.note-pin:not(:empty) { color: var(--ink); }
+.note-pin.is-ai::before { border-radius: 50%; }
+.note-pin.is-done { color: var(--ink-3); opacity: .55; }
+.note-pin:hover, .note-pin.is-open { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.note-pin[hidden] { display: none; }
+@media (max-width: 700px) { .note-pin { right: -14px; width: 16px; } }
+html[data-mode="write"].is-typing .note-pin { opacity: .3; }
+
+/* ---------- Block handles ---------- */
+.blk-handle {
+  position: fixed; z-index: 26; display: flex; align-items: center; gap: 0; height: 24px;
+  transition: opacity var(--t-fast);
+}
+.blk-handle[hidden] { display: none; }
+html.is-typing .blk-handle, html.is-dragging-block .blk-plus { opacity: 0; pointer-events: none; }
+.blk-btn {
+  display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px;
+  background: transparent; color: color-mix(in srgb, var(--ink) 35%, transparent); cursor: pointer;
+}
+.blk-grip { width: 18px; cursor: grab; }
+.blk-btn:hover, .blk-btn:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink-2); outline: none; }
+html.is-dragging-block, html.is-dragging-block * { cursor: grabbing !important; user-select: none; }
+.ln.is-dragged { opacity: .4; }
+.blk-drop { position: fixed; z-index: 27; height: 3px; border-radius: 2px; background: color-mix(in srgb, #2383e2 75%, transparent); pointer-events: none; }
+.blk-drop[hidden] { display: none; }
+@media (hover: none) { .blk-handle { display: none !important; } }
+
+/* The "Type '/' for commands" hint on the empty line you're on. */
+.editor:focus .ln-p.ln-empty.is-caret::after {
+  content: "Type '/' for commands"; position: absolute; left: 0; top: 0; color: var(--ink-3); opacity: .55; pointer-events: none; text-shadow: none;
+}
+.editor.is-empty .ln-p.ln-empty.is-caret::after { content: none; }
+
+/* ---------- Menus: the "/" menu, the block menu's header, colors ---------- */
+.menu-head { padding: 6px 10px 4px; color: var(--ink-3); font: 600 11px/1.2 var(--font-ui); letter-spacing: .02em; }
+
+.slash-menu {
+  position: fixed; z-index: 60; width: 300px; max-height: min(380px, 50vh); overflow-y: auto; padding: 6px;
+  background: var(--card); color: var(--ink); border-radius: 10px; box-shadow: var(--pop-shadow);
+  font: var(--t-sm)/1.25 var(--font-ui); animation: menu-in var(--t-med) var(--ease);
+}
+.slash-group { padding: 8px 8px 4px; color: var(--ink-3); font-size: 11px; font-weight: 600; }
+.slash-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; border: 0; border-radius: 6px;
+  background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer;
+}
+.slash-item.is-on { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.slash-icon {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 6px;
+  background: var(--paper); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 12%, transparent);
+  color: var(--ink-2); font: 600 14px/1 var(--font-write);
+}
+.slash-text { display: grid; gap: 2px; min-width: 0; }
+.slash-label { font-weight: 500; }
+.slash-hint { color: var(--ink-3); font-size: 12px; }
+.slash-empty { padding: 8px 10px; color: var(--ink-3); }
+
+.color-pop {
+  position: fixed; z-index: 62; width: 236px; padding: 6px 8px 8px; background: var(--card); color: var(--ink);
+  border-radius: 10px; box-shadow: var(--pop-shadow); font: var(--t-sm)/1.2 var(--font-ui); animation: menu-in var(--t-med) var(--ease);
+}
+.color-head { padding: 6px 2px 4px; color: var(--ink-3); font-size: 11px; font-weight: 600; }
+.color-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.swatch {
+  width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 16%, transparent);
+  background: var(--paper); color: var(--ink); font: 600 13px/22px var(--font-write); text-align: center;
+}
+.swatch[class*="_background"] { color: var(--ink); }
+.swatch:hover, .swatch:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; }
+.swatch.is-on { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* ---------- The bar over a selection ---------- */
+.bubble {
+  position: fixed; z-index: 58; display: flex; align-items: center; gap: 1px; height: 34px; padding: 0 4px;
+  background: var(--card); color: var(--ink); border-radius: 8px; box-shadow: var(--pop-shadow);
+  font: 500 13px/1 var(--font-ui); white-space: nowrap;
+}
+.bubble[hidden] { display: none; }
+.bubble.is-in { animation: menu-in 120ms var(--ease); }
+.bub-btn {
+  display: inline-flex; align-items: center; gap: 4px; height: 28px; min-width: 28px; padding: 0 7px; border: 0; border-radius: 5px;
+  background: transparent; color: inherit; font: inherit; cursor: pointer; justify-content: center;
+}
+.bub-btn:hover, .bub-btn:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); outline: none; }
+.bub-ai { color: var(--accent); font-weight: 600; }
+.bub-spark { font-size: 12px; }
+.bub-ab { font-weight: 700; letter-spacing: .02em; }
+.bub-b b { font: 700 15px/1 var(--font-write); }
+.bub-i i { font: italic 400 16px/1 var(--font-write); }
+.bub-s s { font: 400 15px/1 var(--font-write); }
+.bub-c code { font: 500 11px/1 var(--font-code); }
+.bub-caret { font-size: 9px; color: var(--ink-3); }
+.bub-a { display: inline-block; min-width: 16px; padding: 1px 2px; border-radius: 3px; font: 600 15px/1.1 var(--font-write); text-decoration: underline; text-underline-offset: 3px; }
+.bub-sep { width: 1px; align-self: stretch; margin: 6px 3px; background: color-mix(in srgb, var(--ink) 12%, transparent); }
+@media (max-width: 600px) {
+  .bubble { max-width: calc(100vw - 16px); overflow-x: auto; scrollbar-width: none; }
+  .bub-c, .bub-s { display: none; }
+}
+
+/* ---------- The note card ---------- */
+.note-card {
+  position: fixed; z-index: 57; width: min(340px, calc(100vw - 16px)); max-height: min(70vh, 560px); overflow-y: auto;
+  display: grid; gap: 8px; padding: 12px 12px 10px; background: var(--card); color: var(--ink);
+  border-radius: 10px; box-shadow: var(--pop-shadow); font: var(--t-sm)/1.45 var(--font-ui);
+  animation: menu-in var(--t-med) var(--ease);
+}
+.note-head { display: flex; align-items: center; gap: 6px; }
+.note-check input { width: 15px; height: 15px; margin: 0; }
+.note-kind { font-weight: 600; font-size: 12px; color: var(--ink-2); }
+.note-card.is-ai .note-kind { color: var(--accent); }
+.note-when { flex: 1; color: var(--ink-3); font-size: 11px; }
+.note-head .btn-icon { width: 26px; height: 26px; }
+.note-quote {
+  display: block; width: 100%; margin: 0; padding: 2px 0 2px 10px; border: 0; background: transparent; text-align: left;
+  border-left: 3px solid var(--note-line); color: var(--ink-2); font: italic 400 13px/1.4 var(--font-write); cursor: pointer;
+}
+.note-quote.is-gone { color: var(--ink-3); font-style: normal; border-left-color: var(--line); cursor: default; }
+.note-card.is-done .note-body, .note-card.is-done .note-quote { text-decoration: line-through; text-decoration-color: var(--ink-3); }
+.note-input, .note-body, .note-reply {
+  width: 100%; min-height: 0; resize: none; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink); font: 400 14px/1.45 var(--font-ui); box-sizing: border-box;
+}
+.note-body { background: transparent; padding: 2px 0; }
+.note-body:focus, .note-input:focus, .note-reply:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: var(--paper); }
+.note-foot { display: flex; align-items: center; gap: 6px; }
+.note-spacer { flex: 1; }
+.note-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.note-chip { font-size: 12px; padding: 3px 9px; }
+.note-thread { display: grid; gap: 10px; margin: 2px 0 0; padding: 0; list-style: none; }
+.note-msg { display: grid; gap: 2px; }
+.note-who { font-size: 11px; font-weight: 700; color: var(--ink-3); }
+.note-msg.by-ai .note-who { color: var(--accent); }
+.note-text { margin: 0; white-space: pre-wrap; }
+.note-options { display: grid; gap: 4px; margin: 4px 0 0; padding: 0; list-style: none; }
+.note-option {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  border-radius: 6px; background: var(--paper); color: var(--ink); text-align: left; font: 400 14px/1.4 var(--font-write); cursor: pointer;
+}
+.note-option:hover { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.note-option-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--ink-3); transform: translateY(-1px); }
+.note-option.is-on { border-color: var(--accent); }
+.note-option.is-on .note-option-dot { background: var(--accent); border-color: var(--accent); }
+.note-orig { justify-self: start; font-size: 12px; }
+.note-replybox { display: flex; gap: 6px; align-items: flex-end; }
+.note-replybox .note-reply { flex: 1; }
+.note-busy { color: var(--ink-3); font-size: 12px; }
+.note-busy .dots::before { content: "•••"; letter-spacing: 2px; animation: note-dots 1s infinite steps(3); display: inline-block; overflow: hidden; width: 0; vertical-align: bottom; }
+@keyframes note-dots { to { width: 1.8em; } }
+
+/* ---------- The Notes panel ---------- */
+.notes-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 30; width: var(--panel-w, 340px); max-width: 100vw;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: calc(18px + env(safe-area-inset-top, 0px)) 18px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--paper); color: var(--ink); box-shadow: inset 1px 0 0 var(--line), var(--shadow-lg, 0 8px 30px rgba(0, 0, 0, .15));
+  animation: ov-in var(--t-slow, .25s) var(--ease, ease-out); font: var(--t-sm)/1.4 var(--font-ui);
+}
+.notes-panel[hidden] { display: none; }
+html[data-mode="edit"] .notes-panel { top: calc(var(--chrome-h, 56px) + env(safe-area-inset-top, 0px)); padding-top: 18px; }
+.notes-tabs { display: flex; gap: 4px; }
+.notes-tab { padding: 4px 10px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--ink-2); font: 600 12px/1 var(--font-ui); cursor: pointer; }
+.notes-tab.is-on { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+.notes-list { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.notes-row { display: flex; gap: 8px; align-items: flex-start; padding: 6px 4px; border-radius: 6px; }
+.notes-row:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.notes-row input { margin-top: 3px; flex: none; }
+.notes-open { display: grid; gap: 2px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.notes-quote { color: var(--ink-2); font: italic 400 13px/1.35 var(--font-write); }
+.notes-body { color: var(--ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.notes-row.is-ai .notes-body { color: var(--accent); }
+.notes-row.is-done .notes-quote, .notes-row.is-done .notes-body { text-decoration: line-through; color: var(--ink-3); }
+.notes-empty { padding: 12px 4px; color: var(--ink-3); }
+.notes-toggle.is-on { color: var(--ink); }
+.dock-btn.ov-toggle, .dock-btn.notes-toggle { width: auto; padding: 0 8px; white-space: nowrap; font: 500 var(--t-xs, 12px)/1 var(--font-ui); }
+.notes-toggle[hidden] { display: none; }
+@media (max-width: 900px) {
+  .notes-panel, html[data-mode="edit"] .notes-panel {
+    top: auto; left: 0; width: auto; height: min(55vh, 460px); border-radius: 14px 14px 0 0; padding-top: 14px;
+    box-shadow: 0 -1px 0 var(--line), var(--shadow-lg, 0 -8px 30px rgba(0, 0, 0, .15));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slash-menu, .color-pop, .bubble.is-in, .note-card, .notes-panel { animation: none; }
+  .note-busy .dots::before { animation: none; width: 1.8em; }
+}
