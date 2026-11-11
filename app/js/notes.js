@@ -3,7 +3,7 @@
      menu's Color, or "/red", "/yellow background"). In Notion it's the same color.
    - Notes for future you: select text and add a note (Ctrl+Shift+M, the bubble's speech mark,
      or "/note"). The words get a faint underline and a mark in the margin. A note can be a
-     to-do: tick it off when it's done. The Notes panel (bottom right) lists them all.
+     to-do: tick it off when it's done. They sit in the margin beside their words.
    - Ask AI: a note you write to the AI (the bubble's ✦, Ctrl+J, or "/ai"). Ask for "a punchier
      version" or "is this clear?" and it answers in the thread, like a comment in a design tool.
      Versions it suggests join the text's alternatives, so you flip through them in place
@@ -127,6 +127,7 @@
   /* ---------- The note card ---------- */
 
   let card = null; // { node, id, draft: bool, range }
+  let cardFrom; // the margin view before a card opened it
   let aiCtrl = null;
 
   function rectOf(start, end) {
@@ -136,23 +137,21 @@
     return { left: a.left, right: b ? b.left : a.left, top, bottom };
   }
 
-  // Beside the page if there's room on the right, else under the text.
-  function placeCard(start, end) {
+  // Beside its words in the margin; in a sheet in the narrow layout.
+  function placeCard(start) {
     if (!card) return;
-    const r = rectOf(start, end);
-    const sheet = document.getElementById('sheet').getBoundingClientRect();
-    const n = card.node;
-    const w = n.offsetWidth, h = n.offsetHeight;
-    const vh = UI.visibleBottom ? UI.visibleBottom() : window.innerHeight;
-    if (!r) return;
-    const roomRight = window.innerWidth - sheet.right - 40 >= w && !document.documentElement.classList.contains('overflow-open') && !document.documentElement.classList.contains('notes-open');
-    let left, top;
-    if (roomRight) { left = sheet.right + 32; top = r.top - 8; }
-    else { left = Math.max(8, Math.min(r.left - 12, window.innerWidth - w - 8)); top = r.bottom + 10; if (top + h > vh - 8) top = Math.max(8, r.top - h - 10); }
-    top = Math.max(8, Math.min(top, vh - Math.min(h, vh - 16) - 8));
-    n.style.left = left + 'px';
-    n.style.top = top + 'px';
-    n.classList.toggle('is-beside', roomRight);
+    const M = TDW.Margin;
+    if (M.isNarrow()) return;
+    M.place([{ node: card.node, y: M.lineY(start) }].concat(rows.filter((r) => r.id !== card.id).map((r) => ({ node: r.node, y: r.y, h: r.node.offsetHeight }))));
+  }
+
+  function mountCard(node, title) {
+    const M = TDW.Margin;
+    node.classList.add('nn', 'is-open');
+    node.dataset.view = 'notes';
+    if (M.isNarrow()) { M.openSheet('notes', title, node, { onClose: () => { if (card && card.node === node) closeCard(true); } }); return; }
+    M.layer().append(node);
+    if (M.view() !== 'notes') { cardFrom = M.view(); M.setView('notes'); }
   }
 
   // New: a note (or a message to the AI) on the selection.
@@ -169,7 +168,7 @@
     }
     closeCard(true);
     TDW.Bubble && TDW.Bubble.hide();
-    const node = UI.el('div', { class: 'note-card is-new' + (ai ? ' is-ai' : ''), role: 'dialog', 'aria-label': ai ? 'Ask AI' : 'New note' });
+    const node = UI.el('div', { class: 'note-card' + (ai ? ' is-ai' : ''), role: 'dialog', 'aria-label': ai ? 'Ask AI' : 'New note' });
     const quote = UI.el('div', { class: 'note-quote', text: TDW.Inline.plain(text().slice(r.start, r.end)).slice(0, 160) });
     const input = UI.el('textarea', { class: 'note-input', rows: '2', placeholder: ai ? 'Ask AI to rewrite, shorten, judge…' : 'A note for later: a to-do, an idea, a question…', 'aria-label': ai ? 'Message to the AI' : 'Note' });
     const chips = ai ? UI.el('div', { class: 'note-chips' }, ['Other ways to say this', 'Make it punchier', 'Shorter', 'Simpler words', 'Is this clear?'].map((q) =>
@@ -178,7 +177,7 @@
     const swap = UI.el('button', { type: 'button', class: 'btn-quiet btn-sm note-swap', text: ai ? 'Just a note' : '✦ Ask AI instead' });
     const foot = UI.el('div', { class: 'note-foot' }, UI.el('span', { class: 'note-spacer' }), swap, save);
     node.append(quote, input, chips, foot);
-    document.body.append(node);
+    mountCard(node, ai ? 'Ask AI' : 'New note');
     card = { node, id: null, range: r, ai, marked: false };
     Editor.setOpenNote(null);
     // Show what the note is on while you write it (unless the Lab's marks are showing).
@@ -224,7 +223,7 @@
     card = { node, id, range: { start: n.start, end: n.end }, ai: n.ai };
     Editor.setOpenNote(id);
     drawCard();
-    document.body.append(node);
+    mountCard(node, n.ai ? 'AI thread' : 'Note');
     placeCard(n.start, n.end);
     const input = node.querySelector('.note-reply');
     if (input && n.ai) input.focus({ preventScroll: true });
@@ -380,9 +379,14 @@
       const n = noteOf(card.id);
       if (body && n && body.value !== n.body) Editor.change({ ann: Marks.updateNote(ann(), card.id, { body: body.value }), kind: 'marks', keepFocus: false });
     } else if (card.marked) Editor.setLab([]);
-    card.node.remove();
+    const old = card.node;
     card = null;
+    if (TDW.Margin.sheetOpen('notes') && TDW.Margin.sheetBody().contains(old)) TDW.Margin.closeSheet();
+    old.remove();
     Editor.setOpenNote(null);
+    // A card that opened the margin just for itself gives it back.
+    { const v = cardFrom; cardFrom = undefined; if (v !== undefined && TDW.Margin.view() === 'notes') TDW.Margin.setView(v); }
+    refreshPanel();
     if (!silent) Editor.focus();
   }
 
@@ -439,74 +443,101 @@
     }
   }
 
-  /* ---------- The Notes panel ---------- */
+  /* ---------- Notes in the margin, beside their words ---------- */
 
-  let panel = null, listEl = null, btn = null, filter = 'open';
+  let rows = [];        // [{ id, node, y }] on a computer
+  let filter = 'open';  // the list in the narrow layout
+  const M = () => TDW.Margin;
 
-  function buildPanel() {
-    panel = UI.el('aside', { id: 'notes-panel', class: 'notes-panel', 'aria-label': 'Notes', hidden: true });
-    const tabs = UI.el('div', { class: 'notes-tabs', role: 'tablist' });
-    for (const [k, label] of [['open', 'Open'], ['done', 'Done'], ['all', 'All']]) {
-      const b = UI.el('button', { type: 'button', role: 'tab', class: 'notes-tab', text: label, dataset: { f: k } });
-      b.addEventListener('click', () => { filter = k; refreshPanel(); });
-      tabs.append(b);
-    }
-    const close = UI.el('button', { type: 'button', class: 'btn-icon', 'aria-label': 'Close notes', title: 'Close (Ctrl+Shift+M)' }, UI.icon('close'));
-    close.addEventListener('click', () => setPanel(false, true));
-    listEl = UI.el('ol', { class: 'notes-list' });
-    panel.append(UI.el('div', { class: 'ov-head' }, UI.el('h2', { class: 'ov-title', text: 'Notes' }), close), tabs, listEl,
-      UI.el('p', { class: 'ov-foot', text: 'select text · ' + (IS_MAC ? '⌃⇧M' : 'Ctrl+Shift+M') + ' adds a note · ' + (IS_MAC ? '⌃J' : 'Ctrl+J') + ' asks the AI' }));
-    document.body.append(panel);
-    btn = UI.el('button', { type: 'button', class: 'dock-btn notes-toggle', title: 'Notes (Ctrl+Shift+M with nothing selected)', 'aria-controls': 'notes-panel', 'aria-expanded': 'false' });
-    btn.addEventListener('mousedown', (e) => e.preventDefault());
-    btn.addEventListener('click', () => setPanel(!isPanelOpen()));
-    const slot = document.getElementById('dock-right');
-    if (slot) slot.prepend(btn);
-  }
-
-  const isPanelOpen = () => !!panel && !panel.hidden;
-  function setPanel(on, focusPage) {
-    if (!panel) buildPanel();
-    if (on && TDW.Overflow && TDW.Overflow.isOpen()) TDW.Overflow.close();
-    panel.hidden = !on;
-    document.documentElement.classList.toggle('notes-open', !!on);
-    btn.setAttribute('aria-expanded', String(!!on));
-    btn.classList.toggle('is-on', !!on);
-    if (on) refreshPanel();
-    if (!on && focusPage) Editor.focus();
-    requestAnimationFrame(() => Editor.placeAids());
+  function noteLine(n) {
+    const last = n.thread.length ? n.thread[n.thread.length - 1] : null;
+    const body = n.ai ? (last ? last.text : 'AI thread') : (n.body || 'Empty note');
+    return { body, meta: n.ai ? n.thread.length + (n.thread.length === 1 ? ' message' : ' messages') : (n.end > n.start ? '' : 'Its words were deleted') };
   }
 
   function refreshPanel() {
-    if (!btn) return;
-    const notes = (ann().notes || []);
-    const open = notes.filter((n) => !n.done).length;
-    btn.textContent = open ? 'Notes ' + open : 'Notes';
-    btn.hidden = !notes.length && !isPanelOpen();
-    if (!isPanelOpen()) return;
-    for (const b of panel.querySelectorAll('.notes-tab')) b.classList.toggle('is-on', b.dataset.f === filter);
+    const notes = ann().notes || [];
+    M().setCount('notes', notes.filter((n) => !n.done).length);
+    if (M().isNarrow()) {
+      for (const r of rows) r.node.remove();
+      rows = [];
+      if (M().sheetOpen('notes') && !card) drawList(M().sheetBody().querySelector('.notes-list-wrap'));
+      return;
+    }
+    if (M().view() !== 'notes') return;
+    const keep = new Map(rows.map((r) => [r.id, r]));
+    rows = [];
+    for (const n of notes) {
+      if (card && card.id === n.id) continue;
+      let r = keep.get(n.id);
+      keep.delete(n.id);
+      if (!r) {
+        const node = UI.el('div', { class: 'nn', dataset: { view: 'notes' } });
+        r = { id: n.id, node };
+        M().layer().append(node);
+      }
+      const l = noteLine(n);
+      r.node.className = 'nn' + (n.done ? ' is-done' : '') + (n.ai ? ' is-ai' : '');
+      const b = UI.el('button', { type: 'button', class: 'nn-row', 'aria-label': 'Open the note: ' + l.body },
+        UI.el('span', { class: 'nn-body', text: (n.ai ? '✦ ' : '') + l.body }), l.meta ? UI.el('span', { class: 'nn-meta', text: l.meta }) : null);
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => openNote(n.id));
+      b.addEventListener('mouseenter', () => Editor.setOpenNote(n.id));
+      b.addEventListener('mouseleave', () => Editor.setOpenNote(card && card.id ? card.id : null));
+      r.node.replaceChildren(b);
+      r.y = M().lineY(n.start);
+      rows.push(r);
+    }
+    for (const r of keep.values()) r.node.remove();
+    const items = rows.map((r) => ({ node: r.node, y: r.y }));
+    if (card) { const n = card.id ? noteOf(card.id) : null; items.push({ node: card.node, y: M().lineY(n ? n.start : card.range.start), h: 26 }); }
+    M().place(items);
+  }
+
+  // The narrow layout: every note in a sheet, Open or Done.
+  function drawList(wrap) {
+    if (!wrap) return;
+    const notes = ann().notes || [];
     const t = text();
     const shown = notes.filter((n) => filter === 'all' || (filter === 'done' ? n.done : !n.done));
-    const rows = shown.map((n) => {
+    wrap.replaceChildren(...(shown.length ? shown.map((n) => {
       const q = n.end > n.start ? TDW.Inline.plain(t.slice(n.start, n.end)) : '';
-      const last = n.thread.length ? n.thread[n.thread.length - 1] : null;
-      const li = UI.el('li', { class: 'notes-row' + (n.done ? ' is-done' : '') + (n.ai ? ' is-ai' : '') },
-        UI.el('input', { type: 'checkbox', checked: !!n.done, 'aria-label': 'Done', onchange: (e) => setNote(n.id, { done: e.target.checked }) }),
-        UI.el('button', { type: 'button', class: 'notes-open', onclick: () => { Editor.scrollToIndex(n.start, 0.35, true); setTimeout(() => openNote(n.id), 200); } },
-          UI.el('span', { class: 'notes-quote', text: q ? '“' + q.slice(0, 90) + (q.length > 90 ? '…' : '') + '”' : '(deleted text)' }),
-          UI.el('span', { class: 'notes-body', text: n.ai ? '✦ ' + (last ? last.text : '') : n.body || '' })));
-      return li;
-    });
-    if (!rows.length) rows.push(UI.el('li', { class: 'notes-empty', text: filter === 'done' ? 'Nothing done yet.' : 'No notes. Select some words and add one.' }));
-    listEl.replaceChildren(...rows);
+      const l = noteLine(n);
+      return UI.el('button', { type: 'button', class: 'rn-card note-list-row', onclick: () => { Editor.scrollToIndex(n.start, 0.25, true); openNote(n.id); } },
+        UI.el('span', { class: 'note-quote', text: q ? q.slice(0, 120) : 'Deleted words' }), UI.el('span', { class: 'note-text', text: l.body }));
+    }) : [UI.el('p', { class: 'hint', text: filter === 'done' ? 'Nothing done yet.' : 'No notes. Select some words and add one.' })]));
+  }
+
+  function showAll() {
+    cardFrom = undefined;
+    closeCard(true);
+    if (M().isNarrow()) {
+      closeCard(true);
+      const wrap = UI.el('div', { class: 'notes-list-wrap' });
+      const seg = UI.segmented({ label: 'Show', value: filter, options: [{ value: 'open', label: 'Open' }, { value: 'done', label: 'Done' }, { value: 'all', label: 'All' }], onChange: (v) => { filter = v; drawList(wrap); } });
+      drawList(wrap);
+      M().openSheet('notes', 'Notes', UI.el('div', null, UI.el('div', { class: 'notes-filter' }, seg), wrap), { tall: true });
+      return;
+    }
+    M().setView('notes');
+    refreshPanel();
+    if (!(ann().notes || []).length) UI.toast('No notes yet. Select some words and press ' + (IS_MAC ? '⌃⇧M' : 'Ctrl+Shift+M') + '.');
+  }
+
+  function togglePanel() {
+    if ((M().view() === 'notes' && !card) || M().sheetOpen('notes')) {
+      closeCard(true);
+      if (M().sheetOpen('notes')) M().closeSheet();
+      else M().setView(app().state.mode === 'edit' ? 'review' : null);
+      Editor.focus();
+    } else showAll();
   }
 
   /* ---------- Wiring ---------- */
 
   function wire() {
-    buildPanel();
     document.addEventListener('keydown', (e) => {
-      if (document.querySelector('dialog[open]') || app().state.loading) return;
+      if (document.querySelector('dialog[open]:modal') || app().state.loading) return;
       if (e.key === 'Escape' && card && !e.defaultPrevented) {
         if (card.node.contains(e.target) || document.activeElement === Editor.rootEl()) { e.preventDefault(); closeCard(); return; }
       }
@@ -515,10 +546,9 @@
       if (e.shiftKey && !e.altKey && k === 'KeyM') {
         e.preventDefault();
         const s = Editor.getSelection();
-        if (s.end > s.start) compose({ ai: false }); else setPanel(!isPanelOpen(), true);
+        if (s.end > s.start) compose({ ai: false }); else togglePanel();
       } else if (!e.shiftKey && !e.altKey && k === 'KeyJ') { e.preventDefault(); compose({ ai: true }); }
       else if (e.shiftKey && !e.altKey && k === 'KeyH') {
-        // Highlight with the last color used (again to take it off).
         e.preventDefault();
         const r = range({ allowEmpty: true });
         if (r.end <= r.start) return;
@@ -526,7 +556,6 @@
         applyColor(r.start, r.end, Marks.colorAt(ann(), r.start, r.end) === c ? null : c);
       }
     });
-    // Clicking noted words opens their note.
     Editor.rootEl().addEventListener('click', (e) => {
       const el = e.target.closest && e.target.closest('[data-note]');
       if (!el) return;
@@ -534,13 +563,15 @@
       if (s.end > s.start) return;
       openNote(el.dataset.note);
     });
-    window.addEventListener('resize', () => { if (card) placeCard(card.range.start, card.range.end); });
     document.addEventListener('pointerdown', (e) => {
       if (!card || card.node.contains(e.target)) return;
-      if (e.target.closest && (e.target.closest('.note-pin') || e.target.closest('[data-note]') || e.target.closest('.bubble'))) return;
+      if (e.target.closest && (e.target.closest('.note-pin') || e.target.closest('[data-note]') || e.target.closest('.bubble') || e.target.closest('dialog') || e.target.closest('.menu'))) return;
       closeCard(true);
     }, true);
-    window.addEventListener('scroll', () => { if (card) { const n = card.id ? noteOf(card.id) : null; const r = n || card.range; placeCard(r.start, r.end); } }, { passive: true });
+    M().onChange((v) => {
+      if (v !== 'notes' && card && !M().isNarrow()) closeCard(true);
+      if (v === 'notes') refreshPanel(); else if (!M().isNarrow()) { for (const r of rows) r.node.remove(); rows = []; }
+    });
   }
 
   TDW.Notes = {
@@ -548,15 +579,15 @@
     load() { closeCard(true); closeColor(); refreshPanel(); },
     reload() { if (card && card.id && !noteOf(card.id)) closeCard(true); else drawCard(); refreshPanel(); },
     onText() { if (card && card.id) { const n = noteOf(card.id); if (n) card.range = { start: n.start, end: n.end }; } refreshPanel(); },
-    onMode() { closeCard(true); },
-    // From the margin pins: one note opens; several open the panel.
+    onLayout() { refreshPanel(); },
+    onMode() {},
     openPins(ids) {
       if (!ids || !ids.length) return;
       if (ids.length === 1) { if (card && card.id === ids[0]) closeCard(); else openNote(ids[0]); }
-      else { filter = 'all'; setPanel(true); }
+      else showAll();
     },
-    compose, openNote, colorMenu, colorBlock, applyColor, palette, lastColor,
-    togglePanel: () => setPanel(!isPanelOpen(), true),
+    compose, openNote, colorMenu, colorBlock, applyColor, palette, lastColor, showAll,
+    togglePanel,
     isCardOpen: () => !!card
   };
 })();

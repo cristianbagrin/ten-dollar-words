@@ -2,11 +2,10 @@
 // same footing. It starts its own app server and fake Notion, drives the app through its public
 // JS API (TDW.*), and writes one PNG per state plus tour.json (what ran, what failed, errors).
 //
-//   node tools/design-tour.mjs --variant margin [--out <dir>] [--port 8811] [--notion-port 8812]
+//   node tools/design-tour.mjs [--variant name] [--out <dir>] [--port 8811] [--notion-port 8812]
 //                              [--only D04,P02] [--scale 1]
 //
-// --variant is a folder in app/designs/ ("root" or nothing for the app at /).
-// A direction can change how a state is reached: app/designs/<variant>/tour-hooks.mjs may export
+// The tour runs against the app at /. tools/tour-hooks.mjs may export
 // `steps` ({ 'D07-slash': async (page, t) => { ... } }) to replace a step, and `extra`
 // ([{ name, run, phone }]) to add states. Hooks get the same helpers as the built-in steps (t).
 import { spawn } from 'node:child_process';
@@ -21,7 +20,7 @@ const { chromium } = require('playwright');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (name, dflt) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : dflt; };
 
-const variant = arg('--variant', 'root');
+const variant = arg('--variant', 'app'); // only names the output folder
 const out = path.resolve(arg('--out', path.join(ROOT, '.tour', variant)));
 const only = (arg('--only', '') || '').split(',').filter(Boolean);
 const scale = Number(arg('--scale', '1')) || 1;
@@ -49,14 +48,14 @@ const cleanup = () => { for (const k of kids) { try { k.kill(); } catch (_) { /*
 process.on('exit', cleanup);
 process.on('SIGINT', () => { cleanup(); process.exit(1); });
 
-const base = 'http://127.0.0.1:' + port + '/' + (variant === 'root' ? '' : 'designs/' + variant + '/');
+const base = 'http://127.0.0.1:' + port + '/';
 await waitFor(base);
 await waitFor('http://127.0.0.1:' + notionPort + '/__admin/dump');
 fs.mkdirSync(out, { recursive: true });
 
 let hooks = {};
-const hookFile = path.join(ROOT, 'app/designs', variant, 'tour-hooks.mjs');
-if (variant !== 'root' && fs.existsSync(hookFile)) hooks = await import(pathToFileURL(hookFile).href + '?t=' + Date.now());
+const hookFile = path.join(ROOT, 'tools/tour-hooks.mjs');
+if (fs.existsSync(hookFile)) hooks = await import(pathToFileURL(hookFile).href + '?t=' + Date.now());
 
 const SAMPLE = [
   '# The ten dollar rule',

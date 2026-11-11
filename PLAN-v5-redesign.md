@@ -150,8 +150,8 @@ Ulysses at their best.
 ## 5. The pick: Margin (round 2, 2026-11-11)
 
 Margin wins on writing, reviewing, over budget, drafts and the phone. Borrowed: Studio's
-highlights (as an option), Ledger's drafts grouped by month. Ledger and Studio stay in
-`app/designs/` until the owner says to delete them and promote Margin to `app/`.
+highlights (as an option), Ledger's drafts grouped by month. Ledger and Studio were then
+deleted and Margin became `app/` (3.0.0).
 
 His calls, kept on any change:
 - **Nothing summarized.** No note counts ("8 notes"), no "Cuts here would save $60". What the
@@ -176,3 +176,14 @@ His calls, kept on any change:
 - The stage beside the title in the spine is a button too.
 
 Not done yet: the highlighter and the grade ruler on the phone (the phone was approved as is).
+
+### Round 2 answers (3.0.0)
+- **Margin is the app;** Ledger and Studio are deleted.
+- **"$20 extra" stays,** and long sentences and passive voice now carry an estimated cost with a ~
+  (hard: a fifth of the sentence's words, very hard: a third, passive: the helper verb, plus
+  "by" when the doer is named). In a paragraph's extra, a long sentence counts its estimate or
+  the smaller fixes inside it, whichever is bigger.
+- **Pencil (default) and highlighter** both stay, as a setting.
+- **The ruler:** the lede reads "written for an 11-year-old"; the "Each dot is one of your
+  paragraphs" line is gone.
+- **Phone:** as is.

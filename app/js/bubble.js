@@ -32,35 +32,54 @@
 
   function build() {
     bar = UI.el('div', { class: 'bubble', role: 'toolbar', 'aria-label': 'Format the selection', hidden: true });
-    const ai = button('bub-ai', '✦ Ask AI', 'Ask AI about this (' + k('⌃J', 'Ctrl+J') + ')', null, () => { hide(); TDW.Notes.compose({ ai: true }); });
-    ai.innerHTML = '<span class="bub-spark">✦</span> Ask AI';
-    const ab = button('bub-ab', 'A/B', 'Alternatives: other versions to try in place (' + k('⌃⇧A', 'Ctrl+Shift+A') + ')', null, () => { hide(); TDW.Alts && TDW.Alts.open(); });
-    turnBtn = button('bub-turn', 'Text', 'Turn into', null, () => turnMenu());
-    const B = button('bub-b', 'Bold', 'Bold (' + k('⌘B', 'Ctrl+B') + ')', '<b>B</b>', () => { Editor.toggleStyle('bold'); later(); });
-    const I = button('bub-i', 'Italic', 'Italic (' + k('⌘I', 'Ctrl+I') + ')', '<i>i</i>', () => { Editor.toggleStyle('italic'); later(); });
-    const S = button('bub-s', 'Strikethrough', 'Strikethrough (' + k('⌘⇧S', 'Ctrl+Shift+S') + ')', '<s>S</s>', () => { Editor.toggleStyle('strike'); later(); });
-    const C = button('bub-c', 'Code', 'Code', '<code>&lt;/&gt;</code>', () => { Editor.toggleStyle('code'); later(); });
-    const L = button('bub-l', 'Link', 'Link (' + k('⌘K', 'Ctrl+K') + ')', ICON.link, () => { hide(); Editor.link(); });
-    colorBtn = button('bub-color', 'Color', 'Text color or highlight (' + k('⌃⇧H', 'Ctrl+Shift+H') + ' repeats the last)', '<span class="bub-a">A</span><span class="bub-caret">▾</span>', (e, b) => {
-      const s = Editor.getSelection();
-      TDW.Notes.colorMenu(b, s.start, s.end);
-    });
-    const N = button('bub-note', 'Note', 'Add a note (' + k('⌃⇧M', 'Ctrl+Shift+M') + ')', ICON.note, () => { hide(); TDW.Notes.compose({ ai: false }); });
-    const M = button('bub-more', 'More', 'Ghost it, Stash, and more', ICON.more, (e, b) => { const r = b.getBoundingClientRect(); TDW.Menu && TDW.Menu.openAt(r.left, r.bottom); });
+    const ai = button('bub-ai', 'Ask AI', 'Ask AI about this (' + k('⌃J', 'Ctrl+J') + ')', null, () => { hide(); TDW.Notes.compose({ ai: true }); });
+    ai.replaceChildren(UI.icon('spark'), 'Ask AI');
+    const ab = button('bub-ab', 'Alternatives', 'Other versions to try in place (' + k('⌃⇧A', 'Ctrl+Shift+A') + ')', null, () => { hide(); TDW.Alts && TDW.Alts.open(); });
+    ab.replaceChildren(UI.icon('swap'), 'Alternatives');
+    turnBtn = UI.el('span', { hidden: true });
+    colorBtn = UI.el('span', { hidden: true }, UI.el('span', { class: 'bub-a' }));
+    const N = button('bub-note', 'Add a note', 'Add a note (' + k('⌃⇧M', 'Ctrl+Shift+M') + ')', TDW.icons.note, () => { hide(); TDW.Notes.compose({ ai: false }); });
+    const B = button('bub-b', 'Bold', 'Bold (' + k('⌘B', 'Ctrl+B') + ')', 'B', () => { Editor.toggleStyle('bold'); later(); });
+    const I = button('bub-i', 'Italic', 'Italic (' + k('⌘I', 'Ctrl+I') + ')', 'i', () => { Editor.toggleStyle('italic'); later(); });
+    const L = button('bub-l', 'Link', 'Link (' + k('⌘K', 'Ctrl+K') + ')', TDW.icons.link, () => { hide(); Editor.link(); });
+    const M = button('bub-more', 'More', 'Color, strikethrough, turn into, ghost, stash', TDW.icons.more, (e, b) => moreMenu(b));
     const sep = () => UI.el('span', { class: 'bub-sep', 'aria-hidden': 'true' });
-    bar.append(ai, ab, sep(), turnBtn, sep(), B, I, S, C, L, sep(), colorBtn, N, M);
+    bar.append(ai, ab, N, sep(), B, I, L, sep(), M);
     bar.addEventListener('pointerdown', (e) => e.preventDefault());
     document.body.append(bar);
+  }
+
+  function moreMenu(b) {
+    const s = Editor.getSelection();
+    UI.menu(b, [
+      { label: 'Color…', icon: 'color', value: 'color', keys: '⌃⇧H' },
+      { label: 'Turn into…', icon: 'turn', value: 'turn' },
+      { label: 'Strikethrough', icon: 'strike', value: 'strike', keys: '⌘⇧S' },
+      { label: 'Code', icon: 'code', value: 'code' },
+      { type: 'sep' },
+      { label: 'Alternatives from AI', icon: 'spark', value: 'aialts', keys: '⌃⇧G' },
+      { label: 'Ghost it', icon: 'ghost', value: 'ghost', keys: '⌃/' },
+      { label: 'Stash in Overflow', icon: 'stash', value: 'stash', keys: '⌃⇧X' }
+    ], (it) => {
+      const v = it.value;
+      if (v === 'color') setTimeout(() => TDW.Notes.colorMenu(b, s.start, s.end), 0);
+      else if (v === 'turn') setTimeout(() => turnMenu(b), 0);
+      else if (v === 'strike' || v === 'code') { Editor.toggleStyle(v === 'strike' ? 'strike' : 'code'); later(); }
+      else if (v === 'aialts') { hide(); TDW.Alts.aiForSelection(); }
+      else if (v === 'ghost') { hide(); TDW.Menu.toggleGhost(); }
+      else if (v === 'stash') { hide(); TDW.Menu.stash(); }
+      return false;
+    });
   }
 
   // After a format change the selection is redrawn; put the bar back over it.
   function later() { requestAnimationFrame(() => show(true)); }
 
-  function turnMenu() {
+  function turnMenu(anchor) {
     const [a, b] = Editor.selLines();
     const cur = Editor.block(a).type;
     const items = TDW.Blocks.TYPES.map((t) => ({ label: t.label, note: t.hint, value: t.type, checked: t.type === cur }));
-    UI.menu(turnBtn, items, (it) => { Editor.turnInto(a, b, it.value); later(); return false; });
+    UI.menu(anchor || turnBtn, items, (it) => { Editor.turnInto(a, b, it.value); later(); return false; });
   }
 
   function canShow() {
@@ -96,7 +115,8 @@
     const touch = UI.device.touch;
     // On a touch screen the phone's own menu sits above the selection, so this goes below.
     let top = touch ? (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 12 : top0 - h - 8;
-    if (top < 8) top = (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 8;
+    const spineB = (document.querySelector('.spine') || { getBoundingClientRect: () => ({ bottom: 0 }) }).getBoundingClientRect().bottom;
+    if (top < spineB + 8) top = (r2 ? r2.lineTop + r2.lh : r1.lineTop + r1.lh) + 8;
     const x = r1.lineTop === (r2 && r2.lineTop) ? (r1.left + r2.left) / 2 - w / 2 : r1.left;
     bar.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + 'px';
     bar.style.top = top + 'px';

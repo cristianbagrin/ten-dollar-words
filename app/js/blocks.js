@@ -78,7 +78,7 @@
     const lh = parseFloat(cs.lineHeight) || 24;
     const sheet = document.getElementById('sheet').getBoundingClientRect();
     handle.hidden = false;
-    handle.style.left = (sheet.left - 52) + 'px';
+    handle.style.left = (sheet.left - 66) + 'px';
     handle.style.top = (r.top + Math.min(lh, r.height) / 2 - 12) + 'px';
     handle.classList.toggle('is-sep', b.type === 'hr');
   }

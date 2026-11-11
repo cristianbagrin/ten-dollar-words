@@ -166,11 +166,14 @@
     const h = headParts(n);
     const row = node.firstChild;
     const save = n.kind === 'issue' ? saveWords(n.issue) * 10 : 0;
-    const sig = n.key + '\u0001' + (typeof h.detail === 'string' ? h.detail : h.detail.textContent) + '\u0001' + save;
+    const sig = n.key + '\u0001' + (typeof h.detail === 'string' ? h.detail : h.detail.textContent) + '\u0001' + save + '\u0001' + (n.issue ? n.issue.type : '');
     if (node._sig !== sig) {
       node._sig = sig;
       row.replaceChildren(el('span', { class: 'rn-kind', text: h.kind }), ' ', el('span', { class: 'rn-detail' }, h.detail));
-      if (save > 0) row.append(el('span', { class: 'rn-save', text: money(save), title: 'Fixing this saves ' + money(save) }));
+      if (save > 0) {
+        const est = saveIsEstimate(n.issue);
+        row.append(el('span', { class: 'rn-save' + (est ? ' is-est' : ''), text: (est ? '~' : '') + money(save), title: est ? ESTIMATE_WHY[n.issue.type].replace('{m}', money(save)) : 'Fixing this saves ' + money(save) }));
+      }
       row.setAttribute('aria-label', h.kind + ': ' + (typeof h.detail === 'string' ? h.detail : h.detail.textContent) + '. Open the note.');
     }
     node.className = 'rn tone-' + h.tone + ' k-' + (n.kind === 'issue' ? n.issue.type : n.kind) + (n.kind === 'fold' ? ' no-x' : '') + (n.key === openKey ? ' is-open' : '');
@@ -296,8 +299,7 @@
     const sr = $('surface').getBoundingClientRect();
     let k = 0;
     if (show) {
-      const extra = new Map();
-      for (const n of notes) if (n.kind === 'issue') { const w = saveWords(n.issue); if (w > 0) extra.set(n.line, (extra.get(n.line) || 0) + w); }
+      const extra = lineExtras();
       let off = 0, line = -1;
       for (const ln of Editor.getText().split('\n')) {
         const start = off;
@@ -316,13 +318,15 @@
           costs[k] = c;
         }
         const lineNo = Editor.lineOfIndex(start);
-        const x = extra.get(lineNo) || 0;
+        const xr = extra.get(lineNo);
+        const x = xr ? Math.min(xr.words, words) : 0;
+        const about = xr && xr.est ? '~' : '';
         c.hidden = false;
         c._line = lineNo;
         c.firstChild.textContent = money(words * 10);
-        c.lastChild.textContent = x ? money(x * 10) + ' extra' : '';
+        c.lastChild.textContent = x ? about + money(x * 10) + ' extra' : '';
         c.classList.toggle('has-extra', x > 0);
-        c.dataset.tip = words + ' ' + plural(words, 'word', 'words') + (x ? '. ' + x + ' of them ' + plural(x, 'is', 'are') + ' extra: the notes on this paragraph would cut ' + plural(x, 'it', 'them') + '.' : '. Nothing here to cut.');
+        c.dataset.tip = words + ' ' + plural(words, 'word', 'words') + (x ? (about ? '. About ' : '. ') + x + ' of them ' + plural(x, 'is', 'are') + ' extra: the notes on this paragraph would cut ' + plural(x, 'it', 'them') + (about ? '. Long sentences and passive voice are estimates.' : '.') : '. Nothing here to cut.');
         c.style.top = Math.round(rc.lineTop - sr.top) + 'px';
         c.style.setProperty('--lh', Math.round(rc.lh) + 'px');
         k++;
@@ -341,7 +345,10 @@
     }
   }
 
-  // Words a fix would save, so the margin can say what the cuts add up to.
+  // Words a fix would save, so the margin can say what the cuts add up to. Wordy phrases,
+  // adverbs and weakeners are counted exactly. Sentences and passive voice are estimated from
+  // what such a rewrite usually takes out (saveIsEstimate says which).
+  const EST_SHARE = { hard: 0.2, veryHard: 0.3 }; // a long sentence tightened loses about a fifth, a very long one about a third
   function saveWords(i) {
     const w = Engine.countWords(i.text);
     if (i.type === 'adverb') return w;
@@ -350,7 +357,48 @@
       return w;
     }
     if (i.type === 'complex') return i.suggestion ? Math.max(0, w - Engine.countWords(i.suggestion.split(', ')[0])) : w;
+    if (isSentence(i.type)) {
+      const sw = (sentenceOf(i.start) || {}).words || w;
+      return Math.max(1, Math.round(sw * EST_SHARE[i.type]));
+    }
+    if (i.type === 'passive') {
+      // "was written by a committee" → "a committee wrote": the helper verb goes, and "by" too when the doer is named.
+      const s = sentenceOf(i.start);
+      const after = s ? Editor.getText().slice(i.end, s.end) : '';
+      return 1 + (/^\W*(?:\S+\s+){0,3}?by\b/i.test(after) ? 1 : 0);
+    }
     return 0;
+  }
+  const saveIsEstimate = (i) => isSentence(i.type) || i.type === 'passive';
+  const ESTIMATE_WHY = {
+    hard: 'About {m}: a hard sentence usually loses about a fifth of its words when it’s tightened.',
+    veryHard: 'About {m}: a very hard sentence usually loses about a third of its words when it’s tightened.',
+    passive: 'About {m}: saying who did what drops the helper verb (and “by”).'
+  };
+
+  // What a paragraph could lose. Inside a long sentence the sentence's estimate already covers
+  // the smaller fixes in it, so the bigger of the two counts, not both.
+  function lineExtras() {
+    const out = new Map(); // line → { words, est }
+    const sents = new Map(); // sentence start → { line, est, inner }
+    const loose = [];
+    for (const n of notes) {
+      if (n.kind !== 'issue') continue;
+      const w = saveWords(n.issue);
+      if (w <= 0) continue;
+      if (isSentence(n.issue.type)) { const k = n.issue.start; const r = sents.get(k) || { line: n.line, est: 0, inner: 0, innerEst: false }; r.est = w; sents.set(k, r); }
+      else loose.push({ n, w });
+    }
+    const add = (line, w, est) => { const r = out.get(line) || { words: 0, est: false }; r.words += w; r.est = r.est || est; out.set(line, r); };
+    for (const { n, w } of loose) {
+      const s = sentenceOf(n.issue.start);
+      const r = s && sents.get(s.start);
+      if (r) { r.inner += w; r.innerEst = r.innerEst || saveIsEstimate(n.issue); } else add(n.line, w, saveIsEstimate(n.issue));
+    }
+    for (const r of sents.values()) {
+      if (r.inner >= r.est) add(r.line, r.inner, r.innerEst); else add(r.line, r.est, true);
+    }
+    return out;
   }
 
   // The fix you just applied: a margin note with Undo, for a few seconds.
@@ -412,7 +460,7 @@
   }
 
   /* ---------- The grade, explained: a ruler ----------
-     The grade is a US school year: grade 6 is written for a reader of about eleven. The ruler
+     The grade is a US school year: grade 6 is written for an 11-year-old. The ruler
      runs from 1 to 16; your draft's mark slides to its place, each paragraph is a dot above
      the line it sits at, and a few familiar kinds of writing are listed in order so you can
      see what yours sits between. */
@@ -441,7 +489,12 @@
   }
 
   const xOf = (g) => ((Math.max(1, Math.min(RULER_MAX, g)) - 1) / (RULER_MAX - 1)) * 100;
-  const ageOf = (g) => (g <= 12 ? 'a reader of about ' + (g + 5) : g <= 16 ? 'a university student' : 'a specialist');
+  const ageOf = (g) => {
+    if (g > 16) return 'a specialist';
+    if (g > 12) return 'a university student';
+    const age = Math.max(1, g) + 5;
+    return (age === 8 || age === 11 || age === 18 ? 'an ' : 'a ') + age + '-year-old';
+  };
 
   function pointLine(line, on) {
     const b = Editor.block(line);
@@ -470,10 +523,9 @@
     const num = el('b', { class: 'gr-num', text: String(g) });
     const rows = REFS.map(([n, label]) => ({ n, label })).concat({ n: g, label: 'This draft', me: true }).sort((x, y) => x.n - y.n || (x.me ? -1 : 1));
     gradePop.replaceChildren(
-      el('p', { class: 'gr-lede' }, num, el('span', { text: g <= 16 ? 'Written for ' + ageOf(g) + '. Lower is easier.' : 'Past the end of the ruler: written for ' + ageOf(g) + '.' })),
+      el('p', { class: 'gr-lede' }, num, el('span', { text: g <= 16 ? 'written for ' + ageOf(g) : 'written for ' + ageOf(g) + ', past the end of the ruler' })),
       el('div', { class: 'gr-ruler', role: 'img', 'aria-label': 'Grade ' + g + ' on a ruler from 1 to ' + RULER_MAX }, el('div', { class: 'gr-dots' }, dots), el('div', { class: 'gr-track' }, ticks, mark),
         el('div', { class: 'gr-bands', 'aria-hidden': 'true' }, el('span', { class: 'b-easy', text: 'easy' }), el('span', { class: 'b-fair', text: 'fair' }), el('span', { class: 'b-hard', text: 'hard' }))),
-      dots.length > 1 ? el('p', { class: 'gr-note', text: 'Each dot is one of your paragraphs.' }) : null,
       el('ol', { class: 'gr-refs' }, rows.map((r, k) => el('li', { class: r.me ? 'is-me band-' + band : null, style: '--i:' + k }, el('span', { class: 'gr-ref-n', text: String(r.n) }), el('span', { text: r.label })))));
     const to = Math.max(1, Math.min(RULER_MAX, g));
     const put = (v) => { gradeShown = v; mark.style.setProperty('--x', xOf(v) + '%'); if (animate) num.textContent = String(Math.round(v >= to - 0.5 ? g : v)); };
@@ -792,6 +844,7 @@
       toast('Hiding ' + NAMES[i.type], { label: 'Undo', run: () => app().toggleHighlight(i.type) });
     });
     more.prepend(el('p', { class: 'rn-msg', text: message }));
+    if (saveIsEstimate(i)) more.querySelector('.rn-msg').after(el('p', { class: 'rn-est', text: ESTIMATE_WHY[i.type].replace('{m}', money(saveWords(i) * 10)) }));
     if (inSheet) acts.append(action('Ignore this one', () => ignore(n), 'close'));
     more.append(acts, hide);
   }

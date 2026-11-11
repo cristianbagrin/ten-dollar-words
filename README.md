@@ -1,10 +1,22 @@
 # Ten Dollar Words
 
-A writing app where every word costs $10. Write mode shows only your text; the top bar slides in when you move the pointer to the top of the window. Edit mode shows what you've spent against a budget, a readability grade, highlighted fixes (spelling, hard sentences, wordy phrases, passive voice, adverbs, weakeners), and optional AI help from Google Gemini. Drafts can sync both ways with a Notion database. Switching between Write and Edit (⌘E) keeps the line you were on where it was on screen. Version 2 adds a writing desk: alternatives for any word, sentence or paragraph, Ghost it, an Overflow panel, the Lab with Trim, and writing challenges (see The writing desk).
+A writing app where every word costs $10. Version 3 is the Margin design (`DESIGN.md`): one quiet page that never moves, a thin bar over it (the spine) with the draft's title on the left and what the words have cost so far on the right, and a review (⌘E) that arrives like an editor's pencil: hard sentences bracketed in the left gutter, phrases underlined, and short notes in the right margin beside their line. Everything else (drafts aside, formats, the Lab, Trim, challenges, Overflow, settings, sharing) is in the command palette (⌘K, or the ⋯ in the spine). Optional AI help comes from Google Gemini, and drafts can sync both ways with a Notion database.
 
 An account (Settings → Account) keeps your Notion connection, Gemini key, settings and dictionary, so every browser you sign in to is set up at once. On a phone the app speaks phone: taps instead of clicks and typing shortcuts instead of keyboard shortcuts.
 
 It's plain HTML, CSS, and JavaScript with no build step. The one piece that runs on a server is the account, a Netlify Function in `netlify/`.
+
+## Reviewing
+
+- **⌘E** (or the palette's Review this draft) turns the review on and off. The text doesn't move a pixel.
+- **What each paragraph costs** stands in the left gutter, in red pencil, and under it how much of that is extra: the words its notes would cut ("$20 extra"). Rest on the figure and those words and their notes light up.
+- **Every note says what fixing it saves.** Wordy phrases, adverbs and weakeners are counted exactly ("in order to" → "to" saves $20). Long sentences and passive voice are estimated and shown with a ~: a hard sentence usually loses about a fifth of its words when it's tightened, a very hard one about a third, and active voice drops the helper verb (and "by" when the doer is named). Inside a long sentence the paragraph counts the sentence's estimate or the smaller fixes in it, whichever is bigger, not both. Opening a note explains its estimate.
+- **× on a note** ignores that one note in that draft, with Undo. It comes back only if the sentence is rewritten; the palette brings all ignored notes back. "Hide weakeners" (and the like) in an opened note hides a whole kind.
+- **The grade** at the head of the margin opens a ruler on hover: "written for an 11-year-old", the draft's mark on a scale from 1 to 16, a dot per paragraph (rest on one and its paragraph lights up), and a children's novel, everyday adult reading, a broadsheet and an academic paper for comparison.
+- **Pencil or highlighter.** Marks are pencil by default: underlines and gutter brackets. Highlighter is a light, hand-drawn band in a color per kind. Switch in Settings → Look, the palette's Review marks, or the two small buttons at the head of the margin.
+- **Drafts** is a sidebar like Notion's: rest the pointer on the left edge, or click the title (⌘O) to keep it open. Group, sort and filter it; click any property chip to change it.
+
+On a phone, notes become chips under their paragraph, and a tap opens them in a sheet.
 
 ## The editor, like Notion
 
@@ -53,15 +65,15 @@ A panel on the right for writing you want nearby but not in the draft: cut passa
 - It doesn't count toward words or dollars and isn't spellchecked. Each draft has its own.
 - In Notion it's one collapsed toggle titled "Overflow" at the bottom of the page, synced both ways. It's never part of the post's text.
 
-### The Lab (Edit mode)
-The dashed **LAB** button at the bottom (**Ctrl+Shift+L**) lists checks that only mark text and never rewrite it: fix punctuation and typos (each mark offers its one fix when you click it), the weakest sentences, sentences that run long, convoluted sentences, words that don't fit the tone, hedges and filler, and Check the message. Click a mark to see why. Esc or Done clears the marks. Long sentences, hedges and spelling work without an AI key; the rest use Gemini.
+### The Lab
+The palette's Review group (**Ctrl+Shift+L**) lists checks that only mark text and never rewrite it: fix punctuation and typos (each mark offers its one fix when you click it), the weakest sentences, sentences that run long, convoluted sentences, words that don't fit the tone, hedges and filler, and Check the message. Each mark gets a note in the margin with the reason. Esc or Done clears the marks. Long sentences, hedges and spelling work without an AI key; the rest use Gemini.
 
-**Trim:** Slight trim (~10%), Tighten more (~20%), Even sharper (~30%) or Cut in half (~50%). The AI dims what it would cut, and only cuts; it never rewrites. The card shows the word count before and after. Click a faded passage to keep it. **Make the cuts** removes the rest in one undo step, **Walk through** goes cut by cut (Return or Y cuts, Backspace or N keeps), and **Done** or **Original** leaves the text as it was. Trim replaces "Cut the cost".
+**Trim:** Slight trim (~10%), Tighten more (~20%), Even sharper (~30%) or Cut in half (~50%). The AI dims what it would cut, and only cuts; it never rewrites. A card in the margin shows the word count before and after. Click a faded passage to keep it. **Make the cuts** removes the rest in one undo step, **Walk through** goes cut by cut (Return or Y cuts, Backspace or N keeps), and **Done** or **Original** leaves the text as it was. Trim replaces "Cut the cost".
 
-The Edit-mode fix highlights stay as they were. Settings → Writing → "Highlight fixes in Edit mode" turns them all off at once.
+Settings → Writing turns each kind of review note on or off.
 
 ### Writing challenges
-The **Challenge** button at the bottom makes writing a game. **Roll** picks one, **Roll a combo** stacks two or three that fit together, **Pick** lists them all, and **Today's challenge** is the same all day. Easy, Medium and Hard change the numbers. A small card checks each rule live and stamps "Challenge met" when they all pass. Challenges never stop you typing; they only check.
+The palette's Challenge group makes writing a game. **Roll** picks one, **Roll a combo** stacks two or three that fit together, **Pick** lists them all, and **Today's challenge** is the same all day. Easy, Medium and Hard change the numbers. A card pinned at the foot of the margin checks each rule live and stamps "Challenge met" when they all pass. Challenges never stop you typing; they only check.
 
 - **Length and money:** exact change (land on the budget exactly), a six-word story, a 100-word drabble, tweet size, Half price (the budget halves and you cut to fit), Inflation (the budget drops $10 a minute).
 - **Sentences:** short fuse, rhythm, a 1-word plus a short plus a long sentence, no two sentences starting the same, alphabet, questions first, two-sentence paragraphs, a hook in 8 words.
@@ -75,9 +87,9 @@ A quiet streak counts the days in a row you met one. The challenge on a draft tr
 Right-click the page for Alternatives for selection, AI alternatives for selection, Ghost it / Revive, Stash this in Overflow, plus Cut, Copy and Paste. Shift+right-click gives the browser's own menu. On a touch screen, a small ⋯ button appears by the selection.
 
 ### Around the page
-- Top left: a faint count of words and characters, or of the selection ("34 words 182 chars selected"). Ghosted text isn't counted.
-- Bottom left: **save** the draft as a Markdown file (ghosts left out, each alternative as it is on the page), **open** a `.md` or `.txt` file as a new draft, and **post to X** (**Ctrl+Shift+P**), which opens X's composer with the text the way X shows it. For a thread it opens the first post and copies the rest. There's no LinkedIn button, on purpose.
-- Top right: the keyboard icon (or **Ctrl+?**) lists every shortcut.
+- The spine: the title (opens Drafts), the Notion stage, the spend against the budget (click it for words, characters, reading time and budget presets), and ⋯ for the palette. A dot after the spend shows only when sync needs you.
+- The palette's Share group: **save** the draft as a Markdown file (ghosts left out, each alternative as it is on the page), **open** a `.md` or `.txt` file as a new draft, and **post to X** (**Ctrl+Shift+P**), which opens X's composer with the text the way X shows it. For a thread it opens the first post and copies the rest. There's no LinkedIn button, on purpose.
+- The palette's Shortcuts (or **Ctrl+?**) lists every shortcut.
 - The Ctrl shortcuts are Ctrl on a Mac too, so they don't clash with ⌘. Where a browser keeps Ctrl+Shift+A for itself, Alt+Shift+A and Alt+Shift+G work too. On Windows, strikethrough is Ctrl+Shift+S only, because Ctrl+Shift+X stashes.
 
 ## Run it locally
@@ -128,24 +140,23 @@ The app notices a phone, in the browser or from the Home Screen, and switches to
 
 - Settings lists typing shortcuts (`#`, `-`, `1.`, `[]`, `>`, `---`, `**bold**`) instead of keyboard shortcuts, and first-run tips say tap, not click or ⌘.
 - X threads get a **+ New post** button under the last post (there's no ⌘↩ on a phone). Typing `---` on a new line also works, even after the iPhone turns `--` into a dash.
-- Tap the dollar amount in Edit mode for the word count, characters and reading time (there's no hover).
-- In Edit mode the tools sit in a sheet at the bottom. Drag it up or flick it down, or tap its bar.
-- The No backspace switch is labelled "No ⌫" to fit.
+- Tap the dollar amount for the word count, characters and reading time (there's no hover).
+- While reviewing, notes are chips under their paragraph; a tap opens them in a sheet at the bottom. Drag it up or flick it down.
 - Tips and messages move above the on-screen keyboard.
 - The account's Settings suggest setting up Notion and Gemini on a computer and signing in on the phone, which is quicker than copying keys on a small screen.
 - Silent mode mutes the typing sounds on an iPhone; Settings says so.
 
 ## Look
 
-Settings → Look picks a skin: Typewriter, Ditto or Night desk. Turn on "Night desk when your device is in dark mode" to switch to Night desk whenever your device goes dark, and back to your skin when it goes light. The app also follows your system's reduce motion, reduce transparency and increase contrast settings.
+Settings → Look picks Light, Dark or System, the page font (Source Serif, or Courier Prime for the old typewriter) and the review marks (pencil or highlighter). Old skins map over: Night desk becomes Dark, the rest System. The app also follows your system's reduce motion, reduce transparency and increase contrast settings.
 
 ## Budget
 
-Click the budget under the amount to change it. The presets are words × $10 for common lengths: $500 (an X post), $1,000 (a short LinkedIn post), $2,000 (a typical LinkedIn post), $3,000 (a long post or a thread), $8,000 (a newsletter), $15,000 (a long essay).
+Click the spend in the spine to change the budget. The presets are words × $10 for common lengths: $500 (an X post), $1,000 (a short LinkedIn post), $2,000 (a typical LinkedIn post), $3,000 (a long post or a thread), $8,000 (a newsletter), $15,000 (a long essay).
 
 ## No backspace
 
-The **No backspace** switch in the top bar blocks backspace, delete, cut and typing over a selection in Write mode for the open draft ("Backspace is off"); Edit mode can always delete. When a draft's Stage says "no backspace", the switch turns on by itself (turn that off in Settings → Writing), and a new Stage decides again.
+**No backspace** (in the palette) blocks backspace, delete, cut and typing over a selection for the open draft while you write; reviewing can always delete. When a draft's Stage says "no backspace", the switch turns on by itself (turn that off in Settings → Writing), and a new Stage decides again.
 
 ## Formatting
 
@@ -161,24 +172,25 @@ Each line is a paragraph, with space after it; a blank line makes a bigger gap.
 
 ## Formats
 
-The Format switch in the top bar (Basic, LinkedIn, X, Substack) only sets the line length, so line breaks land close to where they will when the post goes out: LinkedIn 52 characters, X 43, Substack 70 (exact in the Typewriter skin). Each format has its own default budget, and Settings → Writing → "New drafts use" picks the format for new drafts. The format is saved with the draft but isn't sent to Notion; signed in, your account carries it to your other devices.
+The palette's Format group (Basic, LinkedIn, X, Substack) only sets the line length, so line breaks land close to where they will when the post goes out: LinkedIn 52 characters, X 43, Substack 70 (exact with the Courier Prime page font). Each format has its own default budget, and Settings → Writing → "New drafts use" picks the format for new drafts. The format is saved with the draft but isn't sent to Notion; signed in, your account carries it to your other devices.
 
 **Copying** gives you what the platform will show. From LinkedIn and X, markdown disappears and bold and italics become Unicode bold and italic letters (𝗯𝗼𝗹𝗱, 𝘪𝘵𝘢𝘭𝘪𝘤), since those sites have no formatting of their own; headings become bold lines. From Basic and Substack, the copy carries rich text too, so Substack keeps headings, bold and links.
 
-- **LinkedIn (Edit mode):** ticks in the text show where "…see more" cuts in: a solid tick for a phone (about 140 characters or 3 lines) and a dashed one for a computer (about 210 characters or 3 lines), whichever comes first. The app lays the post out the way LinkedIn does, in the system font at the feed's width, so blank lines and line wraps count the way they will there. Text past 3,000 characters gets a faint red tint.
-- **X threads:** every post sits in its own window, in both modes, with its word count and X's own character count (links count 23, emoji 2, Unicode bold 2 per letter). ⌘↩ (Ctrl+↩) starts a new post at the caret. Backspace at the top of a post joins it to the one above, and an empty post just disappears. Click a post's number to select it, ready to copy. Anything past 280 is tinted in Edit mode. In Notion, posts are separated by divider blocks.
+- **LinkedIn (while reviewing):** ticks in the text show where "…see more" cuts in: a solid tick for a phone (about 140 characters or 3 lines) and a dashed one for a computer (about 210 characters or 3 lines), whichever comes first. The app lays the post out the way LinkedIn does, in the system font at the feed's width, so blank lines and line wraps count the way they will there. Text past 3,000 characters gets a faint red tint.
+- **X threads:** every post sits in its own window, always, with its word count and X's own character count (links count 23, emoji 2, Unicode bold 2 per letter). ⌘↩ (Ctrl+↩) starts a new post at the caret. Backspace at the top of a post joins it to the one above, and an empty post just disappears. Click a post's number to select it, ready to copy. Anything past 280 is tinted while reviewing. In Notion, posts are separated by divider blocks.
 
 Hover over the dollar amount for the word count, characters and reading time.
 
 ## Spelling
 
-Edit mode underlines unknown words with a red wavy line. Click one for fixes, or "Add to dictionary" to stop flagging it; Settings → Writing lists the words you've added. Names in the middle of a sentence, acronyms, links, @handles and #hashtags are skipped. The word list is built from SCOWL (license in `app/dict/LICENSE-SCOWL.txt`); `tools/build-dict.mjs` rebuilds it.
+The review underlines unknown words in red pencil. Open its note for fixes, or "Add to dictionary" to stop flagging it; Settings → Writing lists the words you've added. Names in the middle of a sentence, acronyms, links, @handles and #hashtags are skipped. The word list is built from SCOWL (license in `app/dict/LICENSE-SCOWL.txt`); `tools/build-dict.mjs` rebuilds it.
 
 ## Files
 
 ```
 ./
-  PLAN.md … PLAN-v4.md     the build plans and design decisions (PLAN-v4-challenges.md: the challenge list)
+  PLAN.md … PLAN-v5-redesign.md   the build plans and design decisions (PLAN-v4-challenges.md: the challenge list)
+  DESIGN.md                the Margin design: tokens, layout, and where every feature lives
   README.md                this file
   netlify.toml             publishes app/ and the account function
   package.json             @netlify/blobs, for the account function
@@ -189,12 +201,16 @@ Edit mode underlines unknown words with a red wavy line. Click one for fixes, or
                            plus fake-notion.mjs, a local stand-in for the Notion API used for sync stress tests
   tools/build-dict.mjs     rebuilds app/dict/en-us.txt
   tools/dev-server.mjs     the app plus the account API on this computer
+  tools/design-tour.mjs    screenshots of about 40 fixed states on a computer and a phone (tour-hooks.mjs: how it reaches them)
   app/                     the website (this is what gets deployed)
     index.html             page markup
     manifest.webmanifest   install-as-app settings
     sw.js                  service worker (offline use)
     _headers               Netlify security headers
-    css/app.css            all styles, the three skins, and the post formats
+    css/base.css           tokens (color, type, spacing, motion), light and dark, buttons, menus
+    css/page.css           the page, the post formats, marks (pencil and highlighter), the gutter's costs
+    css/margin.css         the margin: review notes, the grade ruler, cards
+    css/surfaces.css       the spine, palette, drafts sidebar, sheets, Settings
     dict/                  the spelling word list and its license
     icons/                 app icons (SVG and PNG)
     js/data.js             word lists
@@ -213,22 +229,23 @@ Edit mode underlines unknown words with a red wavy line. Click one for fixes, or
     js/editor.js           the editor: one line per paragraph, its own undo, X post windows, the fold
     js/ui.js               shared helpers: phone or computer, Mac or not, elements, toasts, money, icons, toggles, menus
     js/formats.js          post formats: what each platform shows, X counting, the LinkedIn fold
-    js/panel.js            Edit-mode panel: register, grade, fixes, AI results
-    js/popover.js          tips on highlighted text
-    js/dialogs.js          Drafts drawer (with Notion properties) and Settings
+    js/spine.js            the bar over the page: title, stage, spend, sync, ⋯
+    js/margin.js           the right margin: views (Review, Notes, Overflow), pinned cards, the phone sheet
+    js/review.js           review notes, what fixes save (exact and estimated), the gutter's costs, the grade ruler
+    js/palette.js          the command palette (⌘K)
+    js/drafts.js           the drafts sidebar: grouping, sorting, filters, Notion property chips
+    js/dialogs.js          Settings
     js/marks.js            alternatives, ghosts, colors and notes over the text: following edits, a/an, swapping (pure, tested)
     js/alts.js             the alternatives panel, cycling in place, AI alternatives
     js/menu.js             the right-click menu, Ghost it, Stash this in Overflow
     js/overflow.js         the Overflow panel
     js/lab.js              the Lab and Trim
     js/challenges.js       writing challenges: the catalog and its checks (pure, tested)
-    js/challenge-ui.js     the Challenge button, picker and card
-    js/desk.js             the live count, save/open/post to X, the shortcut list
+    js/challenge-ui.js     the challenge picker and card
+    js/desk.js             save/open/post to X, the shortcut list
     js/blocks.js           Notion-style blocks: the handle, dragging, the block menu, the "/" menu
     js/bubble.js           the bar over a selection
     js/notes.js            colors, notes, the Notes panel, and AI threads on a passage
-    css/notion.css         their styles, with Notion's colors
-    css/desk.css, overflow.css, lab.css, challenges.css   their styles (placeholders until the redesign)
     js/app.js              state, events, startup (loads last)
 ```
 
@@ -251,4 +268,4 @@ Not built yet, on purpose:
 - A receipt or print view.
 - Custom budget presets.
 - A grammar checker.
-- More skins or more sound profiles.
+- More sound profiles.

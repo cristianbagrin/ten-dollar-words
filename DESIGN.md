@@ -1,5 +1,7 @@
 # Margin
 
+The design of the app since 3.0.0 (it was one of three directions; see `PLAN-v5-redesign.md`).
+
 ## The concept
 
 A galley proof and an editor's two-ended pencil. The draft is one quiet sheet of cool white

@@ -64,36 +64,45 @@
 
   /* ---------- The panel ---------- */
 
+  // A card in the margin beside the line it's about (a sheet in the narrow layout).
   function build() {
-    panel = UI.el('aside', { class: 'alts-panel', 'aria-label': 'Alternatives', hidden: true });
-    const bar = UI.el('div', { class: 'alts-tabs', role: 'tablist' });
-    for (const k of KINDS) {
-      tabs[k] = UI.el('button', { type: 'button', role: 'tab', class: 'alts-tab', text: LABEL[k] });
-      tabs[k].addEventListener('mousedown', (e) => e.preventDefault());
-      tabs[k].addEventListener('click', () => retarget(k));
-      bar.append(tabs[k]);
-    }
+    panel = UI.el('section', { class: 'alts', 'aria-label': 'Alternatives', dataset: { view: 'alts' } });
+    tabs = UI.segmented({ label: 'Alternatives for', value: 'word', options: KINDS.map((k) => ({ value: k, label: LABEL[k] })), onChange: (k) => retarget(k) });
+    tabs.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
     list = UI.el('ol', { class: 'alts-list' });
-    hint = UI.el('p', { class: 'alts-hint' });
+    hint = UI.el('div', { class: 'alts-hint' });
     const close = UI.el('button', { type: 'button', class: 'btn-icon alts-close', 'aria-label': 'Close alternatives' }, UI.icon('close'));
+    close.addEventListener('mousedown', (e) => e.preventDefault());
     close.addEventListener('click', () => closePanel());
-    panel.append(close, bar, list, hint);
-    document.body.append(panel);
+    const ask = UI.el('button', { type: 'button', class: 'rn-act alts-ask' }, UI.icon('spark'), UI.el('span', { text: 'More from AI' }));
+    ask.addEventListener('mousedown', (e) => e.preventDefault());
+    ask.addEventListener('click', () => askAI());
+    panel.append(UI.el('div', { class: 'alts-head' }, UI.el('span', { class: 'alts-title', text: 'Alternatives' }), tabs, close), list, ask, hint);
     panel.addEventListener('keydown', onPanelKey);
+  }
+
+  function hintKeys() {
+    const k = (s) => UI.kbd(s);
+    if (UI.device.touch) return [UI.el('span', { text: 'Tap a version to try it on the page.' })];
+    return [UI.el('span', null, k('↩'), 'adds'), UI.el('span', null, k('↑'), k('↓'), 'try each'), UI.el('span', null, k('⌘⌫'), 'removes'), UI.el('span', null, k('esc'), 'keeps the page')];
+  }
+
+  function placePanel() {
+    const a = cur && altOf(cur.id);
+    if (!a || TDW.Margin.isNarrow() || !panel.isConnected) return;
+    TDW.Margin.place([{ node: panel, y: TDW.Margin.lineY(a.start) }]);
   }
 
   function draw() {
     const a = cur && altOf(cur.id);
     if (!a) { closePanel(true); return; }
-    for (const k of KINDS) {
-      tabs[k].classList.toggle('is-on', k === a.kind);
-      tabs[k].setAttribute('aria-selected', String(k === a.kind));
-    }
+    tabs.set(a.kind, true);
     const rows = a.options.map((o, i) => row(o, i, i === a.active));
     rows.push(row({ text: '', by: 'me' }, a.options.length, false, true));
     list.replaceChildren(...rows);
-    hint.textContent = UI.device.phone ? 'tap to try one · ?? asks the AI' : 'return adds · esc closes · ?? asks the AI';
+    hint.replaceChildren(...hintKeys());
     sizeAll();
+    requestAnimationFrame(placePanel);
   }
 
   function row(o, i, on, isNew) {
@@ -349,8 +358,13 @@
     cur.snap = Editor.snapshot();
     Editor.setOpenAlt(got.id);
     if (!panel) build();
-    panel.hidden = false;
     document.documentElement.classList.add('alts-open');
+    if (TDW.Margin.isNarrow()) {
+      if (!TDW.Margin.sheetOpen('alts')) TDW.Margin.openSheet('alts', 'Alternatives', panel, { modal: false, onClose: () => { if (cur) closePanel(true); } });
+    } else {
+      if (panel.parentNode !== TDW.Margin.layer()) { panel._top = undefined; TDW.Margin.layer().append(panel); }
+      TDW.Margin.setView('alts');
+    }
     draw();
     if (!(opts && opts.keepFocus)) focusRow(inputs().length - 1);
     return got.id;
@@ -389,7 +403,8 @@
     Editor.setOpenAlt(null);
     if (!keepOpenClass) {
       document.documentElement.classList.remove('alts-open');
-      if (panel) panel.hidden = true;
+      if (TDW.Margin.sheetOpen('alts')) TDW.Margin.closeSheet();
+      if (TDW.Margin.view() === 'alts') TDW.Margin.restore();
       if (!silent) Editor.focus();
     }
   }
@@ -481,7 +496,10 @@
   }
 
   TDW.Alts = {
-    init() { wire(); },
+    init() {
+      wire();
+      TDW.Margin.onChange((v) => { if (cur && v !== 'alts' && !TDW.Margin.isNarrow()) closePanel(true); else if (cur) requestAnimationFrame(placePanel); });
+    },
     load() { if (cur) closePanel(true); },
     reload() { if (cur && !altOf(cur.id)) closePanel(true); else if (cur) draw(); },
     onText() { if (cur && !altOf(cur.id)) closePanel(true); },
