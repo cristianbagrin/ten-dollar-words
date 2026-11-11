@@ -1,8 +1,10 @@
 /* Review: the editor's pencil. With the lens on, every fix gets a short note in the margin beside
-   its line (blue pencil; spelling in red). Hover a note and its words light up in highlighter;
-   open it (click, or rest on it) for what to do: the fix with what it saves, an AI version
-   (which joins the text's alternatives), or "Hide these". Clicking marked words opens their
-   note. Sentences that are hard to read get a bracket in the left gutter.
+   its line (blue pencil; spelling in red), with what it would save. Hover a note and its words
+   light up; open it (click, or rest on it) for what to do: the fix, an AI version (which joins
+   the text's alternatives), or "Hide these". The × on a note ignores that one note for good.
+   Clicking marked words opens their note. Sentences that are hard to read get a bracket in the
+   left gutter, and each paragraph's cost stands there too, with how much of it is extra words.
+   Rest on the grade for a ruler that shows what the number means.
    In the narrow layout the notes are chips under their paragraph; a tap opens a sheet.
    Lab checks report here too: their marks get notes with the reason. */
 (function () {
@@ -43,6 +45,55 @@
   let brackets = [], dots = [], costs = [];
   let changedOn = false, changedTimer = 0;
   let msg = null;          // the message check: { state, intent, out, error }
+
+  /* ---------- Notes you ignored: kept per draft, in this browser ----------
+     A note is remembered by its kind, its words and the sentence around them, so it stays gone
+     while that sentence stands and comes back for a fresh look if you rewrite it. */
+  const IGNORE_KEY = 'tdw.ignored';
+  let ignoredAll = null;
+  function ignoredMap() {
+    if (!ignoredAll) { try { ignoredAll = JSON.parse(localStorage.getItem(IGNORE_KEY) || '{}') || {}; } catch (_) { ignoredAll = {}; } }
+    return ignoredAll;
+  }
+  const draftId = () => (app().state.draft ? app().state.draft.id : '');
+  const ignoredList = () => ignoredMap()[draftId()] || [];
+  function saveIgnored(list) {
+    const m = ignoredMap();
+    if (list.length) m[draftId()] = list; else delete m[draftId()];
+    // Drafts that no longer exist take their list with them.
+    for (const id of Object.keys(m)) if (!TDW.Store.getDraft(id)) delete m[id];
+    try { localStorage.setItem(IGNORE_KEY, JSON.stringify(m)); } catch (_) { /* private mode */ }
+  }
+  function hash(str) { let h = 2166136261; for (let k = 0; k < str.length; k++) { h ^= str.charCodeAt(k); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
+  function sigOf(i, a) {
+    const sent = a && a.sentenceList.find((r) => r.start <= i.start && i.start < r.end);
+    const around = sent ? Editor.getText().slice(sent.start, sent.end) : i.text;
+    return i.type + '|' + i.text + '|' + hash(around);
+  }
+  // Called on every fresh analysis, before anything is drawn from it.
+  function screen(a) {
+    const list = ignoredList();
+    if (!a || !list.length) return;
+    const gone = new Set(list);
+    a.issues = a.issues.filter((i) => !gone.has(sigOf(i, a)));
+  }
+  function ignore(n) {
+    if (n.kind === 'lab') { done(); TDW.Lab.dismiss(n.lab.id); return; }
+    if (n.kind !== 'issue') return;
+    const sig = sigOf(n.issue, app().state.analysis);
+    const before = ignoredList().slice();
+    done();
+    saveIgnored(before.concat(sig));
+    app().refresh();
+    toast('Ignored.', { label: 'Undo', run: () => { saveIgnored(before); app().refresh(); } });
+  }
+  function restoreIgnored() {
+    const before = ignoredList().slice();
+    if (!before.length) return;
+    saveIgnored([]);
+    app().refresh();
+    toast(before.length + ' ' + plural(before.length, 'note is', 'notes are') + ' back.', { label: 'Undo', run: () => { saveIgnored(before); app().refresh(); } });
+  }
 
   /* ---------- What the notes are ---------- */
   function sentenceOf(index) {
@@ -100,7 +151,11 @@
       const row = el('button', { type: 'button', class: 'rn-row', 'aria-expanded': 'false' });
       row.addEventListener('mousedown', (e) => e.preventDefault());
       row.addEventListener('click', () => toggleOpen(node._n.key, true));
-      node.append(row);
+      const x = el('button', { type: 'button', class: 'rn-x', 'aria-label': 'Ignore this note', 'data-tip': 'Ignore' }, icon('close'));
+      x.classList.add('tip-end');
+      x.addEventListener('mousedown', (e) => e.preventDefault());
+      x.addEventListener('click', (e) => { e.stopPropagation(); ignore(node._n); });
+      node.append(row, x);
       node.addEventListener('mouseenter', () => onHover(node._n.key));
       node.addEventListener('mouseleave', () => onLeave(node._n.key));
       node.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeNote(true); } });
@@ -110,13 +165,15 @@
     node._n = n;
     const h = headParts(n);
     const row = node.firstChild;
-    const sig = n.key + '\u0001' + (typeof h.detail === 'string' ? h.detail : h.detail.textContent);
+    const save = n.kind === 'issue' ? saveWords(n.issue) * 10 : 0;
+    const sig = n.key + '\u0001' + (typeof h.detail === 'string' ? h.detail : h.detail.textContent) + '\u0001' + save;
     if (node._sig !== sig) {
       node._sig = sig;
       row.replaceChildren(el('span', { class: 'rn-kind', text: h.kind }), ' ', el('span', { class: 'rn-detail' }, h.detail));
+      if (save > 0) row.append(el('span', { class: 'rn-save', text: money(save), title: 'Fixing this saves ' + money(save) }));
       row.setAttribute('aria-label', h.kind + ': ' + (typeof h.detail === 'string' ? h.detail : h.detail.textContent) + '. Open the note.');
     }
-    node.className = 'rn tone-' + h.tone + (n.key === openKey ? ' is-open' : '');
+    node.className = 'rn tone-' + h.tone + ' k-' + (n.kind === 'issue' ? n.issue.type : n.kind) + (n.kind === 'fold' ? ' no-x' : '') + (n.key === openKey ? ' is-open' : '');
     return node;
   }
 
@@ -138,10 +195,10 @@
     }
     if (openKey && !live.has(openKey)) { openKey = null; pinned = false; }
     const nCount = notes.filter((n) => n.kind !== 'fold').length;
-    Margin.setCount('review', nCount);
+    Margin.setCount('review', 0);
     drawSub();
     const sn = $('spine-notes');
-    if (sn) { sn.hidden = !(on && narrow && nCount); sn.textContent = nCount + ' ' + plural(nCount, 'note', 'notes'); }
+    if (sn) sn.hidden = true; // the notes are on the page; a count of them says nothing
     if (!on) { drawBrackets([]); drawChips([]); drawCosts(false); return; }
     for (const n of notes) {
       n.line = n.kind === 'fold' ? Editor.blockIndexOf(n.node0) : Editor.lineOfIndex(n.start);
@@ -231,30 +288,57 @@
     for (let i = k; i < dots.length; i++) dots[i].hidden = true;
   }
 
-  /* ---------- The red pencil's tally in the left gutter: what each paragraph costs ---------- */
+  /* ---------- The red pencil's tally in the left gutter ----------
+     What each paragraph costs, and under it how much of that is extra: the words its notes
+     would cut. Rest on the figure and those words (and their notes) light up. */
   function drawCosts(show) {
     const g = $('gutter');
     const sr = $('surface').getBoundingClientRect();
     let k = 0;
     if (show) {
-      let off = 0;
+      const extra = new Map();
+      for (const n of notes) if (n.kind === 'issue') { const w = saveWords(n.issue); if (w > 0) extra.set(n.line, (extra.get(n.line) || 0) + w); }
+      let off = 0, line = -1;
       for (const ln of Editor.getText().split('\n')) {
         const start = off;
         off += ln.length + 1;
+        line++;
         const words = Engine.countWords(TDW.Inline.plain(ln));
         if (!words) continue;
         const rc = Editor.rectAt(start);
         if (!rc) continue;
         let c = costs[k];
-        if (!c) { c = el('span', { class: 'cost' }); g.append(c); costs[k] = c; }
+        if (!c) {
+          c = el('span', { class: 'cost tip-end tip-up' }, el('span', { class: 'cost-amt' }), el('span', { class: 'cost-extra' }));
+          c.addEventListener('mouseenter', () => lightLine(c._line, true));
+          c.addEventListener('mouseleave', () => lightLine(c._line, false));
+          g.append(c);
+          costs[k] = c;
+        }
+        const lineNo = Editor.lineOfIndex(start);
+        const x = extra.get(lineNo) || 0;
         c.hidden = false;
-        c.textContent = money(words * 10);
+        c._line = lineNo;
+        c.firstChild.textContent = money(words * 10);
+        c.lastChild.textContent = x ? money(x * 10) + ' extra' : '';
+        c.classList.toggle('has-extra', x > 0);
+        c.dataset.tip = words + ' ' + plural(words, 'word', 'words') + (x ? '. ' + x + ' of them ' + plural(x, 'is', 'are') + ' extra: the notes on this paragraph would cut ' + plural(x, 'it', 'them') + '.' : '. Nothing here to cut.');
         c.style.top = Math.round(rc.lineTop - sr.top) + 'px';
-        c.style.height = c.style.lineHeight = Math.round(rc.lh) + 'px';
+        c.style.setProperty('--lh', Math.round(rc.lh) + 'px');
         k++;
       }
     }
     for (let i = k; i < costs.length; i++) costs[i].hidden = true;
+  }
+
+  // The words a paragraph could lose, and the notes that say so.
+  function lightLine(line, on) {
+    for (const n of notes) {
+      if (n.kind !== 'issue' || n.line !== line || saveWords(n.issue) <= 0) continue;
+      const node = pool.get(n.key);
+      if (node) node.classList.toggle('is-lit', on);
+      for (const m of Editor.rootEl().querySelectorAll('[data-id="' + CSS.escape(n.id) + '"]')) m.classList.toggle('is-active', on);
+    }
   }
 
   // Words a fix would save, so the margin can say what the cuts add up to.
@@ -284,24 +368,154 @@
     for (const node of pool.values()) node.classList.toggle('is-caret-line', !!node._n && node._n.line === line);
   }
 
-  /* ---------- The head of the margin while reviewing: grade and the message check ---------- */
+  /* ---------- The head of the margin while reviewing: the grade, how marks look, the message check ---------- */
+  const EASE = { Good: 'easy to read', OK: 'fair to read', Hard: 'hard to read' };
+  let subEls = null;
+  function buildSub(sub) {
+    const grade = el('button', { type: 'button', class: 'mh-grade', 'aria-haspopup': 'dialog', 'aria-expanded': 'false' }, el('b'), el('span'));
+    grade.addEventListener('mousedown', (e) => e.preventDefault());
+    grade.addEventListener('pointerenter', (e) => { if (e.pointerType !== 'touch') gradeIntent(true); });
+    grade.addEventListener('pointerleave', () => gradeIntent(false));
+    grade.addEventListener('click', () => { if (gradeOpen && gradePinned) closeGrade(); else openGrade(true); });
+    grade.addEventListener('keydown', (e) => { if (e.key === 'Escape' && gradeOpen) { e.preventDefault(); e.stopPropagation(); closeGrade(); } });
+    const mk = (value, ic, label) => {
+      const b = el('button', { type: 'button', class: 'mh-mark', 'aria-label': label, 'data-tip': label, dataset: { value } }, icon(ic));
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => app().updateSettings({ marks: value }));
+      return b;
+    };
+    const marks = el('div', { class: 'mh-marks', role: 'group', 'aria-label': 'How fixes are marked' }, mk('pencil', 'pencil', 'Mark with pencil'), mk('highlighter', 'marker', 'Mark with highlighter'));
+    marks.lastChild.classList.add('tip-end');
+    const changedEl = el('p', { class: 'mh-changed', hidden: true }, 'Changed. ', el('button', { type: 'button', class: 'mh-undo', text: 'Undo', onclick: () => { changedOn = false; Editor.undo(); drawSub(); } }));
+    const check = el('button', { type: 'button', class: 'mh-action', onclick: startMessage }, icon('target'), el('span', { text: 'Check the message' }));
+    check.addEventListener('mousedown', (e) => e.preventDefault());
+    sub.replaceChildren(el('div', { class: 'mh-line' }, grade, marks), changedEl, check);
+    subEls = { grade, marks, changedEl, check };
+  }
+
   function drawSub() {
     const sub = Margin.sub();
     if (!sub) return;
     const a = analysis;
-    if (!a) { sub.replaceChildren(); return; }
-    const lab = TDW.Lab && TDW.Lab.isRunning && TDW.Lab.isRunning();
-    const label = a.words ? ({ Good: 'easy to read', OK: 'fair to read', Hard: 'hard to read' }[Engine.gradeLabel(a.grade)]) : '';
-    const check = el('button', { type: 'button', class: 'mh-action', onclick: startMessage }, icon('target'), el('span', { text: 'Check the message' }));
-    check.addEventListener('mousedown', (e) => e.preventDefault());
-    const n = notes.filter((x) => x.kind !== 'fold').length;
-    const save = notes.reduce((t, x) => t + (x.kind === 'issue' ? saveWords(x.issue) : 0), 0);
-    sub.replaceChildren(...[
-      el('p', { class: 'mh-grade' }, a.words ? el('b', { text: 'Grade ' + a.grade }) : el('b', { text: 'Nothing to review yet' }), a.words ? ' ' + label : '',
-        el('span', { class: 'mh-count', text: lab ? '' : (n ? n + ' ' + plural(n, 'note', 'notes') : a.words ? 'Nothing to fix' : '') })),
-      save > 0 && !lab ? el('p', { class: 'mh-save' }, 'Cuts here would save ', el('b', { text: money(save * 10) })) : null,
-      changedOn ? el('p', { class: 'mh-changed' }, 'Changed. ', el('button', { type: 'button', class: 'mh-undo', text: 'Undo', onclick: () => { changedOn = false; Editor.undo(); drawSub(); } })) : null,
-      a.words ? check : null].filter(Boolean));
+    if (!a) { if (gradeOpen) closeGrade(); sub.hidden = true; return; }
+    if (!subEls) buildSub(sub);
+    sub.hidden = false;
+    const { grade, marks, changedEl, check } = subEls;
+    grade.firstChild.textContent = a.words ? 'Grade ' + a.grade : 'Nothing to review yet';
+    grade.lastChild.textContent = a.words ? EASE[Engine.gradeLabel(a.grade)] : '';
+    grade.disabled = !a.words;
+    const style = app().state.settings.marks === 'highlighter' ? 'highlighter' : 'pencil';
+    for (const b of marks.children) b.setAttribute('aria-pressed', String(b.dataset.value === style));
+    changedEl.hidden = !changedOn;
+    check.hidden = !a.words;
+    if (gradeOpen) fillGrade(false);
+  }
+
+  /* ---------- The grade, explained: a ruler ----------
+     The grade is a US school year: grade 6 is written for a reader of about eleven. The ruler
+     runs from 1 to 16; your draft's mark slides to its place, each paragraph is a dot above
+     the line it sits at, and a few familiar kinds of writing are listed in order so you can
+     see what yours sits between. */
+  const RULER_MAX = 16;
+  const REFS = [[5, 'A children’s novel'], [8, 'What most adults read with ease'], [11, 'A broadsheet newspaper'], [15, 'An academic paper']];
+  let gradeOpen = false, gradePinned = false, gradeTimer = 0, gradePop = null, gradeAnim = null, gradeShown = 1;
+
+  function gradeIntent(on) {
+    clearTimeout(gradeTimer);
+    if (on) { if (!gradeOpen) gradeTimer = setTimeout(() => openGrade(false), 160); }
+    else if (gradeOpen && !gradePinned) gradeTimer = setTimeout(closeGrade, 220);
+  }
+
+  function paragraphGrades() {
+    const out = [];
+    let off = 0;
+    for (const ln of Editor.getText().split('\n')) {
+      const start = off;
+      off += ln.length + 1;
+      const plain = TDW.Inline.plain(ln).replace(/^#{1,6}\s+/, '');
+      if (/^#{1,6}\s/.test(ln) || Engine.countWords(plain) < 8) continue; // headings and scraps don't have a grade worth showing
+      const g = Engine.analyze(plain).grade;
+      out.push({ line: Editor.lineOfIndex(start), grade: g });
+    }
+    return out;
+  }
+
+  const xOf = (g) => ((Math.max(1, Math.min(RULER_MAX, g)) - 1) / (RULER_MAX - 1)) * 100;
+  const ageOf = (g) => (g <= 12 ? 'a reader of about ' + (g + 5) : g <= 16 ? 'a university student' : 'a specialist');
+
+  function pointLine(line, on) {
+    const b = Editor.block(line);
+    if (b && b.el) b.el.classList.toggle('is-pointed', on);
+  }
+
+  function fillGrade(animate) {
+    const a = analysis;
+    if (!a || !gradePop) return;
+    const g = a.grade;
+    const band = Engine.gradeLabel(g);
+    const ticks = [];
+    for (let k = 1; k <= RULER_MAX; k++) ticks.push(el('span', { class: 'gr-tick' + (k % 4 === 0 ? ' is-major' : ''), style: '--x:' + xOf(k) + '%;--i:' + k, dataset: k % 4 === 0 ? { n: k === RULER_MAX ? k + '+' : String(k) } : null }));
+    // Paragraph dots stack where several share a grade.
+    const stack = new Map();
+    const dots = paragraphGrades().map((p, k) => {
+      const col = Math.max(1, Math.min(RULER_MAX, p.grade));
+      const level = stack.get(col) || 0;
+      stack.set(col, level + 1);
+      const d = el('span', { class: 'gr-dot tip-up', style: '--x:' + xOf(col) + '%;--lv:' + Math.min(level, 5) + ';--i:' + k, 'data-tip': 'This paragraph: grade ' + p.grade });
+      d.addEventListener('mouseenter', () => pointLine(p.line, true));
+      d.addEventListener('mouseleave', () => pointLine(p.line, false));
+      return d;
+    });
+    const mark = el('span', { class: 'gr-mark band-' + band, 'aria-hidden': 'true' });
+    const num = el('b', { class: 'gr-num', text: String(g) });
+    const rows = REFS.map(([n, label]) => ({ n, label })).concat({ n: g, label: 'This draft', me: true }).sort((x, y) => x.n - y.n || (x.me ? -1 : 1));
+    gradePop.replaceChildren(
+      el('p', { class: 'gr-lede' }, num, el('span', { text: g <= 16 ? 'Written for ' + ageOf(g) + '. Lower is easier.' : 'Past the end of the ruler: written for ' + ageOf(g) + '.' })),
+      el('div', { class: 'gr-ruler', role: 'img', 'aria-label': 'Grade ' + g + ' on a ruler from 1 to ' + RULER_MAX }, el('div', { class: 'gr-dots' }, dots), el('div', { class: 'gr-track' }, ticks, mark),
+        el('div', { class: 'gr-bands', 'aria-hidden': 'true' }, el('span', { class: 'b-easy', text: 'easy' }), el('span', { class: 'b-fair', text: 'fair' }), el('span', { class: 'b-hard', text: 'hard' }))),
+      dots.length > 1 ? el('p', { class: 'gr-note', text: 'Each dot is one of your paragraphs.' }) : null,
+      el('ol', { class: 'gr-refs' }, rows.map((r, k) => el('li', { class: r.me ? 'is-me band-' + band : null, style: '--i:' + k }, el('span', { class: 'gr-ref-n', text: String(r.n) }), el('span', { text: r.label })))));
+    const to = Math.max(1, Math.min(RULER_MAX, g));
+    const put = (v) => { gradeShown = v; mark.style.setProperty('--x', xOf(v) + '%'); if (animate) num.textContent = String(Math.round(v >= to - 0.5 ? g : v)); };
+    if (gradeAnim) gradeAnim.stop();
+    if (animate && !UI.reducedMotion()) {
+      gradePop.classList.add('is-drawing');
+      put(1);
+      gradeAnim = UI.spring({ from: 1, to, response: 0.55, damping: 0.86, onUpdate: put, onDone: () => { num.textContent = String(g); } });
+      setTimeout(() => gradePop && gradePop.classList.remove('is-drawing'), 900);
+    } else { gradeAnim = UI.spring({ from: gradeShown, to, response: 0.32, onUpdate: put }); num.textContent = String(g); }
+  }
+
+  function openGrade(pin) {
+    clearTimeout(gradeTimer);
+    if (!analysis || !analysis.words || Margin.isNarrow()) return;
+    gradePinned = !!pin || gradePinned;
+    if (gradeOpen) return;
+    gradeOpen = true;
+    gradePop = el('div', { class: 'grade-pop', role: 'dialog', 'aria-label': 'What the grade means' });
+    gradePop.addEventListener('pointerenter', () => clearTimeout(gradeTimer));
+    gradePop.addEventListener('pointerleave', () => gradeIntent(false));
+    gradePop.addEventListener('mousedown', (e) => e.preventDefault());
+    subEls.grade.after(gradePop);
+    subEls.grade.setAttribute('aria-expanded', 'true');
+    gradeShown = 1;
+    fillGrade(true);
+  }
+
+  function closeGrade() {
+    clearTimeout(gradeTimer);
+    if (!gradeOpen) return;
+    gradeOpen = false;
+    gradePinned = false;
+    if (gradeAnim) gradeAnim.stop();
+    const pop = gradePop;
+    gradePop = null;
+    if (subEls) subEls.grade.setAttribute('aria-expanded', 'false');
+    for (const l of Editor.rootEl().querySelectorAll('.is-pointed')) l.classList.remove('is-pointed');
+    if (!pop) return;
+    if (UI.reducedMotion()) { pop.remove(); return; }
+    pop.classList.add('is-leaving');
+    setTimeout(() => pop.remove(), 160);
   }
 
   /* ---------- Opening a note ---------- */
@@ -578,6 +792,7 @@
       toast('Hiding ' + NAMES[i.type], { label: 'Undo', run: () => app().toggleHighlight(i.type) });
     });
     more.prepend(el('p', { class: 'rn-msg', text: message }));
+    if (inSheet) acts.append(action('Ignore this one', () => ignore(n), 'close'));
     more.append(acts, hide);
   }
 
@@ -710,6 +925,7 @@
       if (openKey) { e.preventDefault(); closeNote(true); }
     });
     document.addEventListener('pointerdown', (e) => {
+      if (gradeOpen && gradePinned && !(e.target.closest && (e.target.closest('.grade-pop') || e.target.closest('.mh-grade')))) closeGrade();
       if (!openKey || !pinned) return;
       const t = e.target;
       if (t.closest && (t.closest('.rn') || t.closest('#editor') || t.closest('.menu') || t.closest('dialog'))) return;
@@ -722,7 +938,7 @@
     init,
     render(a) {
       analysis = a || null;
-      if (!analysis) { closeNote(false); if (Margin.sheetOpen('review')) Margin.closeSheet(true); }
+      if (!analysis) { closeGrade(); closeNote(false); if (Margin.sheetOpen('review')) Margin.closeSheet(true); }
       schedule();
     },
     onMode(m) {
@@ -732,8 +948,8 @@
     },
     onSelect() { markCaretLine(); },
     onLayout: schedule,
-    load() { closeNote(false); endMessage(); },
-    openAt, startMessage, closeNote,
+    load() { closeGrade(); closeNote(false); endMessage(); },
+    openAt, startMessage, closeNote, screen, restoreIgnored, ignoredCount: () => ignoredList().length, openGrade,
     isOpen: () => !!openKey,
     redraw: schedule
   };

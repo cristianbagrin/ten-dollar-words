@@ -53,6 +53,7 @@
     const s = state.settings;
     root.dataset.theme = themeOf(s);
     root.dataset.font = fontOf(s);
+    root.dataset.marks = s.marks === 'highlighter' ? 'highlighter' : 'pencil';
     root.style.setProperty('--text-offset', (Number(s.textSize) || 0) + 'px');
     root.classList.toggle('tw-scroll', !!s.typewriterScroll);
     setThemeColor();
@@ -64,6 +65,7 @@
     Object.assign(state.settings, patch);
     Store.saveSettings(state.settings);
     applySettings();
+    if ('marks' in patch) refreshPanel();
     if ('sound' in patch) Sound.setProfile(patch.sound);
     if ('volume' in patch) Sound.setVolume(patch.volume);
     if ('noBackspace' in patch) updateBackspace();
@@ -140,6 +142,7 @@
     if (Store.saveDraft(d)) {
       state.dirty = false;
       if (saveFailed) { saveFailed = false; spine('setSaveError', false); }
+      if (TDW.Drafts && TDW.Drafts.isOpen()) TDW.Drafts.render(); // a docked sidebar follows the title
       return true;
     }
     if (!saveFailed) UI.toast('Not saved: storage is full. Delete old drafts to make room.');
@@ -448,6 +451,7 @@
   function refresh() {
     clearTimeout(analyzeTimer);
     state.analysis = analyze(masked());
+    if (opt('Review') && TDW.Review.screen) TDW.Review.screen(state.analysis); // notes you ignored stay gone
     if (state.mode === 'edit' && !(opt('Lab') && TDW.Lab.isRunning && TDW.Lab.isRunning())) {
       Editor.setMarks(state.analysis.issues.filter(isSentence), state.analysis.issues.filter((i) => !isSentence(i)));
     } else Editor.setMarks([], []);

@@ -20,13 +20,16 @@
   <link rel="stylesheet" href="css/surfaces.css?v=2.1.0">
 </head>
 <body>
+  <!-- Drafts: a sidebar that comes over from the left edge (a sheet on a phone). -->
+  <div id="drafts-edge" class="drafts-edge" aria-hidden="true"></div>
+  <aside id="drafts" class="drafts" aria-labelledby="drafts-title"></aside>
   <!-- The spine: the draft on the left, what it has cost on the right, and the command palette. -->
   <header id="spine" class="spine">
     <div class="spine-left">
-      <button id="spine-title" class="spine-title" type="button" aria-haspopup="dialog" title="Drafts">
+      <button id="spine-title" class="spine-title" type="button" aria-controls="drafts" aria-expanded="false">
         <span class="spine-title-text">Untitled</span>
       </button>
-      <span id="spine-stage" class="spine-stage" hidden></span>
+      <button id="spine-stage" class="spine-stage" type="button" aria-haspopup="menu" hidden></button>
     </div>
     <div class="spine-right">
       <span id="spine-notes" class="spine-notes" hidden></span>
@@ -59,7 +62,7 @@
   <div id="margin-foot" class="margin-foot" aria-live="polite"></div>
 
   <dialog id="palette" class="palette" aria-label="Commands"></dialog>
-  <dialog id="drafts-dialog" class="switcher" aria-labelledby="drafts-title"></dialog>
+  <dialog id="drafts-dialog" class="drafts-sheet" aria-label="Drafts"></dialog>
   <dialog id="settings-dialog" class="settings" aria-labelledby="settings-title"></dialog>
   <dialog id="tally" class="tally" aria-label="Spend and budget"></dialog>
   <dialog id="margin-sheet" class="margin-sheet"></dialog>
@@ -85,6 +88,7 @@
   <script src="js/spine.js?v=2.1.0"></script>
   <script src="js/margin.js?v=2.1.0"></script>
   <script src="js/review.js?v=2.1.0"></script>
+  <script src="js/drafts.js?v=2.1.0"></script>
   <script src="js/dialogs.js?v=2.1.0"></script>
   <script src="js/alts.js?v=2.1.0"></script>
   <script src="js/menu.js?v=2.1.0"></script>

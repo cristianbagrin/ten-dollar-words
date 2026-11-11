@@ -32,7 +32,8 @@ html.is-typing .spine:not(:hover):not(:focus-within) :is(.spine-left, .spine-mor
 .spine-title .icon { color: var(--ink-3); width: 14px; height: 14px; }
 .spine-title:hover, .spine-spend:hover, .spine-more:hover, .spine-sync:hover, .spine-nb:hover { background: var(--hover); }
 .spine-title:active, .spine-spend:active, .spine-more:active, .spine-nb:active { transform: scale(.97); background: var(--press); }
-.spine-stage { display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; color: var(--ink-2); font: 500 12px/1 var(--font-ui); white-space: nowrap; }
+.spine-stage { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 0; border-radius: 13px; background: transparent; color: var(--ink-2); font: 500 12px/1 var(--font-ui); white-space: nowrap; transition: background-color 120ms ease; }
+.spine-stage:hover { background: var(--hover); color: var(--ink); }
 .stage-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .spine-nb {
   display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--r-sm);
@@ -92,6 +93,9 @@ html[data-format="substack"] .page { --measure: 70ch; }
 @media (min-width: 1080px) {
   /* Centered when the margin fits on the right; otherwise left of center so that it does. */
   .sheet { margin-left: max(76px, min((100% - var(--measure)) / 2, 100% - var(--measure) - var(--mgap) - var(--mw) - var(--s7))); }
+  html.drafts-moving .sheet { transition: margin-left var(--spring-t) var(--spring); }
+  /* A docked drafts sidebar: the column clears it (and the costs in the gutter), or stays centered if it already does. */
+  html[data-drafts="pinned"] .sheet { margin-left: max(calc(var(--dw) + 112px), min((100% - var(--measure)) / 2, 100% - var(--measure) - var(--mgap) - var(--mw) - var(--s7))); }
 }
 @media (max-width: 1079px) {
   .page { --write-size: 19px; }
@@ -206,12 +210,19 @@ html.lens .bracket { opacity: .9; }
 .bracket.b-veryHard::before { content: ""; position: absolute; left: -7px; top: 3px; bottom: 3px; width: 8px; background: var(--br-blue) no-repeat 0 0 / 100% 100%; }
 .bracket.is-active { opacity: 1; filter: saturate(1.4) brightness(.85); }
 .cost {
-  position: absolute; left: -100px; width: 62px; text-align: right; pointer-events: none;
-  color: var(--red); font: 500 12px/1 var(--font-ui); font-variant-numeric: tabular-nums lining-nums; letter-spacing: 0;
+  position: absolute; left: -112px; width: 74px; display: grid; justify-items: end; pointer-events: auto; cursor: default;
+  color: var(--red); font: 500 12px/var(--lh, 32px) var(--font-ui); font-variant-numeric: tabular-nums lining-nums; letter-spacing: 0;
   transition: opacity var(--fade-t) ease;
 }
 .cost[hidden] { display: none; }
+.cost[data-tip]::after { max-width: 190px; bottom: calc(100% - 4px); }
+/* How much of the paragraph is extra words, under what it costs. */
+.cost-extra { margin-top: -9px; color: var(--red); font: 600 11px/1.3 var(--font-ui); white-space: nowrap; background: var(--ul-red) repeat-x 0 100% / 52px 4px; padding-bottom: 4px; }
+.cost-extra:empty { display: none; }
+.cost:not(.has-extra) .cost-amt { color: color-mix(in srgb, var(--red) 62%, var(--ink-3)); }
 html.is-typing .cost { opacity: .35; }
+/* The paragraph a dot on the grade ruler stands for. */
+.ln.is-pointed { background: var(--canvas); box-shadow: 0 0 0 6px var(--canvas); border-radius: 2px; }
 .editor.hide-hard ~ .gutter .b-hard, .editor.hide-veryHard ~ .gutter .b-veryHard { display: none; }
 
 /* Owner notes: a quiet graphite underline, highlighter when open. */
@@ -305,3 +316,51 @@ html.is-dragging-block, html.is-dragging-block * { cursor: grabbing !important; 
   .spine-stage { display: none; }
   .mh-tab, .menu-item { min-height: 44px; }
 }
+
+/* ---------- Highlighter instead of pencil (Settings, or the switch at the head of the margin) ----------
+   One light pass of a felt tip per fix, a color for each kind: a band a little off the line, a hair
+   tilted, darker where the pen started and stopped, never past the words it marks. No two alike:
+   the tilt and band shift with where the mark falls in its paragraph. Spelling stays in red pencil. */
+@property --hl-a { syntax: '<number>'; inherits: true; initial-value: 0; }
+html[data-marks="highlighter"] { --hl-on: .34; }
+html[data-marks="highlighter"][data-theme="dark"] { --hl-on: .42; }
+html[data-marks="highlighter"] .editor mark.hl:not(.hl-spelling), html[data-marks="highlighter"] .editor .hs {
+  --hl-a: 0;
+  padding: 0 .1em; margin: 0 -.1em;
+  border-radius: .3em .55em .35em .6em / .5em .3em .55em .35em;
+  background-color: transparent !important;
+  background-image:
+    linear-gradient(var(--hl-t, 180deg), transparent var(--hl-0, 20%), rgb(var(--hl-rgb) / var(--hl-a)) calc(var(--hl-0, 20%) + 3%), rgb(var(--hl-rgb) / calc(var(--hl-a) * .82)) 55%, rgb(var(--hl-rgb) / var(--hl-a)) calc(var(--hl-1, 88%) - 3%), transparent var(--hl-1, 88%)),
+    linear-gradient(90deg, rgb(var(--hl-rgb) / calc(var(--hl-a) * var(--hl-e, .6))) 0, transparent .5em, transparent calc(100% - .45em), rgb(var(--hl-rgb) / calc(var(--hl-a) * var(--hl-e, .6))) 100%);
+  background-size: 100% 100%, 100% 56%; background-position: 0 0, 0 66%; background-repeat: no-repeat;
+  transition: --hl-a var(--fade-t) ease;
+}
+html[data-marks="highlighter"].lens .editor mark.hl:not(.hl-spelling) { --hl-a: var(--hl-on); cursor: pointer; }
+html[data-marks="highlighter"].lens .editor .hs { --hl-a: calc(var(--hl-on) * .5); }
+html[data-marks="highlighter"].lens .editor :is(mark.hl:not(.hl-spelling), .hs).is-active { --hl-a: calc(var(--hl-on) * 1.8); }
+html[data-marks="highlighter"].lens.is-typing .ln.is-caret :is(mark.hl, .hs) { --hl-a: calc(var(--hl-on) * .4); opacity: 1; }
+html[data-marks="highlighter"] { --k-complex: 84 150 240; --k-passive: 70 190 150; --k-adverb: 168 132 242; --k-qualifier: 255 164 54; --k-hard: 255 206 20; --k-veryHard: 255 122 92; }
+html[data-marks="highlighter"] .hl-complex { --hl-rgb: var(--k-complex); }
+html[data-marks="highlighter"] .hl-passive { --hl-rgb: var(--k-passive); }
+html[data-marks="highlighter"] .hl-adverb { --hl-rgb: var(--k-adverb); }
+html[data-marks="highlighter"] .hl-qualifier { --hl-rgb: var(--k-qualifier); }
+html[data-marks="highlighter"] .hs-hard { --hl-rgb: var(--k-hard); }
+html[data-marks="highlighter"] .hs-veryHard { --hl-rgb: var(--k-veryHard); }
+html[data-marks="highlighter"] .editor.hide-complex .hl-complex, html[data-marks="highlighter"] .editor.hide-adverb .hl-adverb, html[data-marks="highlighter"] .editor.hide-passive .hl-passive,
+html[data-marks="highlighter"] .editor.hide-qualifier .hl-qualifier, html[data-marks="highlighter"] .editor.hide-hard .hs-hard, html[data-marks="highlighter"] .editor.hide-veryHard .hs-veryHard { --hl-a: 0 !important; }
+/* a hand is never the same twice */
+html[data-marks="highlighter"] .editor :is(mark.hl, .hs):nth-of-type(2n) { --hl-t: 181.2deg; --hl-0: 16%; --hl-1: 91%; --hl-e: .85; }
+html[data-marks="highlighter"] .editor :is(mark.hl, .hs):nth-of-type(3n) { --hl-t: 178.7deg; --hl-0: 24%; --hl-1: 86%; --hl-e: .5; }
+html[data-marks="highlighter"] .editor .ln:nth-child(2n) :is(mark.hl, .hs) { --hl-t: 180.9deg; --hl-0: 18%; --hl-1: 93%; --hl-e: .7; }
+html[data-marks="highlighter"] .editor .ln:nth-child(3n) :is(mark.hl, .hs):nth-of-type(2n+1) { --hl-t: 179.1deg; --hl-0: 22%; --hl-1: 84%; --hl-e: .95; }
+/* the color says the kind, so the sentence brackets and the notes' pencil dashes step aside */
+html[data-marks="highlighter"] .bracket { display: none; }
+html[data-marks="highlighter"] .rn:is(.k-complex, .k-passive, .k-adverb, .k-qualifier, .k-hard, .k-veryHard) .rn-row::before {
+  top: 5px; width: 8px; height: 10px; border-radius: 2px 3px 2px 3px; background: rgb(var(--k) / .62); filter: none; transform: rotate(-3deg);
+}
+html[data-marks="highlighter"] .rn-row { padding-left: 15px; }
+html[data-marks="highlighter"] .rn:is(.k-complex, .k-passive, .k-adverb, .k-qualifier, .k-hard, .k-veryHard) .rn-kind { color: var(--ink); }
+html[data-marks="highlighter"] .k-complex { --k: var(--k-complex); } html[data-marks="highlighter"] .k-passive { --k: var(--k-passive); }
+html[data-marks="highlighter"] .k-adverb { --k: var(--k-adverb); } html[data-marks="highlighter"] .k-qualifier { --k: var(--k-qualifier); }
+html[data-marks="highlighter"] .k-hard { --k: var(--k-hard); } html[data-marks="highlighter"] .k-veryHard { --k: var(--k-veryHard); }
+@media (prefers-contrast: more) { html[data-marks="highlighter"] { --hl-on: .55; } }

@@ -18,202 +18,18 @@
   const COLORS = { gray: '#787774', brown: '#9f6b53', orange: '#d9730d', yellow: '#cb912f', green: '#448361', blue: '#337ea9', purple: '#9065b0', pink: '#c14c8a', red: '#d44c47' };
   const KINDS = [['spelling', 'Spelling'], ['veryHard', 'Very hard sentences'], ['hard', 'Hard sentences'], ['complex', 'Wordy phrases'], ['passive', 'Passive voice'], ['adverb', 'Adverbs'], ['qualifier', 'Weakeners']];
 
-  let draftsDlg = null, settingsDlg = null, listEl = null, findEl = null, curEl = null, footEl = null;
-  let query = '';
+  let settingsDlg = null;
   let aiStatus = { text: '', error: false };
   let accountRefresh = null;
   let section = 'writing';
 
-  /* ---------- Drafts switcher ---------- */
-  function buildDrafts() {
-    findEl = el('input', { type: 'search', placeholder: 'Find a draft', 'aria-label': 'Find a draft', autocomplete: 'off', spellcheck: 'false' });
-    findEl.addEventListener('input', () => { query = findEl.value.trim().toLowerCase(); renderList(); });
-    findEl.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowDown') { const f = listEl.querySelector('.sw-open'); if (f) { e.preventDefault(); f.focus(); } }
-      if (e.key === 'Enter') { const f = listEl.querySelector('.sw-open'); if (f) { e.preventDefault(); f.click(); } }
-    });
-    listEl = el('ul', { class: 'sw-list', 'aria-label': 'Drafts' });
-    listEl.addEventListener('keydown', (e) => {
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-      const rows = [...listEl.querySelectorAll('.sw-open')];
-      const i = rows.indexOf(document.activeElement);
-      if (i < 0) return;
-      e.preventDefault();
-      if (e.key === 'ArrowUp' && i === 0) { findEl.focus(); return; }
-      const n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
-      n.focus();
-    });
-    curEl = el('section', { class: 'sw-current', 'aria-label': 'This draft' });
-    footEl = el('p', { class: 'sw-foot' });
-    draftsDlg.append(
-      el('div', { class: 'grabber', 'aria-hidden': 'true' }),
-      el('h2', { id: 'drafts-title', class: 'sr-only', text: 'Drafts' }),
-      el('div', { class: 'sw-top sheet-drag' },
-        el('div', { class: 'sw-find' }, icon('search'), findEl),
-        el('button', { type: 'button', class: 'btn btn-sm', onclick: newDraft, title: 'New draft (' + keys('⌘⌥N') + ')' }, icon('plus'), 'New draft')),
-      curEl, listEl, footEl);
-  }
-
-  const stageName = (c) => { if (!c || !c.schema) return null; const n = Object.keys(c.schema); return n.find((k) => c.schema[k].type === 'status') || n.find((k) => c.schema[k].type === 'select') || null; };
-
-  function metaOf(d) {
-    const fetched = !(d.notionId && !d.contentFetchedAt && !d.text);
-    const words = Store.countWords(d.text);
-    const out = [el('span', { text: relTime(d.updatedAt) })];
-    if (fetched) out.push(el('span', { text: words + ' ' + plural(words, 'word', 'words') }), el('span', { text: money(words * 10) }));
-    return out;
-  }
-
-  function renderDraftList() {
-    if (!listEl) return;
-    const cur = app().state.draft;
-    const c = Sync.config();
-    // This draft: its title (a link to Notion), its counts, and its Notion properties.
-    if (cur) {
-      const title = Store.displayTitle(cur);
-      const linked = !!(cur.url && /^https?:\/\//.test(cur.url));
-      curEl.replaceChildren(
-        el('div', { class: 'sw-cur-title' }, linked ? el('a', { href: cur.url, target: '_blank', rel: 'noopener', title: 'Open in Notion', text: title }) : el('span', { text: title })),
-        el('div', { class: 'sw-cur-meta' }, metaOf(cur), linked ? el('a', { href: cur.url, target: '_blank', rel: 'noopener', class: 'link', text: 'Open in Notion' }) : null),
-        propGrid(cur));
-    }
-    const focusKey = document.activeElement && listEl.contains(document.activeElement) ? document.activeElement.dataset.key : null;
-    const sn = stageName(c);
-    const rows = Store.listDrafts().filter((d) => !cur || d.id !== cur.id)
-      .filter((d) => !query || Store.displayTitle(d).toLowerCase().includes(query))
-      .map((d) => {
-        const title = Store.displayTitle(d);
-        const v = sn && d.props && d.props[sn];
-        const color = v && c.schema[sn].colors ? c.schema[sn].colors[v] : null;
-        const meta = metaOf(d);
-        if (v && typeof v === 'string') meta.unshift(el('span', { class: 'stage' }, el('span', { class: 'stage-dot', style: 'background:' + (COLORS[color] || COLORS.gray) }), v));
-        return el('li', { class: 'sw-row' },
-          el('button', { type: 'button', class: 'sw-open', dataset: { key: 'open:' + d.id }, 'aria-label': 'Open “' + title + '”', onclick: () => { dismiss(draftsDlg); app().openDraft(d.id); } },
-            el('span', { class: 'sw-title', text: title }), el('span', { class: 'sw-meta' }, meta)),
-          el('button', { type: 'button', class: 'btn-icon sw-del', 'aria-label': 'Delete “' + title + '”', title: 'Delete', dataset: { key: 'del:' + d.id }, onclick: () => deleteDraft(d.id) }, icon('trash')));
-      });
-    if (!rows.length) rows.push(el('li', { class: 'sw-empty', text: query ? 'No draft has “' + query + '” in its title.' : 'No other drafts yet.' }));
-    listEl.replaceChildren(...rows);
-    if (focusKey) { const again = listEl.querySelector('[data-key="' + CSS.escape(focusKey) + '"]'); if (again) again.focus({ preventScroll: true }); }
-    footEl.replaceChildren(...[c ? 'Synced with ' + String(c.dbTitle || '').replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, '').replace(/\s+/g, ' ').trim() + '.' : 'Drafts live in this browser. ',
-      c ? null : el('button', { type: 'button', class: 'link', text: 'Connect Notion', onclick: () => { dismiss(draftsDlg); openSettings('notion'); } })].filter(Boolean));
-  }
-  const renderList = renderDraftList;
-
-  /* ---------- Notion properties of the open draft ---------- */
-  function propGrid(d) {
-    const c = Sync.config();
-    if (!c || d.localOnly || !c.schema) return null;
-    const rank = (t) => ['status', 'select', 'multi_select', 'date'].indexOf(t) + 1 || 9;
-    const names = Object.keys(c.schema).filter((n) => n !== c.titleProp && CHIP_TYPES.has(c.schema[n].type))
-      .sort((x, y) => rank(c.schema[x].type) - rank(c.schema[y].type));
-    if (!names.length) return null;
-    return el('div', { class: 'props' }, names.flatMap((n) => [el('span', { class: 'prop-name', text: n }), propVal(d, n, c.schema[n])]));
-  }
-
-  function showValue(s, v) {
-    if (v == null || v === '' || (Array.isArray(v) && !v.length)) return '';
-    if (s.type === 'multi_select') return v.join(', ');
-    if (s.type === 'date') {
-      const t = Date.parse(String(v).slice(0, 10) + 'T12:00:00');
-      return isNaN(t) ? String(v) : new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
-    }
-    if (s.type === 'checkbox') return v ? 'Yes' : 'No';
-    return String(v);
-  }
-
-  function propVal(d, name, s) {
-    const v = d.props[name];
-    const shown = showValue(s, v);
-    const color = s.colors && typeof v === 'string' ? s.colors[v] : null;
-    const b = el('button', { type: 'button', class: 'prop-val' + (shown ? '' : ' is-empty'), 'aria-label': name + ': ' + (shown || 'empty'), dataset: { key: 'prop:' + d.id + ':' + name } },
-      color ? el('span', { class: 'prop-dot', style: 'background:' + (COLORS[color] || COLORS.gray) }) : null, shown || 'Empty');
-    const set = (value) => { app().setProp(d, name, value); renderDraftList(); };
-    b.addEventListener('click', () => {
-      if (s.type === 'checkbox') { set(!v); return; }
-      if (s.type === 'status' || s.type === 'select') {
-        const items = (s.options || []).map((o) => ({ label: o, value: o, checked: o === v }));
-        if (s.type === 'select' && v) items.push({ type: 'sep' }, { label: 'Clear', value: null });
-        menu(b, items, (it) => set(it.value));
-        return;
-      }
-      if (s.type === 'multi_select') {
-        const chosen = new Set(Array.isArray(v) ? v : []);
-        menu(b, (s.options || []).map((o) => ({ label: o, value: o, checked: chosen.has(o) })), (it, btn) => {
-          if (chosen.has(it.value)) chosen.delete(it.value); else chosen.add(it.value);
-          btn.setAttribute('aria-checked', String(chosen.has(it.value)));
-          app().setProp(d, name, [...chosen]);
-          return true;
-        }, null, renderDraftList);
-        return;
-      }
-      openFieldMenu(b, d, name, s, v);
-    });
-    return b;
-  }
-
-  function openFieldMenu(chip, d, name, s, v) {
-    if (s.type === 'date') {
-      const cal = TDW.UI.calendar({ value: v ? String(v).slice(0, 10) : '', onPick: (iso) => { app().setProp(d, name, iso || null); closeMenu(); renderDraftList(); } });
-      menu(chip, [], () => false, cal);
-      cal.focusDay();
-      return;
-    }
-    const type = { number: 'number', url: 'url', email: 'email', phone_number: 'tel' }[s.type] || 'text';
-    const input = el('input', { type, class: 'menu-input', 'aria-label': name, value: v == null ? '' : String(v) });
-    const save = () => {
-      const raw = input.value.trim();
-      app().setProp(d, name, raw === '' ? null : s.type === 'number' ? Number(raw) : raw);
-      closeMenu();
-      renderDraftList();
-    };
-    const form = el('form', { class: 'menu-form' }, el('label', { class: 'menu-form-label', text: name }), input,
-      el('div', { class: 'row-end' },
-        v != null && v !== '' ? el('button', { type: 'button', class: 'btn-quiet btn-sm', text: 'Clear', onclick: () => { input.value = ''; save(); } }) : null,
-        el('button', { type: 'submit', class: 'btn btn-sm', text: 'Save' })));
-    form.noValidate = true;
-    form.addEventListener('submit', (e) => { e.preventDefault(); save(); });
-    menu(chip, [], () => false, form);
-    input.focus();
-  }
-
-  function newDraft() {
-    if (draftsDlg.open) dismiss(draftsDlg);
-    app().newDraft('');
-    app().setMode('write');
-    TDW.Editor.focus();
-  }
-
-  function deleteDraft(id) {
-    const d = Store.getDraft(id);
-    if (!d) return;
-    const wasOpen = app().state.draft === d;
-    if (wasOpen) app().saveNow();
-    const copy = JSON.parse(JSON.stringify(d));
-    Sync.trash(d);
-    Store.deleteDraft(id);
-    app().draftDeleted(id);
-    renderDraftList();
-    toast('Deleted “' + Store.displayTitle(copy) + '”', {
-      label: 'Undo',
-      run: () => {
-        Store.saveDraft(copy);
-        Sync.restore(copy);
-        if (wasOpen) app().openDraft(copy.id);
-        if (draftsDlg.open) renderDraftList();
-      }
-    });
-  }
-
-  function openDrafts() {
-    app().saveNow();
-    query = '';
-    findEl.value = '';
-    renderDraftList();
-    present(draftsDlg, { anchor: $('spine-title'), onDismiss: () => TDW.Editor.focus() });
-    if (!TDW.UI.isNarrow()) findEl.focus({ preventScroll: true });
-    else draftsDlg.focus();
-  }
+  /* ---------- Drafts: the sidebar lives in drafts.js ---------- */
+  const draftsDlg = { get open() { return TDW.Drafts.isOpen(); } };
+  const renderDraftList = () => TDW.Drafts.render();
+  const openDrafts = () => TDW.Drafts.open();
+  const newDraft = () => TDW.Drafts.newDraft();
+  // Settings never opens over the drafts sheet; a docked sidebar stays where it is.
+  const closeDraftsSheet = () => { const d = $('drafts-dialog'); if (d && d.open) dismiss(d); };
 
   /* ---------- Settings ---------- */
   const SECTIONS = [
@@ -274,6 +90,8 @@
 
   function lookSection(s) {
     return group(null,
+      row('Review marks', segmented({ label: 'Review marks', value: s.marks === 'highlighter' ? 'highlighter' : 'pencil', options: [{ value: 'pencil', label: 'Pencil' }, { value: 'highlighter', label: 'Highlighter' }], onChange: (v) => update({ marks: v }) }),
+        'Pencil underlines what to fix. Highlighter washes it in a light color for each kind.'),
       row('Theme', segmented({ label: 'Theme', value: app().themeSetting(s), options: [{ value: 'auto', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], onChange: (v) => update({ theme: v }) }),
         'System follows your device: light by day, graphite at night.'));
   }
@@ -520,7 +338,7 @@
   }
 
   function openSettings(sec) {
-    if (draftsDlg.open) dismiss(draftsDlg);
+    closeDraftsSheet();
     section = SECTIONS.some((x) => x[0] === sec) ? sec : 'writing';
     drawSettings(false);
     settingsDlg.classList.toggle('is-pushed', !!sec && SECTIONS.some((x) => x[0] === sec));
@@ -532,18 +350,17 @@
 
   TDW.Dialogs = {
     init() {
-      draftsDlg = $('drafts-dialog');
       settingsDlg = $('settings-dialog');
-      buildDrafts();
+      TDW.Drafts.init();
       Account.onChange(() => { if (settingsDlg.open && accountRefresh) accountRefresh(); });
       document.addEventListener('keydown', (e) => {
         const mod = (e.metaKey || e.ctrlKey) && !e.shiftKey;
         if (mod && e.altKey && e.code === 'KeyN') { e.preventDefault(); newDraft(); }
         else if (mod && !e.altKey && e.key === ',') { e.preventDefault(); openSettings(); }
-        else if (mod && !e.altKey && String(e.key).toLowerCase() === 'o') { e.preventDefault(); if (draftsDlg.open) dismiss(draftsDlg); else openDrafts(); }
+        else if (mod && !e.altKey && String(e.key).toLowerCase() === 'o') { e.preventDefault(); TDW.Drafts.toggle(); }
       });
     },
     openDrafts, openSettings, refreshSettings, renderDraftList, newDraft,
-    isDraftsOpen() { return !!draftsDlg && draftsDlg.open; }
+    isDraftsOpen() { return TDW.Drafts.isOpen(); }
   };
 })();

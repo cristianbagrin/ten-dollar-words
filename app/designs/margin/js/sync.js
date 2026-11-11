@@ -931,6 +931,8 @@
   TDW.Sync = {
     init, connect, disconnect, adopt, isConnected, start, stop, noteEdit, noteProp, prepare, trash, restore,
     status: () => Object.assign({}, st),
+    // Sync now instead of at the next tick (only the tab that leads the sync can).
+    syncNow() { if (leader && !ticking) runTick(); return leader; },
     config: () => (isConnected() ? cfg() : null)
   };
 })();

@@ -146,3 +146,33 @@ Ulysses at their best.
   `TDW.Desk.toggleSheet`); in a direction without a concept, the call opens its replacement.
 - Old settings values (skins) map sensibly onto each direction's own themes.
 - No console errors; the app's tests still pass.
+
+## 5. The pick: Margin (round 2, 2026-11-11)
+
+Margin wins on writing, reviewing, over budget, drafts and the phone. Borrowed: Studio's
+highlights (as an option), Ledger's drafts grouped by month. Ledger and Studio stay in
+`app/designs/` until the owner says to delete them and promote Margin to `app/`.
+
+His calls, kept on any change:
+- **Nothing summarized.** No note counts ("8 notes"), no "Cuts here would save $60". What the
+  review knows sits beside the words it is about.
+- **A paragraph's cost has to mean something:** under each cost in the gutter, how much of it
+  is extra words ("$20 extra", the words its notes would cut). Each note shows what it saves.
+  Resting on the cost lights those words and notes.
+- **× on a note ignores that one note** (kept per draft in `tdw.ignored`; it comes back if the
+  sentence is rewritten; the palette brings all back). "Hide weakeners" still hides a kind.
+- **The grade explains itself on hover:** a ruler from 1 to 16, the draft's mark springing to
+  its place, a dot per paragraph, and four familiar kinds of writing in order with "This
+  draft" among them.
+- **Marks: pencil or highlighter,** switched at the head of the margin (also Settings › Look
+  and the palette) so he can live with both. The highlighter is the 中文 Board's: light, a
+  little off the line, tilted, darker at the ends, never the same twice; one color per kind.
+- **Drafts is a sidebar like Notion's:** hidden; it comes over when the pointer rests on the
+  left edge and leaves with it; the title (or ⌘O) keeps it open, docked beside the page from
+  1360px wide. Grouped by month by default; group, sort, filter and shown properties are his
+  to set (`tdw.draftsView`). Every property is a chip that opens its editor; empty ones show
+  as "+ Name" on the row he is on. ↗ in the title's line opens Notion. A tiny sync button
+  syncs now and says when it last did. The spine's sync dot shows only when sync needs him.
+- The stage beside the title in the spine is a button too.
+
+Not done yet: the highlighter and the grade ruler on the phone (the phone was approved as is).

@@ -66,7 +66,9 @@
     stage.hidden = !st;
     if (st) {
       stage.replaceChildren(el('span', { class: 'stage-dot', style: 'background:' + (COLORS[st.color] || COLORS.gray) }), el('span', { text: st.value }));
-      stage.title = st.name + ': ' + st.value;
+      stage.dataset.tip = st.name + '. Click to change';
+      stage.dataset.prop = st.name;
+      stage.setAttribute('aria-label', st.name + ': ' + st.value + '. Change');
     }
     nbBtn.hidden = !app().backspaceOff(d);
 
@@ -96,7 +98,9 @@
   function renderSync() {
     const b = $('spine-sync');
     const s = Sync.status();
-    const show = Sync.isConnected();
+    if (TDW.Drafts) TDW.Drafts.renderSync();
+    // The drafts sidebar has the sync button; here a dot shows only when sync needs you.
+    const show = Sync.isConnected() && (s.state === 'error' || s.state === 'offline');
     b.hidden = !show;
     if (!show) return;
     b.dataset.state = s.state || 'synced';
@@ -198,7 +202,10 @@
     nbBtn.addEventListener('click', () => app().setBackspaceOff(false));
     $('spine-stage').after(nbBtn);
     for (const b of [$('spine-title'), $('spine-spend'), $('spine-more'), $('spine-sync'), nbBtn]) b.addEventListener('mousedown', (e) => e.preventDefault());
-    $('spine-title').addEventListener('click', () => TDW.Dialogs.openDrafts());
+    $('spine-title').addEventListener('click', () => TDW.Drafts.toggle());
+    $('spine-title').dataset.tip = 'Drafts (' + UI.keys('⌘O') + ')';
+    $('spine-stage').addEventListener('mousedown', (e) => e.preventDefault());
+    $('spine-stage').addEventListener('click', () => { const d = app().state.draft; if (d && $('spine-stage').dataset.prop) TDW.Drafts.editProp($('spine-stage'), d, $('spine-stage').dataset.prop); });
     $('spine-spend').addEventListener('click', openTally);
     $('spine-more').addEventListener('click', () => TDW.Palette && TDW.Palette.toggle());
     $('spine-sync').addEventListener('click', syncMenu);

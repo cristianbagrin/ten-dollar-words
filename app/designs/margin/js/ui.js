@@ -89,6 +89,9 @@
     strike: svg('<path d="M3 8h10M10.8 5a2.8 2.3 0 00-2.8-1.5c-1.7 0-2.8.9-2.8 2M5 11a2.8 2.3 0 002.9 1.5c1.8 0 3-.9 3-2.2"/>'),
     code: svg('<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/>'),
     turn: svg('<path d="M3 3.5h10M3 8h6M3 12.5h10"/><path d="M11 6l2 2-2 2"/>'),
+    sidebar: svg('<rect x="2" y="3" width="12" height="10" rx="2"/><path d="M6 3v10"/>'),
+    arrowDown: svg('<path d="M8 3v10M4.5 9.5L8 13l3.5-3.5"/>'),
+    marker: svg('<path d="M10 2.5l3.5 3.5-5.8 5.8-3.9.4.4-3.9z"/><path d="M8.2 4.3l3.5 3.5M2.5 14h11"/>'),
     x: '<svg class="icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.3 6.9L14 1.5h-1.1L8.8 6.2 5.5 1.5H1.7l4.9 7.1-4.9 5.9h1.1l4.3-5 3.4 5h3.8L9.3 6.9zm-1.5 1.8l-.5-.7-4-5.6h1.7l3.2 4.5.5.7 4.1 5.9h-1.7L7.8 8.7z"/></svg>'
   };
 

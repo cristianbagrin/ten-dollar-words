@@ -28,12 +28,13 @@
     const ch = C && C.info ? C.info() : null;
     const out = [
       { group: 'Draft', label: 'New draft', icon: 'newDoc', keys: '⌘⌥N', run: () => TDW.Dialogs.newDraft(), words: 'create blank start' },
-      { group: 'Draft', label: 'Drafts', icon: 'drafts', keys: '⌘O', run: () => TDW.Dialogs.openDrafts(), words: 'switch open list notion stage find' },
+      { group: 'Draft', label: 'Drafts', icon: 'drafts', keys: '⌘O', run: () => TDW.Drafts.toggle(), words: 'switch open list notion stage find sidebar' },
       { group: 'Draft', label: 'Budget and word count', icon: 'dollar', run: () => TDW.Spine.openTally(), words: 'money spend words characters reading time grade' },
       { group: 'Draft', label: 'No backspace', icon: 'backspace', state: nb ? 'On' : 'Off', on: nb, run: () => app().setBackspaceOff(!nb), words: 'delete forward only write' },
 
       { group: 'Review', label: lens ? 'Stop reviewing' : 'Review this draft', icon: 'pencil', keys: '⌘E', run: () => app().toggleLens(), words: 'edit mode fixes lens grade marks' },
       { group: 'Review', label: 'Check the message', icon: 'target', desc: 'What a busy reader takes away (AI)', run: () => { if (!lens) app().setMode('edit'); TDW.Review.startMessage(); }, words: 'ai takeaway gemini' },
+      TDW.Review.ignoredCount() ? { group: 'Review', label: 'Bring back ignored notes', icon: 'undo', note: String(TDW.Review.ignoredCount()), run: () => { if (!lens) app().setMode('edit'); TDW.Review.restoreIgnored(); }, words: 'unignore restore dismissed hidden x' } : null,
       { group: 'Review', label: 'The Lab', icon: 'flask', keys: '⌃⇧L', note: 'Checks that mark, and Trim', page: 'lab', words: 'lab checks trim cut weak long tone hedges typos' },
 
       { group: 'Tools', label: 'Alternatives', icon: 'swap', keys: '⌃⇧A', run: () => TDW.Alts.open(), words: 'versions options a/b word sentence paragraph' },
@@ -58,6 +59,7 @@
       { group: 'Share', label: 'Open a file', icon: 'folder', run: () => TDW.Desk.openFile(), words: 'import md txt' },
       { group: 'Share', label: 'Post to X', icon: 'x', keys: '⌃⇧P', run: () => TDW.Desk.postToX(), words: 'twitter publish tweet thread' },
       { group: 'App', label: 'Settings', icon: 'sliders', keys: '⌘,', run: () => TDW.Dialogs.openSettings(), words: 'preferences account notion gemini sound font' },
+      { group: 'App', label: 'Review marks', icon: 'marker', state: st.settings.marks === 'highlighter' ? 'Highlighter' : 'Pencil', run: () => app().updateSettings({ marks: st.settings.marks === 'highlighter' ? 'pencil' : 'highlighter' }), words: 'highlight underline color hemingway' },
       { group: 'App', label: 'Theme', icon: 'contrast', note: { auto: 'System', light: 'Light', dark: 'Dark' }[app().themeSetting(st.settings)], page: 'theme', words: 'dark light night appearance' },
       { group: 'App', label: 'Keyboard shortcuts', icon: 'keyboard', keys: '⌃?', run: () => TDW.Desk.toggleSheet(), words: 'keys help' },
       document.fullscreenEnabled ? { group: 'App', label: document.fullscreenElement ? 'Leave full screen' : 'Full screen', icon: document.fullscreenElement ? 'shrink' : 'expand', run: fullScreen, words: 'focus' } : null);

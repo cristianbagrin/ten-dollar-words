@@ -310,3 +310,21 @@ input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color:
 @media (prefers-contrast: more) {
   :root, :root[data-theme="dark"] { --rule: color-mix(in srgb, var(--ink) 40%, transparent); --rule-2: color-mix(in srgb, var(--ink) 60%, transparent); --ink-3: var(--ink-2); }
 }
+
+/* ---------- Tips: a word about a control, the moment you rest on it ---------- */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip); position: absolute; z-index: 95; top: calc(100% + 6px); left: 50%; transform: translate(-50%, -2px);
+  width: max-content; max-width: 240px; padding: 5px 8px; border-radius: 6px; background: var(--ink); color: var(--paper);
+  font: 500 11.5px/1.35 var(--font-ui); letter-spacing: 0; text-align: left; white-space: normal; text-transform: none;
+  opacity: 0; pointer-events: none; transition: opacity 120ms ease, transform 160ms ease;
+}
+[data-tip].tip-end::after { left: auto; right: 0; transform: translate(0, -2px); }
+[data-tip].tip-start::after { left: 0; transform: translate(0, -2px); }
+[data-tip].tip-up::after { top: auto; bottom: calc(100% + 6px); }
+@media (hover: hover) {
+  [data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 350ms; }
+  [data-tip].tip-end:hover::after, [data-tip].tip-end:focus-visible::after, [data-tip].tip-start:hover::after, [data-tip].tip-start:focus-visible::after { transform: none; }
+}
+[data-tip][aria-expanded="true"]::after { display: none; }
+body:has(.menu) [data-tip]::after { display: none; }
