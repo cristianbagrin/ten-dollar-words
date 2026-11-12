@@ -1,7 +1,7 @@
 # Logo experiments for Margin
 
-Five candidates in the Margin palette (see `../DESIGN.md`). None is wired into the app yet:
-`app/icons/` still holds the old stamp. `contact-sheet.png` shows all five at 220, 64, 32 and
+Five candidates in the Margin palette (see `../DESIGN.md`). Number 5 won (below).
+`contact-sheet.png` shows all five at 220, 64, 32 and
 16px on the light and dark canvas.
 
 | File | Idea |
@@ -13,6 +13,8 @@ Five candidates in the Margin palette (see `../DESIGN.md`). None is wired into t
 | `05*.svg` | The pencil seen end on: a six-sided barrel, the core half blue, half red. On pencil blue. See below. |
 
 ## Logo 5, the pick
+
+`05b-tilted.svg` is the logo since 3.0.1; it is `app/icons/icon.svg`.
 
 The barrel is rolled 15°, halfway between resting on a flat and standing on a corner, so the
 tilt reads as meant. An upright version with a wood ring was tried and dropped. Four cores,
