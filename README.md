@@ -1,6 +1,6 @@
 # Ten Dollar Words
 
-A writing app where every word costs $10. Version 3 is the Margin design (`DESIGN.md`): one quiet page that never moves, a thin bar over it (the spine) with the draft's title on the left and what the words have cost so far on the right, and a review (⌘E) that arrives like an editor's pencil: hard sentences bracketed in the left gutter, phrases underlined, and short notes in the right margin beside their line. Everything else (drafts aside, formats, the Lab, Trim, challenges, Overflow, settings, sharing) is in the command palette (⌘K, or the ⋯ in the spine). Optional AI help comes from Google Gemini, and drafts can sync both ways with a Notion database.
+A writing app where every word costs $10. Version 3 is the Margin design (`docs/DESIGN.md`): one quiet page that never moves, a thin bar over it (the spine) with the draft's title on the left and what the words have cost so far on the right, and a review (⌘E) that arrives like an editor's pencil: hard sentences bracketed in the left gutter, phrases underlined, and short notes in the right margin beside their line. Everything else (drafts aside, formats, the Lab, Trim, challenges, Overflow, settings, sharing) is in the command palette (⌘K, or the ⋯ in the spine). Optional AI help comes from Google Gemini, and drafts can sync both ways with a Notion database.
 
 An account (Settings → Account) keeps your Notion connection, Gemini key, settings and dictionary, so every browser you sign in to is set up at once. On a phone the app speaks phone: taps instead of clicks and typing shortcuts instead of keyboard shortcuts.
 
@@ -39,7 +39,7 @@ Select text and press **✦ Ask AI** (or **Ctrl+J**, or "/ai"). Type what you wa
 
 ## The writing desk
 
-Version 2 adds the ideas in Jason Fried's demo of his own writing tool (`PLAN-v4.md`). The rule behind all of them: the tool marks, suggests and keeps things; it never rewrites your text unless you pick the words. Nothing you set aside is lost, and ⌘Z undoes all of it.
+Version 2 adds the ideas in Jason Fried's demo of his own writing tool (`docs/PLAN-v4.md`). The rule behind all of them: the tool marks, suggests and keeps things; it never rewrites your text unless you pick the words. Nothing you set aside is lost, and ⌘Z undoes all of it.
 
 ### Alternatives
 Any word, sentence or paragraph (the title too) can carry other versions of itself.
@@ -189,8 +189,8 @@ The review underlines unknown words in red pencil. Open its note for fixes, or "
 
 ```
 ./
-  PLAN.md … PLAN-v5-redesign.md   the build plans and design decisions (PLAN-v4-challenges.md: the challenge list)
-  DESIGN.md                the Margin design: tokens, layout, and where every feature lives
+  docs/DESIGN.md           the Margin design: tokens, layout, and where every feature lives
+  docs/PLAN.md … PLAN-v5-redesign.md   the build plans and design decisions (PLAN-v4-challenges.md: the challenge list)
   README.md                this file
   netlify.toml             publishes app/ and the account function
   package.json             @netlify/blobs, for the account function

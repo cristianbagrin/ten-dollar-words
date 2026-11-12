@@ -1,4 +1,4 @@
-// How the Margin direction reaches the tour's states, plus states only it has.
+// How the screenshot tour reaches its states in this app, plus states only it has.
 export const steps = {
   // Drafts is a sidebar: opened from the title it stays, so put it away before the next state.
   'D12-settings': async (page) => {
