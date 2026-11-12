@@ -14,7 +14,7 @@ Five candidates in the Margin palette (see `../DESIGN.md`). Number 5 won (below)
 
 ## Logo 5, the pick
 
-`05b-tilted.svg` is the logo since 3.0.1; it is `app/icons/icon.svg`.
+`05d-orange.svg` is the logo since 3.0.2; it is `app/icons/icon.svg`.
 
 The barrel is rolled 15°, halfway between resting on a flat and standing on a corner, so the
 tilt reads as meant. An upright version with a wood ring was tried and dropped. Four cores,
