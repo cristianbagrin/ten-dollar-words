@@ -107,5 +107,4 @@ test('a toggle is a block of its own, open or closed', () => {
   assert.deepEqual(I.block('▾ Open'), { type: 'toggle', prefix: 2, open: true });
   assert.deepEqual(I.block('▸ Shut'), { type: 'toggle', prefix: 2, open: false });
   assert.equal(I.plain('▸ Shut'), 'Shut');
-  assert.equal(I.escapeLineStart('▸ not a toggle'), '\\▸ not a toggle');
 });

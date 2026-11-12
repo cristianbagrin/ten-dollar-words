@@ -509,7 +509,7 @@
     if (!root || !root.children.length) return null;
     const li = vLineOf(Math.max(0, Math.min(v, vlength())));
     const el = root.children[li];
-    if (!el) return null;
+    if (!el || el.classList.contains('is-folded')) return null; // inside a closed toggle: it has no place on the page
     const box = el.getBoundingClientRect();
     const cs = getComputedStyle(el);
     const lh = parseFloat(cs.lineHeight) || 24;
@@ -811,6 +811,7 @@
     const s = typeof selAfter === 'function' ? selAfter() : selAfter;
     sel = s ? { start: s.start, end: s.end, backward: false } : sel;
     if (thread) fillEmptyPosts();
+    unfoldCaret();
     // Whole lines get rewritten, so marks follow the one region that really changed.
     const c = Marks.diff(before.text, text);
     fxMarks = shift(fxMarks, c.start, c.end, c.len);
@@ -822,6 +823,19 @@
     if (text !== before.text) record(before, kind || 'edit', typed || insert);
     render();
     call('onChange', { kind: kind || 'edit' });
+  }
+
+  // The closed toggle that hides the caret's line, if any, opens ("▸" and "▾" are the same length,
+  // so nothing else moves).
+  function unfoldCaret() {
+    const cl = vLineOf(sel.end);
+    if (endsFold(cl)) return;
+    let k = cl;
+    while (k > 0 && !endsFold(k)) k--;
+    if (k === cl || P[k].blk.type !== 'toggle' || P[k].blk.open !== false) return;
+    const keep = Object.assign({}, sel);
+    setModel(text.slice(0, starts[k]) + '▾' + text.slice(starts[k] + 1));
+    sel = keep;
   }
 
   // X: every separator opens a window, so two in a row (or one at the end) get an empty
