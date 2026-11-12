@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pencil, end on">
   <title>Pencil, end on</title>
-  <desc>The two-ended pencil seen from its end: a six-sided barrel with a core that is half blue, half red.</desc>
+  <desc>The two-ended pencil seen from its end: a six-sided barrel, the wood, and a core that is half blue, half red.</desc>
   <rect width="512" height="512" rx="112" fill="#2a6ad1"/>
-  <g transform="translate(256 256) rotate(17)">
-    <path d="M168 0L84 145.5L-84 145.5L-168 0L-84-145.5L84-145.5Z" fill="#ffffff" stroke="#ffffff" stroke-width="28" stroke-linejoin="round"/>
-    <path d="M0-86A86 86 0 0 0 0 86Z" fill="#2a6ad1"/>
-    <path d="M0-86A86 86 0 0 1 0 86Z" fill="#fb4712"/>
+  <g transform="translate(256 256)">
+    <path d="M0-172L149-86V86L0 172L-149 86V-86Z" fill="#ffffff" stroke="#ffffff" stroke-width="28" stroke-linejoin="round"/>
+    <circle r="116" fill="#e3e7ee"/>
+    <path d="M0-76A76 76 0 0 0 0 76Z" fill="#2a6ad1"/>
+    <path d="M0-76A76 76 0 0 1 0 76Z" fill="#fb4712"/>
   </g>
 </svg>
