@@ -417,3 +417,22 @@ test('highlights go to Notion as colors and come back; ghosts stay gray; taking 
   await M.applyOps('page', next, [text], ops, api, none);
   assert.equal(M.colorsOf(M.blocksToEntries(asBlocks(api.state))[0].rich), null);
 });
+
+test('underline and empty toggles go to Notion and come back', () => {
+  const N = require('../app/js/notion-map.js');
+  const blocks = [
+    { id: 'a', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: 'plain ' }, plain_text: 'plain ' }, { type: 'text', text: { content: 'under' }, plain_text: 'under', annotations: { underline: true } }] } },
+    { id: 'b', type: 'toggle', has_children: false, toggle: { rich_text: [{ type: 'text', text: { content: 'More' }, plain_text: 'More' }] } },
+    { id: 'c', type: 'toggle', has_children: true, toggle: { rich_text: [{ type: 'text', text: { content: 'Full' }, plain_text: 'Full' }] } }
+  ];
+  const entries = N.blocksToEntries(blocks);
+  assert.equal(entries[0].line, 'plain ++under++');
+  assert.equal(entries[1].line, '▾ More');
+  assert.equal(entries[2].opaque, true, 'a toggle that holds blocks is left whole');
+  assert.deepEqual(N.lineToSpec('▸ More'), { type: 'toggle', text: 'More' });
+  assert.ok(N.sameContent(entries.slice(0, 2), ['plain ++under++', '▸ More']), 'open or closed is the same block to Notion');
+  const rich = N.spliceRich(blocks[0].paragraph.rich_text, 'plain under');
+  assert.ok(!rich.some((r) => r.annotations && r.annotations.underline), 'taking the underline off in the draft takes it off in Notion');
+  const rich2 = N.spliceRich([], '++new++');
+  assert.equal(rich2[0].annotations.underline, true);
+});

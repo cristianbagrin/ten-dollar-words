@@ -45,7 +45,7 @@ async function store() {
   return blobsKV(getStore({ name: 'accounts', siteID: 'dev', token: 'dev', edgeURL: url, uncachedEdgeURL: url, consistency: 'strong' }));
 }
 
-const handle = createHandler({ kv: await store(), secure: false });
+const handle = createHandler({ kv: await store(), secure: false, resetCode: process.env.TDW_RESET_CODE || arg('--reset-code') || '' });
 const HEADERS = siteHeaders();
 
 http.createServer(async (req, res) => {

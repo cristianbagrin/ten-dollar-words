@@ -11,13 +11,15 @@
   const TDW = window.TDW = window.TDW || {};
   const Inline = TDW.Inline;
   const Marks = TDW.Marks;
-  const { MD, B, I, S, C, L } = Inline;
-  const STYLE = B | I | S | C;
+  const { MD, B, I, S, C, L, U } = Inline;
+  const STYLE = B | I | S | C | U;
   const TYPES = ['spelling', 'hard', 'veryHard', 'complex', 'passive', 'adverb', 'qualifier'];
   const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
   const PREFIX = { p: '', h1: '# ', h2: '## ', h3: '### ', li: '- ', quote: '> ' };
-  const PLACEHOLDER = { h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', li: 'List', ol: 'List', todo: 'To-do', quote: 'Quote' };
-  const LISTY = new Set(['li', 'ol', 'todo', 'quote']);
+  const PLACEHOLDER = { h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', li: 'List', ol: 'List', todo: 'To-do', quote: 'Quote', toggle: 'Toggle' };
+  const LISTY = new Set(['li', 'ol', 'todo', 'quote', 'toggle']);
+  // A fresh block of a type (Turn into, the shortcuts, the "/" menu).
+  const newBlk = (type, num) => (type === 'ol' ? { type, num: num || 1 } : type === 'todo' ? { type, checked: false } : type === 'toggle' ? { type, open: true } : { type: type || 'p' });
   const FREE_UNDO = new Set(['marks', 'stash', 'swap', 'move']); // undone even with backspace off: nothing typed is lost
 
   let root = null;       // the contenteditable
@@ -61,6 +63,7 @@
     const blk = { type: b.type };
     if (b.type === 'todo') blk.checked = b.checked;
     if (b.type === 'ol') blk.num = parseInt(md, 10) || 1;
+    if (b.type === 'toggle') blk.open = b.open;
     const chars = [];
     const map = [];
     if (b.type === 'opaque') {
@@ -86,10 +89,10 @@
     const t = o.blk.type;
     if (t === 'hr') return '---';
     if (t === 'opaque') return o.chars.map((c) => c.ch).join('');
-    const runs = o.chars.map((c) => ({ text: c.ch, b: !!(c.f & B), i: !!(c.f & I), s: !!(c.f & S), c: !!(c.f & C), link: c.link }));
+    const runs = o.chars.map((c) => ({ text: c.ch, b: !!(c.f & B), i: !!(c.f & I), s: !!(c.f & S), u: !!(c.f & U), c: !!(c.f & C), link: c.link }));
     let body = Inline.serialize(runs);
     if (t === 'p') body = Inline.escapeLineStart(body);
-    const prefix = t === 'ol' ? (o.blk.num || 1) + '. ' : t === 'todo' ? (o.blk.checked ? '[x] ' : '[ ] ') : PREFIX[t] || '';
+    const prefix = t === 'ol' ? (o.blk.num || 1) + '. ' : t === 'todo' ? (o.blk.checked ? '[x] ' : '[ ] ') : t === 'toggle' ? (o.blk.open === false ? '▸ ' : '▾ ') : PREFIX[t] || '';
     return prefix + body;
   }
 
@@ -271,8 +274,8 @@
       let b = a + 1;
       while (b < p.chars.length && key(p.chars[b]) === key(p.chars[a])) b++;
       const c = p.chars[a];
-      const cls = [c.f & B ? 'b' : '', c.f & I ? 'i' : '', c.f & S ? 's' : '', c.f & C ? 'c' : '', c.link ? 'lk' : ''].filter(Boolean).join(' ');
-      if (cls) out.push({ start: a, end: b, open: '<span class="' + cls + '"' + (c.link ? ' title="' + esc(c.link) + '"' : '') + '>', close: '</span>' });
+      const cls = [c.f & B ? 'b' : '', c.f & I ? 'i' : '', c.f & S ? 's' : '', c.f & U ? 'u' : '', c.f & C ? 'c' : '', c.link ? 'lk' : ''].filter(Boolean).join(' ');
+      if (cls) out.push({ start: a, end: b, open: '<span class="' + cls + '"' + (c.link ? ' data-href="' + esc(c.link) + '"' : '') + '>', close: '</span>' });
       a = b;
     }
     return out;
@@ -283,6 +286,7 @@
     const t = p.blk.type;
     const a = { cls: 'ln ln-' + t, n: '', ph: '' };
     if (t === 'todo' && p.blk.checked) a.cls += ' is-done';
+    if (t === 'toggle' && p.blk.open === false) a.cls += ' is-closed';
     if (t === 'ol') a.n = String(olNum) + '.';
     if (!p.vis && PLACEHOLDER[t]) { a.cls += ' is-blank'; a.ph = PLACEHOLDER[t]; }
     if (!p.vis && t === 'p') a.cls += ' ln-empty';
@@ -294,6 +298,12 @@
       }
     }
     return a;
+  }
+
+  // A toggle holds the lines under it until a blank line, a heading, a divider or the next toggle.
+  function endsFold(i) {
+    const t = P[i].blk.type;
+    return t === 'toggle' || t === 'hr' || t === 'h1' || t === 'h2' || t === 'h3' || (t === 'p' && !P[i].vis);
   }
 
   // A line's HTML depends only on its markdown and the marks on it, so it is kept and reused:
@@ -353,9 +363,13 @@
     const n = lines.length;
     const items = new Array(n);
     let ol = 0;
+    let folded = false; // inside a closed toggle: its lines, up to the next gap, heading, divider or toggle
     for (let i = 0; i < n; i++) {
       ol = P[i].blk.type === 'ol' ? ol + 1 : 0;
       const a = lineAttrs(i, ol);
+      if (endsFold(i)) folded = false;
+      if (folded) a.cls += ' is-folded';
+      if (P[i].blk.type === 'toggle' && P[i].blk.open === false) folded = true;
       a.html = lineHTML(i, byLine.get(i) || NONE, byLayer);
       const pa = palts.get(i);
       if (pa) { a.cls += ' has-palt' + (pa.id === openAlt ? ' is-open' : ''); a.alt = pa.id; }
@@ -769,6 +783,8 @@
 
   function undo() {
     const e = history.undo[history.undo.length - 1];
+    // Something done to the draft since the last edit (its format, its budget…) goes back first.
+    if (call('beforeUndo', e ? e.at : 0) === true) return;
     if (!e) return;
     if (call('canDelete') === false && e.after.text !== e.before.text && !FREE_UNDO.has(e.kind)) { call('onBlocked'); return; } // undo would take text away
     history.undo.pop();
@@ -885,7 +901,7 @@
     const ls = String(md).replace(/\r\n?/g, '\n').split('\n');
     if (ls.length === 1) {
       const p = parseLine(ls[0]);
-      if (p.blk.type === 'p' && !/[\\*_~`[]/.test(ls[0])) return { pieces: [{ chars: charsOf(ls[0], style) }] };
+      if (p.blk.type === 'p' && !/[\\*_~`[+]/.test(ls[0])) return { pieces: [{ chars: charsOf(ls[0], style) }] };
       return { pieces: [{ chars: p.chars.map((c) => Object.assign({}, c)) }], firstBlk: p.blk.type !== 'p' ? p.blk : null };
     }
     const ps = ls.map(parseLine);
@@ -902,7 +918,7 @@
     const s = String(data).replace(/\r\n?/g, '\n');
     const typedOne = kind === 'type';
     const style = sel.end > sel.start ? (() => { const i = vLineOf(sel.start), k = sel.start - vstarts[i]; const c = P[i].chars[k]; return pending || (c ? { f: c.f, link: c.link } : styleAt(sel.start)); })() : styleAt(sel.start);
-    if (!s.includes('\n') && (typedOne || !/[\\*_~`[]/.test(s))) {
+    if (!s.includes('\n') && (typedOne || !/[\\*_~`[+]/.test(s))) {
       editVis(sel.start, sel.end, [{ chars: charsOf(s, style) }], kind, s);
       if (typedOne) autoformat(s);
       return;
@@ -952,6 +968,7 @@
       '*': [['**', B], ['*', I]],
       '_': [['__', B], ['_', I]],
       '~': [['~~', S], ['~', S]],
+      '+': [['++', U]],
       '`': [['`', C]]
     }[ch];
     if (!rules) return;
@@ -1101,7 +1118,7 @@
     if (blk.type === 'ol') return { type: 'ol', num: (blk.num || 1) + 1 };
     if (blk.type === 'todo') return { type: 'todo', checked: false };
     if (blk.type === 'quote') return { type: 'quote' };
-    return { type: 'p' };
+    return { type: 'p' }; // after a toggle's heading comes what it holds
   }
 
   function newline(soft) {
@@ -1113,6 +1130,10 @@
       }
       if (k === 0 && p.vis && p.blk.type !== 'opaque') {
         return commitLines(i, i, [{ blk: { type: 'p' }, chars: [] }, { blk: p.blk, chars: p.chars }], { line: i + 1, col: 0 }, 'enter');
+      }
+      // Enter on a closed toggle opens it, so the new line isn't born hidden.
+      if (p.blk.type === 'toggle' && p.blk.open === false) {
+        return commitLines(i, i, [{ blk: { type: 'toggle', open: true }, chars: p.chars.slice(0, k) }, { blk: { type: 'p' }, chars: p.chars.slice(k) }], { line: i + 1, col: 0 }, 'enter');
       }
     }
     editVis(sel.start, sel.end, [{ chars: [] }, { blk: soft ? { type: 'p' } : continuation(p.blk), chars: [] }], 'enter', '\n');
@@ -1161,7 +1182,7 @@
     for (let i = a; i <= b; i++) {
       const p = P[i];
       if (p.blk.type === 'hr' || p.blk.type === 'opaque') { objs.push({ md: lines[i] }); continue; }
-      const blk = all || type === 'p' ? { type: 'p' } : type === 'ol' ? { type: 'ol', num: ++num } : type === 'todo' ? { type: 'todo', checked: false } : { type };
+      const blk = all || type === 'p' ? { type: 'p' } : newBlk(type, ++num);
       objs.push({ blk, chars: p.chars });
     }
     const keep = { start: sel.start, end: sel.end };
@@ -1263,7 +1284,7 @@
     for (let i = a; i <= b; i++) {
       const p = P[i];
       if (p.blk.type === 'hr' || p.blk.type === 'opaque') { objs.push({ md: lines[i] }); continue; }
-      const blk = type === 'ol' ? { type: 'ol', num: ++num } : type === 'todo' ? { type: 'todo', checked: false } : { type };
+      const blk = newBlk(type, ++num);
       objs.push({ blk, chars: p.chars });
     }
     const caretLine = vLineOf(sel.start);
@@ -1278,8 +1299,24 @@
     commitLines(i, i, [{ blk: { type: 'todo', checked: !p.blk.checked }, chars: p.chars }], { sel: keep }, 'format');
   }
 
-  // ⌘K: link the selection. An empty address removes the link.
-  function linkPrompt() {
+  // Open or close a toggle. A caret left inside what it now hides moves up to its heading.
+  function toggleFold(i) {
+    const p = P[i];
+    if (p.blk.type !== 'toggle') return;
+    const open = p.blk.open === false;
+    let keep = { start: sel.start, end: sel.end };
+    if (!open) {
+      let z = i;
+      while (z + 1 < lines.length && !endsFold(z + 1)) z++;
+      const endOfHead = vstarts[i] + p.vis.length;
+      const zEnd = vstarts[z] + P[z].vis.length;
+      if ((sel.start > endOfHead && sel.start <= zEnd) || (sel.end > endOfHead && sel.end <= zEnd)) keep = { start: endOfHead, end: endOfHead };
+    }
+    commitLines(i, i, [{ blk: { type: 'toggle', open }, chars: p.chars }], { sel: keep }, 'format');
+  }
+
+  // ⌘K: link the selection. An empty address removes the link. remove: take the link off now.
+  function linkPrompt(remove) {
     let { start, end } = sel;
     if (start === end) {
       const i = vLineOf(start), k = start - vstarts[i];
@@ -1309,6 +1346,7 @@
       commitLines(i0, i1, objs, { sel: { start, end } }, 'format');
       focus();
     };
+    if (remove) { apply(''); return; }
     if (/^https?:\/\/\S+$/.test(label) && !current) { apply(label); return; }
     const rc = rectAtVis(start);
     if (!rc || !TDW.UI || !TDW.UI.menu) return;
@@ -1356,6 +1394,7 @@
     if (t === 'formatBold') return toggleStyle(B);
     if (t === 'formatItalic') return toggleStyle(I);
     if (t === 'formatStrikeThrough') return toggleStyle(S);
+    if (t === 'formatUnderline') return toggleStyle(U);
     if (t.startsWith('delete')) {
       if (call('canDelete') === false) { call('onBlocked'); return; }
       return deleteBy(t, e);
@@ -1401,24 +1440,9 @@
     if (e.defaultPrevented || e.isComposing) return;
     if (lineStartBackspace(e)) return;
     const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-    // Notion's block moves: ⌘⇧↑/↓ moves the block, ⌘D duplicates it.
-    if (mod && e.shiftKey && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !readOnly) {
-      e.preventDefault();
-      syncSel();
-      moveSelBlocks(e.key === 'ArrowUp' ? -1 : 1);
-      return;
-    }
-    if (mod && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 'd' && !readOnly) {
-      e.preventDefault();
-      syncSel();
-      const [a, b] = linesInSel();
-      duplicateLines(a, b);
-      return;
-    }
-    if (!mod) return;
+    if (!mod) return; // formatting and block shortcuts are in keys.js (wireKeys below)
     syncSel();
     const key = String(e.key || '').toLowerCase();
-    const code = e.code || '';
     let done = true;
     if (key === 'a' && !e.shiftKey && !e.altKey) {
       // Like Notion: the block first, then everything.
@@ -1435,18 +1459,31 @@
     if (key === 'z' && !e.shiftKey && !e.altKey) undo();
     else if ((key === 'z' && e.shiftKey) || (key === 'y' && !IS_MAC)) redo();
     else if (readOnly) done = false;
-    else if (key === 'b' && !e.altKey && !e.shiftKey) toggleStyle(B);
-    else if (key === 'i' && !e.altKey && !e.shiftKey) toggleStyle(I);
-    else if (e.shiftKey && !e.altKey && (key === 's' || (key === 'x' && IS_MAC))) toggleStyle(S); // Ctrl+Shift+X stashes
     else if (key === 'k' && !e.altKey && !e.shiftKey) linkPrompt();
-    else if (e.altKey && !e.shiftKey && /^Digit[1-3]$/.test(code)) setBlock('h' + code.slice(5));
-    else if (e.altKey && !e.shiftKey && code === 'Digit0') setBlock('p');
-    else if (e.shiftKey && code === 'Digit7') setBlock('ol');
-    else if (e.shiftKey && code === 'Digit8') setBlock('li');
-    else if (e.shiftKey && code === 'Digit9') setBlock('todo');
-    else if (key === 'enter' && e.shiftKey) { const i = vLineOf(sel.start); toggleTodo(i); }
+    else if (key === 'enter' && e.shiftKey) { const i = vLineOf(sel.start); if (P[i].blk.type === 'toggle') toggleFold(i); else toggleTodo(i); }
     else done = false;
     if (done) e.preventDefault();
+  }
+
+  // The shortcuts that format text and blocks. They can be rebound, so they live in keys.js.
+  function wireKeys() {
+    const K = TDW.Keys;
+    if (!K) return;
+    const run = (fn) => () => { if (readOnly) return false; syncSel(); fn(); };
+    K.on('bold', run(() => toggleStyle(B)));
+    K.on('italic', run(() => toggleStyle(I)));
+    K.on('underline', run(() => toggleStyle(U)));
+    K.on('strike', run(() => toggleStyle(S)));
+    K.on('code', run(() => toggleStyle(C)));
+    K.on('text', run(() => setBlock('p')));
+    for (const h of ['h1', 'h2', 'h3']) K.on(h, run(() => setBlock(h)));
+    K.on('todo', run(() => setBlock('todo')));
+    K.on('bullets', run(() => setBlock('li')));
+    K.on('numbers', run(() => setBlock('ol')));
+    K.on('toggle', run(() => setBlock('toggle')));
+    K.on('duplicate', run(() => { const [a, b] = linesInSel(); duplicateLines(a, b); }));
+    K.on('moveUp', run(() => { moveSelBlocks(-1); }));
+    K.on('moveDown', run(() => { moveSelBlocks(1); }));
   }
 
   /* ---------- Clipboard ---------- */
@@ -1493,6 +1530,7 @@
       if (tag === 'I' || tag === 'EM' || (el.style && el.style.fontStyle === 'italic')) s.i = true;
       if (tag === 'S' || tag === 'DEL' || tag === 'STRIKE' || /line-through/.test((el.style && (el.style.textDecoration || el.style.textDecorationLine)) || '')) s.s = true;
       if (tag === 'CODE' || tag === 'KBD') s.c = true;
+      if (tag === 'U' || tag === 'INS') s.u = true;
       if (tag === 'A') {
         const href = el.getAttribute('href') || '';
         if (/^(https?:|mailto:)/i.test(href)) s.link = href;
@@ -1664,6 +1702,7 @@
       root.contentEditable = 'true';
       root.addEventListener('beforeinput', onBeforeInput);
       root.addEventListener('keydown', onKeyDown);
+      wireKeys();
       root.addEventListener('input', (e) => {
         if (e.isComposing || composing) return;
         clearTimeout(reconcileTimer);
@@ -1718,14 +1757,34 @@
           insertText(data, 'paste');
         }
       });
-      // A to-do's box sits in the line's left padding: clicking there ticks it.
+      // A to-do's box and a toggle's arrow sit in the line's left padding: clicking there works them.
       root.addEventListener('mousedown', (e) => {
-        const el = e.target.closest && e.target.closest('.ln-todo');
+        const el = e.target.closest && e.target.closest('.ln-todo, .ln-toggle');
         if (!el || readOnly || el.parentNode !== root) return;
         const pad = parseFloat(getComputedStyle(el).paddingLeft) || 0;
         if (e.clientX > el.getBoundingClientRect().left + pad) return;
         e.preventDefault();
-        toggleTodo(Array.prototype.indexOf.call(root.children, el));
+        const i = Array.prototype.indexOf.call(root.children, el);
+        if (el.classList.contains('ln-toggle')) toggleFold(i); else toggleTodo(i);
+      });
+      // A double-click in the blank space after a line's last word selects that line. Left alone,
+      // the browser picks whatever is nearest in the page, often the empty line underneath.
+      root.addEventListener('mousedown', (e) => {
+        if (e.detail !== 2 || e.button !== 0 || e.defaultPrevented) return;
+        const kids = root.children;
+        let i = -1;
+        for (let k = 0; k < kids.length && k < lines.length; k++) {
+          const r = kids[k].getBoundingClientRect();
+          if (e.clientY >= r.top && e.clientY <= r.bottom) { i = k; break; }
+        }
+        if (i < 0 || !P[i].vis || P[i].blk.type === 'opaque') return;
+        const end = rectAtVis(vstarts[i] + P[i].vis.length);
+        if (!end || e.clientY < end.lineTop || e.clientX <= end.left + 1) return;
+        e.preventDefault();
+        if (document.activeElement !== root) root.focus({ preventScroll: true });
+        sel = { start: vstarts[i], end: vstarts[i] + P[i].vis.length, backward: false };
+        applySel();
+        call('onSelect');
       });
       root.addEventListener('focus', () => requestAnimationFrame(() => { if (document.activeElement === root && !readSel()) applySel(); }));
       document.addEventListener('selectionchange', onSelectionChange);
@@ -1836,7 +1895,7 @@
     block(i) {
       if (i < 0 || i >= lines.length) return null;
       const p = P[i];
-      return { type: p.blk.type, checked: !!p.blk.checked, md: lines[i], vis: p.vis, start: starts[i], end: lineEnd(i), el: root.children[i] || null };
+      return { type: p.blk.type, checked: !!p.blk.checked, md: lines[i], vis: p.vis, start: starts[i], text: starts[i] + (p.blk.type === 'hr' || p.blk.type === 'opaque' ? 0 : p.content), end: lineEnd(i), el: root.children[i] || null };
     },
     blockIndexOf(el) { const e = lineEl(el); return e ? Array.prototype.indexOf.call(root.children, e) : -1; },
     lineOfIndex(m) { return lineOf(Math.max(0, Math.min(m, text.length))); },
@@ -1852,7 +1911,7 @@
     // A new empty block after line i (Notion's "+"), with the caret in it.
     insertBlockAfter(i, type) {
       if (readOnly) return;
-      const blk = type && type !== 'p' ? (type === 'ol' ? { type: 'ol', num: 1 } : type === 'todo' ? { type: 'todo', checked: false } : { type }) : { type: 'p' };
+      const blk = newBlk(type, 1);
       commitLines(i, i, [{ md: lines[i] }, { blk, chars: [] }], { line: i + 1, col: 0 }, 'enter');
       focus();
     },
@@ -1862,6 +1921,29 @@
       const p = P[i];
       const chars = p.chars.slice(0, a).concat(p.chars.slice(b));
       commitLines(i, i, [{ blk: p.blk, chars }], { line: i, col: a }, 'format');
+    },
+    // Where each visible character of markdown [start, end) sits on screen, for effects that act
+    // on the letters themselves: [{ ch, x, y, w, h }], at most `max` (evenly thinned beyond that).
+    glyphs(start, end, max) {
+      const a = mdToVis(start), b = mdToVis(end);
+      const out = [];
+      if (b <= a || !root) return out;
+      const step = Math.max(1, Math.ceil((b - a) / (max || 200)));
+      const r = document.createRange();
+      for (let v = a; v < b; v += step) {
+        const i = vLineOf(v), k = v - vstarts[i];
+        const ch = P[i].vis[k];
+        if (!ch || /\s/.test(ch)) continue;
+        const p = indexToPoint(v);
+        if (p.node.nodeType !== 3 || p.offset >= p.node.data.length) {
+          const q = indexToPoint(v + 1);
+          if (q.node.nodeType !== 3 || q.offset < 1) continue;
+          r.setStart(q.node, q.offset - 1); r.setEnd(q.node, q.offset);
+        } else { r.setStart(p.node, p.offset); r.setEnd(p.node, p.offset + 1); }
+        const rc = r.getClientRects()[0];
+        if (rc && rc.width) out.push({ ch, x: rc.left, y: rc.top, w: rc.width, h: rc.height });
+      }
+      return out;
     },
     setLab(list) { labMarks = list && list.length ? list : []; render(); },
     getLab() { return labMarks; },
@@ -1968,8 +2050,15 @@
     },
     undo,
     redo,
-    toggleStyle(name) { syncSel(); toggleStyle({ bold: B, italic: I, strike: S, code: C }[name]); },
+    toggleStyle(name) { syncSel(); toggleStyle({ bold: B, italic: I, underline: U, strike: S, code: C }[name]); },
     link() { syncSel(); linkPrompt(); },
+    // A link on the page (its element): edit its address, or take the link off.
+    editLink(el, remove) {
+      const v = pointToIndex(el, 0);
+      if (v == null || readOnly) return;
+      sel = { start: v, end: v, backward: false };
+      linkPrompt(!!remove);
+    },
     setBlock,
     htmlToMd,
     cutPlan,

@@ -7,11 +7,9 @@
   const TDW = window.TDW = window.TDW || {};
   const { Marks, Editor, UI } = TDW;
   const app = () => TDW.App;
-  const IS_MAC = UI.device.apple;
 
   const text = () => Editor.getText();
   const ann = () => Editor.getAnnotations();
-  const hint = (k) => (IS_MAC ? k.replace(/Ctrl\+/g, '⌃').replace(/Shift\+/g, '⇧') : k);
 
   function opaque(start, end) {
     const t = text();
@@ -91,15 +89,14 @@
     const has = s.end > s.start;
     const r = ghostRange();
     const ghosted = !!r && (isGhosted(r) || (has && covered(r)));
+    const K = (id) => TDW.Keys.combo(id) || null;
     const list = [
-      { label: 'Alternatives for selection', note: hint('Ctrl+Shift+A'), value: 'alts' },
-      { label: 'AI alternatives for selection', note: hint('Ctrl+Shift+G'), value: 'ai' },
-      { label: 'Ask AI about this', note: hint('Ctrl+J'), value: 'talk', disabled: !has },
-      { label: 'Add a note', note: hint('Ctrl+Shift+M'), value: 'note' },
-      { label: 'Color…', value: 'color', disabled: !has },
-      { type: 'sep' },
-      { label: ghosted ? 'Revive' : 'Ghost it', note: hint('Ctrl+/'), value: 'ghost', disabled: !r },
-      { label: 'Stash this in Overflow', note: hint('Ctrl+Shift+X'), value: 'stash' },
+      { label: 'Ask AI', keys: K('askAI'), value: 'talk', disabled: !has },
+      { label: 'Alternatives', keys: K('alts'), value: 'alts' },
+      { label: 'Add a note', keys: K('note'), value: 'note' },
+      { label: ghosted ? 'Revive' : 'Ghost it', keys: K('ghost'), value: 'ghost', disabled: !r },
+      { label: 'Stash in Overflow', keys: K('stash'), value: 'stash' },
+      { label: 'Color', value: 'color', disabled: !has },
       { type: 'sep' },
       { label: 'Cut', value: 'cut', disabled: !has },
       { label: 'Copy', value: 'copy', disabled: !has },
@@ -110,7 +107,6 @@
 
   async function run(v) {
     if (v === 'alts') TDW.Alts && TDW.Alts.open();
-    else if (v === 'ai') TDW.Alts && TDW.Alts.aiForSelection();
     else if (v === 'ghost') toggleGhost();
     else if (v === 'talk') TDW.Notes && TDW.Notes.compose({ ai: true });
     else if (v === 'note') TDW.Notes && TDW.Notes.compose({ ai: false });
@@ -171,13 +167,8 @@
       if (at != null && (s.end <= s.start || at < s.start || at > s.end)) Editor.setCaret(at);
       openAt(e.clientX, e.clientY);
     });
-    document.addEventListener('keydown', (e) => {
-      if (document.querySelector('dialog[open]') || app().state.loading) return;
-      if (!e.ctrlKey || e.metaKey || e.altKey) return;
-      const k = String(e.key).toLowerCase();
-      if (!e.shiftKey && (k === '/' || e.code === 'Slash')) { e.preventDefault(); toggleGhost(); }
-      else if (e.shiftKey && (k === 'x' || e.code === 'KeyX')) { e.preventDefault(); stash(); }
-    });
+    TDW.Keys.on('ghost', () => toggleGhost());
+    TDW.Keys.on('stash', () => stash());
     document.addEventListener('selectionchange', () => requestAnimationFrame(placeTouchButton));
   }
 

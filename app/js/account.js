@@ -176,7 +176,7 @@
   function validSetting(k, v) {
     const d = Store.DEFAULTS[k];
     if (d === undefined || k === 'dictionary' || typeof v !== typeof d) return false;
-    return k !== 'highlights' || (!!v && !Array.isArray(v));
+    return (k !== 'highlights' && k !== 'keys') || (!!v && !Array.isArray(v));
   }
 
   /* ---------- The account's values into this browser ---------- */
@@ -383,6 +383,19 @@
     await pushNow();
   }
 
+  // A forgotten password: the account starts again under a new one (see the server's `reset`).
+  // What this browser has set up goes into it, the same as a new account.
+  async function resetPassword(email, code, password) {
+    const e = Vault.normEmail(email);
+    checkPassword(password);
+    const keys = await Vault.deriveKeys(e, password);
+    const res = await post('reset', { email: e, code: String(code || '').trim(), auth: keys.auth });
+    Store.setAccountEmail(res.email);
+    write({ email: res.email, userId: res.userId, key: keys.key, rev: res.rev, fields: snapshot(Date.now()), seq: 1, dirty: true, at: 0 });
+    start();
+    await pushNow();
+  }
+
   async function signIn(email, password) {
     const e = Vault.normEmail(email);
     const keys = await Vault.deriveKeys(e, password);
@@ -482,7 +495,7 @@
   }
 
   TDW.Account = {
-    init, signUp, signIn, signOut, changePassword, deleteAccount, pull, pushNow, noteDraft, draftMeta,
+    init, signUp, signIn, resetPassword, signOut, changePassword, deleteAccount, pull, pushNow, noteDraft, draftMeta,
     // While held (a Notion secret being tested, say), changes wait, then go as one.
     hold() {
       holds++;

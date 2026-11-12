@@ -74,6 +74,11 @@
     expand: svg('<path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/>'),
     shrink: svg('<path d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5"/>'),
     contrast: svg('<circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 010 11z" fill="currentColor" stroke="none"/>'),
+    send: svg('<path d="M13.5 2.5L7 9M13.5 2.5l-4 11-2.5-4.5-4.5-2.5z"/>'),
+    at: svg('<circle cx="8" cy="8" r="2.6"/><path d="M10.6 5.6v3.2a1.6 1.6 0 003.2 0V8a5.8 5.8 0 10-2.3 4.6"/>'),
+    linkedin: svg('<rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M5.4 7.2v3.6M5.4 5.2v.01M7.8 10.8V7.2M7.8 8.6c0-1.9 2.9-1.9 2.9 0v2.2"/>'),
+    copy: svg('<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 00-1-1h-6a1 1 0 00-1 1v6a1 1 0 001 1h2"/>'),
+    unlink: svg('<path d="M7.6 4.9l.9-.9a2.4 2.4 0 013.4 3.4l-.9.9M8.4 11.1l-.9.9a2.4 2.4 0 01-3.4-3.4l.9-.9M2.5 2.5l11 11"/>'),
     link: svg('<path d="M6.8 9.2l2.4-2.4M7.6 4.9l.9-.9a2.4 2.4 0 013.4 3.4l-.9.9M8.4 11.1l-.9.9a2.4 2.4 0 01-3.4-3.4l.9-.9"/>'),
     trash: svg('<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2c.05.7.6 1.3 1.3 1.3h3.2c.7 0 1.25-.6 1.3-1.3l.6-8.2"/>'),
     eye: svg(EYE),
@@ -123,7 +128,8 @@
   // Key caps for a shortcut written the Mac way: "⌘E" → <kbd>⌘</kbd><kbd>E</kbd>, or Ctrl+E.
   function kbd(mac) {
     const k = keys(mac);
-    const parts = device.apple ? [...k.replace(/\s+/g, '')] : k.split('+');
+    // Each modifier is a cap of its own; the key is one cap, however long its name (F12, Space, esc).
+    const parts = device.apple ? (k.replace(/\s+/g, '').match(/[⌘⌃⌥⇧]|[^⌘⌃⌥⇧]+/g) || []) : k.split('+').filter(Boolean);
     return el('span', { class: 'keys', 'aria-label': k }, parts.map((p) => el('kbd', { text: p })));
   }
 
@@ -297,7 +303,7 @@
     m.cleanup();
     if (m.onClose) m.onClose();
     m.node.classList.add('is-leaving');
-    setTimeout(() => m.node.remove(), reducedMotion() ? 0 : 140);
+    setTimeout(() => m.node.remove(), reducedMotion() ? 0 : 100);
     if (m.anchor && m.anchor.isConnected && m.returnFocus) m.anchor.focus({ preventScroll: true });
   }
 
@@ -538,7 +544,7 @@
       dlg._anim = spring({ from: dlg._y || 0, to: dlg.offsetHeight + 24, velocity: velocity || 0, response: 0.3, onUpdate: (y) => setY(dlg, y), onDone: finish });
       return;
     }
-    dlg._leaveTimer = setTimeout(finish, 150);
+    dlg._leaveTimer = setTimeout(finish, 110);
   }
 
   TDW.UI = {

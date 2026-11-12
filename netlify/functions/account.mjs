@@ -7,7 +7,8 @@ import { createHandler, blobsKV } from '../lib/account-api.mjs';
 export default async (req, context) => {
   const opts = { name: 'accounts', consistency: 'strong' };
   const store = context.deploy && context.deploy.context === 'production' ? getStore(opts) : getDeployStore(opts);
-  return createHandler({ kv: blobsKV(store) })(req, context.params.action);
+  // TDW_RESET_CODE (Site configuration → Environment variables) turns on "Forgot your password?".
+  return createHandler({ kv: blobsKV(store), resetCode: process.env.TDW_RESET_CODE || '' })(req, context.params.action);
 };
 
 export const config = { path: '/api/account/:action' };

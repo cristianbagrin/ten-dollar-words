@@ -109,6 +109,7 @@
     save();
     ensureTimer();
     render();
+    if (TDW.Bench) TDW.Bench.render();
   }
 
   // Back to how things were: the budget A5/A6 changed, the switch D2 turned on.
@@ -127,13 +128,19 @@
     save();
     stopTimer();
     render();
+    if (TDW.Bench) TDW.Bench.render();
     if (keep === false) return;
   }
 
   function met(c) {
     c.metAt = Date.now();
     c.final = R().evaluate(c, text(), ctxOf(c));
-    if (TDW.Sound) TDW.Sound.play('coin');
+    if (TDW.Sound) TDW.Sound.play('stamp');
+    // The stamp comes down on the card, and punches a little paper out of it.
+    setTimeout(() => {
+      const st = document.querySelector('.pcard[data-key="challenge"] .ch-stamp');
+      if (st && TDW.Fx) TDW.Fx.chads(st.getBoundingClientRect());
+    }, 120);
     const s = R().recordStreak(readJSON(STREAK_KEY, null), today());
     writeJSON(STREAK_KEY, s);
     stopTimer();
@@ -435,6 +442,15 @@
 
   const begin = (ids, lv, opts) => { collapsed = TDW.UI.isNarrow(); start(ids, lv, opts); TDW.Editor.focus(); };
 
+  // A roll spins the reel first; the challenge starts as it lands.
+  function rolled(ids) {
+    if (!ids || !ids.length || !ids[0]) return;
+    const d = draft;
+    const go = () => { if (draft === d) begin(ids, level()); };
+    if (!TDW.Fx || !TDW.Fx.on()) { go(); return; }
+    TDW.Fx.roll(R().LIST.map((c) => c.name), ids.map((id) => R().get(id).name).join(' + ')).then(go);
+  }
+
   /* ---------- The module ---------- */
   TDW.Challenges = {
     init() {
@@ -462,8 +478,8 @@
     },
     onMode() { render(); },
     info, pickList,
-    roll: () => begin([R().roll({ ai: hasAI() || TDW.mockAI })], level()),
-    combo: () => begin(R().combo({ ai: hasAI() || TDW.mockAI, ctx: { budget: draft ? draft.budget : 2000 }, level: level() }), level()),
+    roll: () => rolled([R().roll({ ai: hasAI() || TDW.mockAI })]),
+    combo: () => rolled(R().combo({ ai: hasAI() || TDW.mockAI, ctx: { budget: draft ? draft.budget : 2000 }, level: level() })),
     daily: () => { const d = R().daily(today()); begin([d.id], d.level, { daily: today(), seed: d.seed }); },
     pick: (id) => begin([id], level()),
     setLevel: (l) => writeJSON(LEVEL_KEY, l),

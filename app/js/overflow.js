@@ -31,12 +31,11 @@
     area.addEventListener('dragstart', onDragStart);
     area.addEventListener('focus', () => { clearTimeout(peekTimer); peekFrom = undefined; });
     area.addEventListener('blur', () => saveNow());
-    const use = el('button', { type: 'button', class: 'btn-quiet btn-sm ov-use', title: 'Put the paragraph at your caret into the page' }, 'Use in the page');
+    const use = el('button', { type: 'button', class: 'btn-quiet btn-sm ov-use' }, 'Use in the page');
     use.addEventListener('mousedown', (e) => e.preventDefault());
     use.addEventListener('click', usePick);
-    const k = (s) => UI().kbd(s);
     box = el('div', { class: 'ov' }, area,
-      el('div', { class: 'ov-foot' }, UI().device.touch ? null : el('span', null, k('⌃⇧X'), 'stashes'), UI().device.touch ? null : el('span', null, k('⌃↩'), 'uses'), use));
+      el('div', { class: 'ov-foot' }, use));
   }
 
   function mount() {
@@ -159,10 +158,8 @@
     e.dataTransfer.effectAllowed = 'copy';
   }
 
-  function onDocKey(e) {
-    if (!e.ctrlKey || e.metaKey || e.altKey || !e.shiftKey || e.code !== 'KeyO') return;
-    if (document.querySelector('dialog[open]:modal') && !M().sheetOpen('overflow')) return;
-    e.preventDefault();
+  function onKey() {
+    if (document.querySelector('dialog[open]:modal') && !M().sheetOpen('overflow')) return false;
     toggle();
   }
 
@@ -171,7 +168,7 @@
       if (box) return;
       build();
       mount();
-      document.addEventListener('keydown', onDocKey);
+      TDW.Keys.on('overflow', onKey);
       window.addEventListener('pagehide', saveNow);
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); });
       M().onChange((v) => { if (v === 'overflow') mount(); else saveNow(); });

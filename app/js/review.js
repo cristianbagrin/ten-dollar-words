@@ -85,7 +85,9 @@
     done();
     saveIgnored(before.concat(sig));
     app().refresh();
-    toast('Ignored.', { label: 'Undo', run: () => { saveIgnored(before); app().refresh(); } });
+    const back = () => { if (ignoredList().includes(sig)) { saveIgnored(ignoredList().filter((s) => s !== sig)); app().refresh(); } else return false; };
+    app().did('ignored note', back);
+    toast('Ignored', { label: 'Undo', run: back });
   }
   function restoreIgnored() {
     const before = ignoredList().slice();
@@ -300,6 +302,7 @@
     let k = 0;
     if (show) {
       const extra = lineExtras();
+      const whole = !!app().state.settings.paragraphCost; // off: only what is extra shows
       let off = 0, line = -1;
       for (const ln of Editor.getText().split('\n')) {
         const start = off;
@@ -307,6 +310,10 @@
         line++;
         const words = Engine.countWords(TDW.Inline.plain(ln));
         if (!words) continue;
+        const lineNo = Editor.lineOfIndex(start);
+        const xr = extra.get(lineNo);
+        const x = xr ? Math.min(xr.words, words) : 0;
+        if (!x && !whole) continue; // nothing to cut here, and the paragraph's own cost is switched off
         const rc = Editor.rectAt(start);
         if (!rc) continue;
         let c = costs[k];
@@ -317,16 +324,14 @@
           g.append(c);
           costs[k] = c;
         }
-        const lineNo = Editor.lineOfIndex(start);
-        const xr = extra.get(lineNo);
-        const x = xr ? Math.min(xr.words, words) : 0;
         const about = xr && xr.est ? '~' : '';
         c.hidden = false;
         c._line = lineNo;
         c.firstChild.textContent = money(words * 10);
+        c.firstChild.hidden = !whole;
         c.lastChild.textContent = x ? about + money(x * 10) + ' extra' : '';
         c.classList.toggle('has-extra', x > 0);
-        c.dataset.tip = words + ' ' + plural(words, 'word', 'words') + (x ? (about ? '. About ' : '. ') + x + ' of them ' + plural(x, 'is', 'are') + ' extra: the notes on this paragraph would cut ' + plural(x, 'it', 'them') + (about ? '. Long sentences and passive voice are estimates.' : '.') : '. Nothing here to cut.');
+        if (about) c.dataset.tip = 'An estimate'; else delete c.dataset.tip;
         c.style.top = Math.round(rc.lineTop - sr.top) + 'px';
         c.style.setProperty('--lh', Math.round(rc.lh) + 'px');
         k++;

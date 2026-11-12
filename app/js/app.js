@@ -7,7 +7,7 @@
   const { Engine, Editor, UI, Store, Sound, Dialogs, Spell, Sync, Formats, Account, Marks } = TDW;
   const opt = (name) => TDW[name] || null;
 
-  const APP_VERSION = '3.0.2';
+  const APP_VERSION = '3.1.0';
   const SAMPLE_TEXT = [
     'Every word you type costs ten dollars. That sounds harsh, but it is really the fastest way to learn to cut.',
     'Most people write long sentences because they are afraid that short ones will make them look simple to readers.',
@@ -22,7 +22,7 @@
     phone: 'On a phone, LinkedIn shows everything before this mark. The rest hides behind “…see more”.',
     desktop: 'On a computer, LinkedIn shows everything before this mark. The rest hides behind “…see more”.'
   };
-  const LENS_FADE = 200;
+  const LENS_FADE = 160;
 
   const $ = (id) => document.getElementById(id);
   const root = document.documentElement;
@@ -68,7 +68,10 @@
     if ('marks' in patch) refreshPanel();
     if ('sound' in patch) Sound.setProfile(patch.sound);
     if ('volume' in patch) Sound.setVolume(patch.volume);
+    if ('effectSounds' in patch) Sound.setEffects(patch.effectSounds);
     if ('noBackspace' in patch) updateBackspace();
+    if ('paragraphCost' in patch) refreshPanel();
+    if ('bench' in patch && opt('Bench')) TDW.Bench.render();
     if ('theme' in patch || 'pageFont' in patch || 'textSize' in patch || 'skin' in patch || 'autoNight' in patch) {
       Editor.render();
       requestAnimationFrame(() => { each((m) => m.onLayout && m.onLayout()); });
@@ -81,9 +84,12 @@
     applySettings();
     Sound.setProfile(state.settings.sound);
     Sound.setVolume(state.settings.volume);
+    Sound.setEffects(state.settings.effectSounds !== false);
     Spell.setPersonal(state.settings.dictionary);
+    TDW.Keys.load(state.settings.keys);
     Editor.setHidden(hiddenTypes());
     updateBackspace();
+    if (opt('Bench')) TDW.Bench.render();
     if (state.mode === 'edit') refresh();
     else Editor.render();
   }
@@ -156,6 +162,30 @@
     if (d && !d.localOnly && Sync.isConnected()) Sync.noteEdit(d.id);
   }
 
+  /* ---------- Undo for what isn't typing ----------
+     ⌘Z walks back through the text (the editor's own history) and through what was done to the
+     draft in between: its format, budget, stage, backspace switch, an ignored note, a deleted
+     draft. Whichever happened last goes first. */
+  const acts = [];
+  let undoing = false;
+  function did(label, undo, draftId) {
+    if (undoing) return;
+    acts.push({ label, undo, at: Date.now(), draftId: draftId === undefined ? (state.draft ? state.draft.id : null) : draftId });
+    if (acts.length > 60) acts.shift();
+  }
+  function undoAct(sinceEdit) {
+    let a = acts[acts.length - 1];
+    while (a && a.draftId && (!state.draft || a.draftId !== state.draft.id)) { acts.pop(); a = acts[acts.length - 1]; } // another draft's: gone with it
+    if (!a || a.at <= sinceEdit) return false;
+    acts.pop();
+    undoing = true;
+    let r;
+    try { r = a.undo(); } finally { undoing = false; }
+    if (r === false) return undoAct(sinceEdit); // already put back another way
+    UI.toast('Undone: ' + a.label);
+    return true;
+  }
+
   /* ---------- Formats ---------- */
   const foldCache = new Map();
   function foldOf(shown, cfg) {
@@ -188,7 +218,7 @@
     }
     if (edit && f.thread) {
       for (const p of Formats.posts(text)) {
-        const x = Formats.xPost(text, p.start, p.end, f.limit);
+        const x = Formats.post(text, p.start, p.end, f);
         if (x.over >= 0) fx.push({ type: 'overflow', start: x.over, end: p.end });
       }
     }
@@ -199,7 +229,7 @@
       post: f.thread ? (s, e) => {
         const slice = real.slice(s, e);
         const shown = Marks.stripGhosts(slice, ghosts().filter((g) => g.start < e && g.end > s).map((g) => ({ start: Math.max(0, g.start - s), end: Math.min(e - s, g.end - s) })));
-        return { words: Engine.countWords(shown), length: Formats.xPost(shown, 0, shown.length, f.limit).length, limit: f.limit };
+        return { words: Engine.countWords(shown), length: Formats.post(shown, 0, shown.length, f).length, limit: f.limit };
       } : null,
       addPost: UI.device.touch
     });
@@ -219,6 +249,8 @@
     const to = Formats.get(key);
     if (from === to) return;
     const anchor = captureAnchor();
+    const was = { format: from.key, budget: d.budget };
+    did('format', () => { if (state.draft !== d) return; setFormat(was.format); d.budget = was.budget; Store.saveDraft(d); Account.noteDraft(d); refreshPanel(); });
     if (d.budget === Formats.budgetOf(from, state.settings)) d.budget = Formats.budgetOf(to, state.settings);
     d.format = to.key;
     Store.saveDraft(d);
@@ -311,7 +343,11 @@
     openNewest();
   }
 
-  function setBudget(v) {
+  // byHand: the writer set it (so ⌘Z takes it back); a challenge moving the budget isn't that.
+  function setBudget(v, byHand) {
+    const d = state.draft;
+    const was = d.budget;
+    if (byHand && was !== v) did('budget', () => { if (state.draft === d) setBudget(was); });
     state.draft.budget = v;
     markDirty();
     saveNow();
@@ -327,6 +363,8 @@
   }
 
   function setProp(d, name, value) {
+    const was = d.props[name];
+    did(name, () => { if (Store.getDraft(d.id) === d) { setProp(d, name, was); if (TDW.Drafts) TDW.Drafts.render(); } }, null);
     d.props[name] = value;
     const c = Sync.config();
     const t = c && c.schema && c.schema[name] && c.schema[name].type;
@@ -338,23 +376,33 @@
   }
 
   // Every module the app hands the open draft to, in the order they set up.
-  const MODULES = ['Spine', 'Margin', 'Review', 'Alts', 'Menu', 'Overflow', 'Lab', 'Challenges', 'Desk', 'Blocks', 'Bubble', 'Notes', 'Palette'];
+  const MODULES = ['Spine', 'Margin', 'Review', 'Alts', 'Menu', 'Overflow', 'Lab', 'Challenges', 'Desk', 'Blocks', 'Bubble', 'Notes', 'Links', 'Bench', 'Palette'];
   function each(fn) { for (const n of MODULES) { const m = opt(n); if (m) try { fn(m); } catch (e) { console.error(n, e); } } }
   function spine(fn, arg) { const s = opt('Spine'); if (s && s[fn]) s[fn](arg); }
 
+  // Words leaving the page by a fix: their letters burst and the saving flies to the spend.
+  const shotOf = (start, end, opts) => (state.mode === 'edit' && !(opts && opts.silent) && opt('Fx') ? TDW.Fx.capture([{ start, end }]) : null);
+  function paid(saved, shot, opts) {
+    if (saved <= 0 || state.mode !== 'edit' || (opts && opts.silent)) return;
+    if (shot && opt('Fx')) TDW.Fx.cut(shot, saved);
+    Sound.play('coin');
+  }
+
   function edit(start, end, text, opts) {
     const before = state.words;
+    const shot = shotOf(start, end, opts);
     Editor.replaceRange(start, end, text);
     const saved = before - state.words;
-    if (saved > 0 && state.mode === 'edit' && !(opts && opts.silent)) Sound.play('coin');
+    paid(saved, shot, opts);
     return saved;
   }
 
   function cut(start, end, sentenceStart, opts) {
     const before = state.words;
+    const shot = shotOf(start, end, opts);
     Editor.cut(start, end, sentenceStart);
     const saved = before - state.words;
-    if (saved > 0 && state.mode === 'edit' && !(opts && opts.silent)) Sound.play('coin');
+    paid(saved, shot, opts);
     return saved;
   }
 
@@ -464,6 +512,7 @@
   function refreshPanel() {
     if (!state.draft) return;
     spine('render');
+    if (opt('Bench')) TDW.Bench.render();
     if (opt('Review')) TDW.Review.render(state.mode === 'edit' ? state.analysis : null);
   }
 
@@ -553,6 +602,8 @@
   function setBackspaceOff(on) {
     const d = state.draft;
     if (!d) return;
+    const wasNb = d.nb;
+    did('no backspace', () => { if (state.draft !== d) return; d.nb = wasNb; Store.saveDraft(d); Account.noteDraft(d); updateBackspace(); });
     d.nb = on === (state.settings.noBackspace && stageSaysNo(d)) ? null : on;
     Store.saveDraft(d);
     Account.noteDraft(d);
@@ -567,7 +618,7 @@
     spine('nudgeBackspace');
     if (blockWarned) return;
     blockWarned = true;
-    UI.toast('Backspace is off while you write. Review (' + UI.keys('⌘E') + ') can delete.');
+    UI.toast('Backspace is off while you write. Review (' + UI.keys(TDW.Keys.combo('review') || '⌘E') + ') can delete.');
   }
 
   /* ---------- Editor events ---------- */
@@ -626,18 +677,12 @@
     return { text: Formats.render(slice, 'plain').text, html: Formats.toHTML(slice) };
   }
 
-  function onDocKeydown(e) {
-    const mod = (e.metaKey || e.ctrlKey) && !e.altKey;
-    const key = String(e.key || '').toLowerCase();
-    const dialogOpen = !!document.querySelector('dialog[open]:modal');
-    if (mod && key === 'e' && !e.shiftKey) {
-      e.preventDefault();
-      if (!dialogOpen) toggleLens();
-    } else if (mod && key === 's' && !e.shiftKey) {
-      e.preventDefault();
+  function wireKeys() {
+    TDW.Keys.on('review', () => toggleLens());
+    TDW.Keys.on('save', () => {
       state.dirty = state.dirty || !!state.draft;
-      if (saveNow()) UI.toast('Saved in this browser' + (Sync.isConnected() ? ' and syncing to Notion' : ''));
-    }
+      if (saveNow()) UI.toast(Sync.isConnected() ? 'Saved, syncing to Notion' : 'Saved');
+    });
   }
 
   function wire() {
@@ -668,7 +713,16 @@
       onCaretMove();
     });
     editor.addEventListener('keyup', (e) => { if (/^(Arrow|Home|End|Page)/.test(e.key)) onCaretMove(); });
-    document.addEventListener('keydown', onDocKeydown);
+    wireKeys();
+    // ⌘Z works from anywhere on the page, not only with the caret in the text.
+    document.addEventListener('keydown', (e) => {
+      const mod = UI.device.apple ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+      if (!mod || e.altKey || String(e.key).toLowerCase() !== 'z' || e.defaultPrevented) return;
+      const t = e.target;
+      if (t === editor || (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"], dialog'))) return;
+      e.preventDefault();
+      if (e.shiftKey) Editor.redo(); else Editor.undo();
+    });
     let last = null;
     document.addEventListener('mousemove', (e) => {
       if (last && Math.hypot(e.clientX - last.x, e.clientY - last.y) <= 3) return;
@@ -690,6 +744,7 @@
     state.settings = Store.getSettings();
     applySettings();
     Sound.init(state.settings);
+    TDW.Keys.init(state.settings.keys);
 
     Editor.init({
       root: editor, surface: $('surface'), under: $('under'), aids: $('aids'),
@@ -697,6 +752,7 @@
         onChange: onInput,
         onSelect: () => { if (!pointerSelecting) onCaretMove(); else each((m) => m.onSelect && m.onSelect(Editor.getSelection())); },
         canDelete: () => !noBackspace(),
+        beforeUndo: (at) => undoAct(at),
         onBlocked: blocked,
         onNote: (ids) => opt('Notes') && TDW.Notes.openPins(ids),
         clipboard
@@ -743,7 +799,7 @@
     updateSettings, toggleHighlight, hiddenTypes, setBudget, setIntent, setProp, edit, cut, insertSample,
     addWord, removeWord, refreshPanel, updateSyncStatus: () => spine('renderSync'), openSettings: (section) => Dialogs.openSettings(section),
     syncChanged() { onList(); spine('renderSync'); },
-    setBackspaceOff, countNow, backspaceOff, themeSetting, fontOf
+    setBackspaceOff, countNow, backspaceOff, themeSetting, fontOf, did
   };
   boot();
 })();

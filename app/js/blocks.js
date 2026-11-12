@@ -11,8 +11,7 @@
   const TDW = window.TDW = window.TDW || {};
   const { Editor, UI, Marks } = TDW;
   const app = () => TDW.App;
-  const IS_MAC = UI.device.apple;
-  const mod = (k) => (IS_MAC ? '⌘' + k : 'Ctrl+' + k);
+  const K = (id) => TDW.Keys.combo(id) || null;
 
   // What a block can be turned into. key: what you type after "/" (with the label and aliases).
   const TYPES = [
@@ -23,6 +22,7 @@
     { type: 'li', label: 'Bulleted list', icon: '•', hint: '-', alias: 'bullet ul unordered list dash' },
     { type: 'ol', label: 'Numbered list', icon: '1.', hint: '1.', alias: 'numbered ol ordered list number' },
     { type: 'todo', label: 'To-do list', icon: '☐', hint: '[]', alias: 'todo to-do checkbox task check' },
+    { type: 'toggle', label: 'Toggle list', icon: '▸', hint: 'Hides what is under it', alias: 'toggle collapse fold details hide' },
     { type: 'quote', label: 'Quote', icon: '❝', hint: '>', alias: 'quote blockquote citation' },
     { type: 'hr', label: 'Divider', icon: '—', hint: '---', alias: 'divider hr line rule separator' }
   ];
@@ -39,9 +39,9 @@
 
   function build() {
     handle = UI.el('div', { class: 'blk-handle', hidden: true, 'aria-hidden': 'false' });
-    plus = UI.el('button', { type: 'button', class: 'blk-btn blk-plus', 'aria-label': 'Add a block below', title: 'Click to add below\n' + (IS_MAC ? '⌥' : 'Alt') + '-click to add above' });
+    plus = UI.el('button', { type: 'button', class: 'blk-btn blk-plus', 'aria-label': 'Add a block below' });
     plus.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
-    grip = UI.el('button', { type: 'button', class: 'blk-btn blk-grip', 'aria-label': 'Drag to move, click for the block menu', title: 'Drag to move\nClick to open the menu' });
+    grip = UI.el('button', { type: 'button', class: 'blk-btn blk-grip', 'aria-label': 'Drag to move, click for the block menu' });
     grip.innerHTML = '<svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><g fill="currentColor"><circle cx="3" cy="3.5" r="1.25"/><circle cx="7" cy="3.5" r="1.25"/><circle cx="3" cy="8" r="1.25"/><circle cx="7" cy="8" r="1.25"/><circle cx="3" cy="12.5" r="1.25"/><circle cx="7" cy="12.5" r="1.25"/></g></svg>';
     handle.append(plus, grip);
     dropLine = UI.el('div', { class: 'blk-drop', hidden: true, 'aria-hidden': 'true' });
@@ -78,7 +78,7 @@
     const lh = parseFloat(cs.lineHeight) || 24;
     const sheet = document.getElementById('sheet').getBoundingClientRect();
     handle.hidden = false;
-    handle.style.left = (sheet.left - 66) + 'px';
+    handle.style.left = (sheet.left - 60) + 'px';
     handle.style.top = (r.top + Math.min(lh, r.height) / 2 - 12) + 'px';
     handle.classList.toggle('is-sep', b.type === 'hr');
   }
@@ -87,7 +87,7 @@
     if (drag || !editable() || UI.device.touch) return;
     if (document.documentElement.classList.contains('alts-open')) { handle.hidden = true; return; }
     const sheet = document.getElementById('sheet').getBoundingClientRect();
-    const inX = e.clientX > sheet.left - 70 && e.clientX < sheet.right + 30;
+    const inX = e.clientX > sheet.left - 64 && e.clientX < sheet.right + 30;
     if (!inX || handle.contains(e.target) && !handle.hidden) { if (!inX) hide(); return; }
     const kids = root().children;
     if (!kids.length) return hide();
@@ -190,8 +190,7 @@
 
   function blockRange(a, b) {
     const A = Editor.block(a), B = Editor.block(b);
-    const s = A.start + (A.md.length - A.md.replace(/^(#{1,3} |- |\d+\. |\[[ xX]\] |> )/, '').length);
-    return { start: s, end: B.end };
+    return { start: A.text, end: B.end };
   }
 
   function openBlockMenu(a, b) {
@@ -200,16 +199,16 @@
     const many = b > a;
     const items = [
       { type: 'head', label: many ? (b - a + 1) + ' blocks' : typeOf(A.type).label },
-      { label: 'Turn into', note: '›', value: 'turn' },
-      { label: 'Color', note: '›', value: 'color' },
+      { label: 'Turn into', value: 'turn' },
+      { label: 'Color', value: 'color' },
       { type: 'sep' },
-      { label: 'Ask AI', note: '✦', value: 'ai' },
-      !many ? { label: 'Alternatives for this paragraph', value: 'alts' } : null,
+      { label: 'Ask AI', value: 'ai' },
+      !many ? { label: 'Alternatives', value: 'alts' } : null,
       { label: 'Add a note', value: 'note' },
       { type: 'sep' },
-      { label: 'Duplicate', note: mod('D'), value: 'dup' },
-      { label: 'Move up', note: IS_MAC ? '⌘⇧↑' : 'Ctrl+Shift+↑', value: 'up' },
-      { label: 'Move down', note: IS_MAC ? '⌘⇧↓' : 'Ctrl+Shift+↓', value: 'down' },
+      { label: 'Duplicate', keys: K('duplicate'), value: 'dup' },
+      { label: 'Move up', keys: K('moveUp'), value: 'up' },
+      { label: 'Move down', keys: K('moveDown'), value: 'down' },
       { label: 'Delete', value: 'del', danger: true }
     ].filter(Boolean);
     UI.menu(grip, items, (it) => {
@@ -358,8 +357,7 @@
       Editor.turnInto(line, line, x.type);
     } else if (x.kind === 'ai' || x.kind === 'note') {
       const b = Editor.block(line);
-      const pre = b.md.length - b.md.replace(/^(#{1,3} |- |\d+\. |\[[ xX]\] |> )/, '').length;
-      if (b.vis.trim()) Editor.select(b.start + pre, b.end);
+      if (b.vis.trim()) Editor.select(b.text, b.end);
       TDW.Notes && TDW.Notes.compose({ ai: x.kind === 'ai' });
     } else if (x.kind === 'alts') {
       TDW.Alts && TDW.Alts.open('paragraph');

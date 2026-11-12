@@ -200,7 +200,38 @@ export function createHandler(opts) {
     return fail(409, 'conflict', 'Changed on another device.', docOut(fresh && fresh.data && fresh.data.doc));
   }
 
+  async function removeAccount(userId, emailKey) {
+    await kv.del('user/' + userId);
+    await kv.del('email/' + emailKey);
+    await kv.del('fail/' + emailKey);
+    await dropSessions(userId, null);
+  }
+
   const actions = {
+    /* A forgotten password. The server can't read an account (the key is made from the password),
+       so a reset can only start it again: the old account goes and a new one takes the email, with
+       the new password. Nobody is emailed, so what proves the request is the site's reset code:
+       the TDW_RESET_CODE the site's owner set. Without one, resets are off. Wrong codes count
+       toward the same lockout as wrong passwords. */
+    async reset(body) {
+      const code = String(opts.resetCode || '');
+      if (code.length < 8) return fail(403, 'reset_off', 'Password reset isn’t set up on this site yet.');
+      const email = normEmail(body.email);
+      if (email.length > 254 || !EMAIL_RE.test(email)) return fail(400, 'bad_email', 'That email address looks wrong.');
+      if (!AUTH_RE.test(String(body.auth || ''))) return fail(400, 'bad_request', 'That request is missing something.');
+      const emailKey = sha(email);
+      if (await lockedOut(emailKey)) return fail(429, 'locked', 'Too many tries. Try again in 15 minutes.');
+      const got = crypto.createHash('sha256').update(String(body.code || '')).digest();
+      const want = crypto.createHash('sha256').update(code).digest();
+      if (!crypto.timingSafeEqual(got, want)) {
+        await noteFailure(emailKey);
+        return fail(401, 'wrong_code', 'That reset code is wrong.');
+      }
+      const idx = await kv.get('email/' + emailKey);
+      if (idx && idx.data) await removeAccount(idx.data.userId, emailKey);
+      return actions.signup(body);
+    },
+
     async signup(body) {
       const email = normEmail(body.email);
       if (email.length > 254 || !EMAIL_RE.test(email)) return fail(400, 'bad_email', 'That email address looks wrong.');
@@ -271,15 +302,11 @@ export function createHandler(opts) {
     async delete(body, s) {
       const bad = await verify(s.user, body.auth);
       if (bad) return bad;
-      const emailKey = sha(s.user.data.email);
-      await kv.del('user/' + s.userId);
-      await kv.del('email/' + emailKey);
-      await kv.del('fail/' + emailKey);
-      await dropSessions(s.userId, null);
+      await removeAccount(s.userId, sha(s.user.data.email));
       return json(200, { ok: true }, { 'Set-Cookie': cookie('', 0) });
     }
   };
-  const OPEN = new Set(['signup', 'login', 'logout']);
+  const OPEN = new Set(['signup', 'login', 'logout', 'reset']);
 
   return async function handle(req, action) {
     if (req.method !== 'POST') return fail(405, 'method', 'Use POST.', null);

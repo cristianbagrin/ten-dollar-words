@@ -83,8 +83,8 @@
 
   function hintKeys() {
     const k = (s) => UI.kbd(s);
-    if (UI.device.touch) return [UI.el('span', { text: 'Tap a version to try it on the page.' })];
-    return [UI.el('span', null, k('↩'), 'adds'), UI.el('span', null, k('↑'), k('↓'), 'try each'), UI.el('span', null, k('⌘⌫'), 'removes'), UI.el('span', null, k('esc'), 'keeps the page')];
+    if (UI.device.touch) return [];
+    return [UI.el('span', null, k('↑'), k('↓'), 'try each'), UI.el('span', null, k('⌘⌫'), 'removes')];
   }
 
   function placePanel() {
@@ -478,15 +478,8 @@
       const a = altOf(p._alt);
       if (a) openFor({ kind: a.kind, start: a.start, end: a.end });
     });
-    document.addEventListener('keydown', (e) => {
-      if (document.querySelector('dialog[open]')) return;
-      // Ctrl+Shift+A / G; Alt+Shift+A / G too, for browsers that keep Ctrl+Shift+A for themselves.
-      const combo = e.shiftKey && !e.metaKey && (e.ctrlKey !== e.altKey);
-      if (!combo) return;
-      const k = e.code === 'KeyA' ? 'a' : e.code === 'KeyG' ? 'g' : String(e.key).toLowerCase();
-      if (k === 'a') { e.preventDefault(); if (cur) closePanel(); else open(); }
-      else if (k === 'g') { e.preventDefault(); aiForSelection(); }
-    });
+    TDW.Keys.on('alts', () => { if (cur) closePanel(); else open(); });
+    TDW.Keys.on('aiAlts', () => aiForSelection());
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && cur && !panel.contains(e.target) && !UI.menuOpen() && !document.querySelector('dialog[open]')) {
         e.preventDefault();

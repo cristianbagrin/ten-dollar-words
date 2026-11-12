@@ -11,6 +11,7 @@
   const cache = {};
   let shared = null;
   let lastAt = 0;
+  let effects = true;
 
   /* Synthesis helpers: write into a Float32Array at sample rate sr. */
   function click(d, sr, t0, tau, amp, a) {
@@ -108,7 +109,46 @@
         coin: [make(0.30, 0.45, (d, sr) => {
           tone(d, sr, 0, 1568, 0.08, 0.6);
           tone(d, sr, 0.045, 2093, 0.12, 0.6);
-        })]
+        })],
+        // The desk: a ratchet for the challenge reel, a rubber stamp, a pencil stroke, the snap
+        // of a word struck out, paper torn to bits.
+        tick: times(4, (k) => make(0.05, 0.5, (d, sr) => {
+          click(d, sr, 0, 0.0007, 0.9, 0.95);
+          thump(d, sr, 0, 900 + 70 * k, 520, 0.006, 0.5);
+        })),
+        stamp: [make(0.34, 0.9, (d, sr) => {
+          thump(d, sr, 0, 150, 58, 0.07, 1);
+          click(d, sr, 0, 0.012, 0.8, 0.22);
+          click(d, sr, 0.004, 0.002, 0.5, 0.9);
+          thump(d, sr, 0.05, 90, 60, 0.05, 0.3);
+        })],
+        scratch: times(3, () => make(0.26, 0.5, (d, sr) => {
+          let y = 0, z = 0;
+          const n = d.length;
+          const wob = 55 + Math.random() * 30;
+          for (let i = 0; i < n; i++) {
+            const t = i / sr;
+            const env = Math.sin(Math.PI * Math.min(1, t / 0.24)) * (0.65 + 0.35 * Math.sin(2 * Math.PI * wob * t));
+            const w = Math.random() * 2 - 1;
+            y += 0.55 * (w - y);        // soften the top
+            z += 0.12 * (y - z);        // and take the body out: what is left is graphite on paper
+            d[i] += (y - z) * env;
+          }
+        })),
+        zap: times(3, (k) => make(0.07, 0.55, (d, sr) => {
+          let y = 0, z = 0;
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            const w = Math.random() * 2 - 1;
+            y += 0.7 * (w - y); z += 0.2 * (y - z);
+            d[i] += (y - z) * Math.exp(-t / 0.014);
+          }
+          thump(d, sr, 0, 2400 - 200 * k, 700, 0.005, 0.35);
+        })),
+        tear: times(2, () => make(0.22, 0.6, (d, sr) => {
+          for (let i = 0; i < 16; i++) click(d, sr, Math.random() * 0.14 * (i / 16 + 0.2), 0.0012 + Math.random() * 0.002, 0.25 + Math.random() * 0.6, 0.6 + Math.random() * 0.4);
+          thump(d, sr, 0, 210, 120, 0.02, 0.35);
+        }))
       };
     }
     if (PROFILES[profile] && !cache[profile]) cache[profile] = PROFILES[profile]();
@@ -150,18 +190,20 @@
     return 0;
   }
 
+  // Typing sounds follow the profile (Typewriter, Soft keys, Off); the desk's sounds have their own switch.
   function play(kind, opts) {
-    if (profile === 'off' || !ctx) return;
+    if (!ctx) return;
     const o = opts || {};
     const now = performance.now();
+    const desk = !!(shared && shared[kind]);
+    if (desk ? !effects : profile === 'off') return;
     if (o.repeat && now - lastAt < 50) return;
-    const list = (shared && shared[kind]) || (cache[profile] && cache[profile][kind]);
+    const list = desk ? shared[kind] : cache[profile] && cache[profile][kind];
     if (!list || !list.length) return;
-    lastAt = now;
-    if (kind !== 'bell' && kind !== 'coin') Sound.lastKeyAt = now;
+    if (!desk) { lastAt = now; Sound.lastKeyAt = now; }
     const src = ctx.createBufferSource();
     src.buffer = list[Math.floor(Math.random() * list.length)];
-    src.playbackRate.value = 1 + jitter(0.04);
+    src.playbackRate.value = (o.rate || 1) * (1 + jitter(0.04));
     const gain = ctx.createGain();
     gain.gain.value = (0.8 + Math.random() * 0.2) * (o.repeat ? 0.6 : 1) * (o.gain != null ? o.gain : 1);
     src.connect(gain);
@@ -182,10 +224,12 @@
     init(settings) {
       profile = settings.sound || 'typewriter';
       volume = typeof settings.volume === 'number' ? settings.volume : 0.35;
+      effects = settings.effectSounds !== false;
       window.addEventListener('pointerdown', unlock, { capture: true, once: false });
       window.addEventListener('keydown', unlock, { capture: true, once: false });
     },
     setProfile(p) { profile = p; build(); },
+    setEffects(on) { effects = !!on; },
     setVolume(v) {
       volume = v;
       if (master) master.gain.value = v * 0.6;

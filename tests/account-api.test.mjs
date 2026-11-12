@@ -188,3 +188,42 @@ test('the same flows on Netlify Blobs (the local Blobs server)', async (t) => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a reset needs the site code, then starts the account again under the new password', async () => {
+  const { createHandler: make, memoryKV: mem } = await import('../netlify/lib/account-api.mjs');
+  const AUTH1 = 'A'.repeat(43), AUTH2 = 'B'.repeat(43);
+  const callOn = (h) => (action, body, cookie) => h(new Request('http://x/api/account/' + action, {
+    method: 'POST', headers: Object.assign({ 'x-tdw': '1', 'content-type': 'application/json' }, cookie ? { cookie } : {}), body: JSON.stringify(body || {})
+  }), action);
+
+  const off = callOn(make({ kv: mem(), secure: false }));
+  assert.equal((await off('reset', { email: 'a@b.co', code: 'anything-long', auth: AUTH2 })).status, 403);
+
+  const kv = mem();
+  const api = callOn(make({ kv, secure: false, resetCode: 'correct-horse-battery' }));
+  const up = await api('signup', { email: 'a@b.co', auth: AUTH1 });
+  assert.equal(up.status, 200);
+  const oldId = (await up.json()).userId;
+  const oldCookie = up.headers.get('set-cookie').split(';')[0];
+
+  assert.equal((await api('reset', { email: 'a@b.co', code: 'wrong-code-entirely', auth: AUTH2 })).status, 401);
+  assert.equal((await api('login', { email: 'a@b.co', auth: AUTH1 })).status, 200, 'a wrong code changes nothing');
+
+  const res = await api('reset', { email: 'a@b.co', code: 'correct-horse-battery', auth: AUTH2 });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.notEqual(body.userId, oldId);
+  assert.equal(body.rev, 0);
+  assert.equal((await api('login', { email: 'a@b.co', auth: AUTH1 })).status, 401, 'the old password is gone');
+  assert.equal((await api('login', { email: 'a@b.co', auth: AUTH2 })).status, 200);
+  assert.equal((await api('pull', {}, oldCookie)).status, 401, 'old sessions are signed out');
+  assert.ok(![...kv.dump().keys()].some((k) => k.includes(oldId)), 'nothing of the old account is left');
+});
+
+test('wrong reset codes lock the email out like wrong passwords', async () => {
+  const { createHandler: make, memoryKV: mem } = await import('../netlify/lib/account-api.mjs');
+  const h = make({ kv: mem(), secure: false, resetCode: 'correct-horse-battery' });
+  const api = (body) => h(new Request('http://x/api/account/reset', { method: 'POST', headers: { 'x-tdw': '1' }, body: JSON.stringify(body) }), 'reset');
+  for (let k = 0; k < 8; k++) assert.equal((await api({ email: 'a@b.co', code: 'nope-nope-nope', auth: 'B'.repeat(43) })).status, 401);
+  assert.equal((await api({ email: 'a@b.co', code: 'correct-horse-battery', auth: 'B'.repeat(43) })).status, 429);
+});

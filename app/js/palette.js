@@ -8,6 +8,7 @@
   const { UI, Editor, Formats } = TDW;
   const { el, icon, kbd } = UI;
   const app = () => TDW.App;
+  const K = (id) => TDW.Keys.combo(id) || null;
   const $ = (id) => document.getElementById(id);
 
   let dlg, input, list, foot, crumb, back;
@@ -27,41 +28,44 @@
     const C = TDW.Challenges;
     const ch = C && C.info ? C.info() : null;
     const out = [
-      { group: 'Draft', label: 'New draft', icon: 'newDoc', keys: '⌘⌥N', run: () => TDW.Dialogs.newDraft(), words: 'create blank start' },
-      { group: 'Draft', label: 'Drafts', icon: 'drafts', keys: '⌘O', run: () => TDW.Drafts.toggle(), words: 'switch open list notion stage find sidebar' },
+      { group: 'Draft', label: 'New draft', icon: 'newDoc', keys: K('newDraft'), run: () => TDW.Dialogs.newDraft(), words: 'create blank start' },
+      { group: 'Draft', label: 'Drafts', icon: 'drafts', keys: K('drafts'), run: () => TDW.Drafts.toggle(), words: 'switch open list notion stage find sidebar' },
       { group: 'Draft', label: 'Budget and word count', icon: 'dollar', run: () => TDW.Spine.openTally(), words: 'money spend words characters reading time grade' },
       { group: 'Draft', label: 'No backspace', icon: 'backspace', state: nb ? 'On' : 'Off', on: nb, run: () => app().setBackspaceOff(!nb), words: 'delete forward only write' },
 
-      { group: 'Review', label: lens ? 'Stop reviewing' : 'Review this draft', icon: 'pencil', keys: '⌘E', run: () => app().toggleLens(), words: 'edit mode fixes lens grade marks' },
+      { group: 'Review', label: lens ? 'Stop reviewing' : 'Review this draft', icon: 'pencil', keys: K('review'), run: () => app().toggleLens(), words: 'edit mode fixes lens grade marks' },
       { group: 'Review', label: 'Check the message', icon: 'target', desc: 'What a busy reader takes away (AI)', run: () => { if (!lens) app().setMode('edit'); TDW.Review.startMessage(); }, words: 'ai takeaway gemini' },
       TDW.Review.ignoredCount() ? { group: 'Review', label: 'Bring back ignored notes', icon: 'undo', note: String(TDW.Review.ignoredCount()), run: () => { if (!lens) app().setMode('edit'); TDW.Review.restoreIgnored(); }, words: 'unignore restore dismissed hidden x' } : null,
-      { group: 'Review', label: 'The Lab', icon: 'flask', keys: '⌃⇧L', note: 'Checks that mark, and Trim', page: 'lab', words: 'lab checks trim cut weak long tone hedges typos' },
+      { group: 'Review', label: 'The Lab', icon: 'flask', keys: K('lab'), note: 'Checks that mark, and Trim', page: 'lab', words: 'lab checks trim cut weak long tone hedges typos' },
 
-      { group: 'Tools', label: 'Alternatives', icon: 'swap', keys: '⌃⇧A', run: () => TDW.Alts.open(), words: 'versions options a/b word sentence paragraph' },
-      { group: 'Tools', label: 'Alternatives from AI', icon: 'spark', keys: '⌃⇧G', run: () => TDW.Alts.aiForSelection(), words: 'ai versions gemini' },
-      { group: 'Tools', label: 'Ask AI about the selection', icon: 'spark', keys: '⌃J', run: () => TDW.Notes.compose({ ai: true }), words: 'chat thread gemini', off: !hasSelection() },
-      { group: 'Tools', label: 'Add a note', icon: 'note', keys: '⌃⇧M', run: () => TDW.Notes.compose({ ai: false }), words: 'comment todo' },
+      { group: 'Tools', label: 'Alternatives', icon: 'swap', keys: K('alts'), run: () => TDW.Alts.open(), words: 'versions options a/b word sentence paragraph' },
+      { group: 'Tools', label: 'Alternatives from AI', icon: 'spark', keys: K('aiAlts'), run: () => TDW.Alts.aiForSelection(), words: 'ai versions gemini' },
+      { group: 'Tools', label: 'Ask AI about the selection', icon: 'spark', keys: K('askAI'), run: () => TDW.Notes.compose({ ai: true }), words: 'chat thread gemini', off: !hasSelection() },
+      { group: 'Tools', label: 'Add a note', icon: 'note', keys: K('note'), run: () => TDW.Notes.compose({ ai: false }), words: 'comment todo' },
       { group: 'Tools', label: 'Notes', icon: 'note', note: noteCount(), run: () => TDW.Notes.showAll(), words: 'margin comments list' },
-      { group: 'Tools', label: 'Overflow', icon: 'tray', keys: '⌃⇧O', run: () => TDW.Overflow.toggle(), words: 'scratch spare cut parking' },
-      { group: 'Tools', label: 'Stash in Overflow', icon: 'stash', keys: '⌃⇧X', run: () => TDW.Menu.stash(), words: 'move cut keep' },
-      { group: 'Tools', label: 'Ghost it or revive it', icon: 'ghost', keys: '⌃/', run: () => TDW.Menu.toggleGhost(), words: 'hide fade dim' },
+      { group: 'Tools', label: 'Overflow', icon: 'tray', keys: K('overflow'), run: () => TDW.Overflow.toggle(), words: 'scratch spare cut parking' },
+      { group: 'Tools', label: 'Stash in Overflow', icon: 'stash', keys: K('stash'), run: () => TDW.Menu.stash(), words: 'move cut keep' },
+      { group: 'Tools', label: 'Ghost it or revive it', icon: 'ghost', keys: K('ghost'), run: () => TDW.Menu.toggleGhost(), words: 'hide fade dim' },
 
-      { group: 'Challenge', label: 'Roll a challenge', icon: 'dice', run: () => C.roll(), words: 'game random' },
+      { group: 'Challenge', label: 'Roll a challenge', icon: 'dice', keys: K('roll'), run: () => C.roll(), words: 'game random' },
       { group: 'Challenge', label: 'Roll a combo', icon: 'dice', note: '2 or 3 that fit', run: () => C.combo(), words: 'game random several' },
       { group: 'Challenge', label: 'Today’s challenge', icon: 'dice', note: ch ? ch.daily : '', run: () => C.daily(), words: 'daily game' },
       { group: 'Challenge', label: 'Pick a challenge', icon: 'dice', page: 'challenges', words: 'list choose game' },
       { group: 'Challenge', label: 'Difficulty', icon: 'sliders', note: ch ? ch.levelName : '', page: 'level', words: 'easy medium hard level' }
     ];
     if (ch && ch.running) out.push({ group: 'Challenge', label: ch.met ? 'Clear the challenge' : 'Give up the challenge', icon: 'close', run: () => C.finish(), words: 'end stop quit' });
-    for (const f of Formats.LIST) out.push({ group: 'Format', label: f.label, icon: 'measure', checked: f.key === fmt, run: () => app().setFormat(f.key), words: 'format width ' + f.key + (f.key === 'x' ? ' twitter thread' : '') });
+    for (const f of Formats.LIST) out.push({ group: 'Format', label: f.label, icon: 'measure', checked: f.key === fmt, run: () => app().setFormat(f.key), words: 'format width ' + f.key + (f.key === 'x' ? ' twitter thread' : f.key === 'threads' ? ' meta instagram' : '') });
     out.push(
       { group: 'Share', label: 'Save as Markdown', icon: 'download', run: () => TDW.Desk.save(), words: 'export file md download' },
       { group: 'Share', label: 'Open a file', icon: 'folder', run: () => TDW.Desk.openFile(), words: 'import md txt' },
-      { group: 'Share', label: 'Post to X', icon: 'x', keys: '⌃⇧P', run: () => TDW.Desk.postToX(), words: 'twitter publish tweet thread' },
-      { group: 'App', label: 'Settings', icon: 'sliders', keys: '⌘,', run: () => TDW.Dialogs.openSettings(), words: 'preferences account notion gemini sound font' },
+      { group: 'Share', label: 'Post to X', icon: 'x', run: () => TDW.Desk.postTo('x'), words: 'twitter publish tweet thread' },
+      { group: 'Share', label: 'Post to Threads', icon: 'at', run: () => TDW.Desk.postTo('threads'), words: 'meta instagram publish thread' },
+      { group: 'Share', label: 'Post to LinkedIn', icon: 'linkedin', run: () => TDW.Desk.postTo('linkedin'), words: 'publish share' },
+      { group: 'App', label: 'Settings', icon: 'sliders', keys: K('settings'), run: () => TDW.Dialogs.openSettings(), words: 'preferences account notion gemini sound font' },
       { group: 'App', label: 'Review marks', icon: 'marker', state: st.settings.marks === 'highlighter' ? 'Highlighter' : 'Pencil', run: () => app().updateSettings({ marks: st.settings.marks === 'highlighter' ? 'pencil' : 'highlighter' }), words: 'highlight underline color hemingway' },
       { group: 'App', label: 'Theme', icon: 'contrast', note: { auto: 'System', light: 'Light', dark: 'Dark' }[app().themeSetting(st.settings)], page: 'theme', words: 'dark light night appearance' },
-      { group: 'App', label: 'Keyboard shortcuts', icon: 'keyboard', keys: '⌃?', run: () => TDW.Desk.toggleSheet(), words: 'keys help' },
+      { group: 'App', label: st.settings.bench === false ? 'Show the bench' : 'Hide the bench', icon: 'sidebar', run: () => app().updateSettings({ bench: st.settings.bench === false }), words: 'dock toolbar bottom format lab trim' },
+      { group: 'App', label: 'Shortcuts', icon: 'keyboard', keys: K('shortcuts'), run: () => TDW.Desk.toggleSheet(), words: 'keys help' },
       document.fullscreenEnabled ? { group: 'App', label: document.fullscreenElement ? 'Leave full screen' : 'Full screen', icon: document.fullscreenElement ? 'shrink' : 'expand', run: fullScreen, words: 'focus' } : null);
     return out.filter(Boolean);
   }
@@ -222,25 +226,17 @@
     list.addEventListener('keydown', onKey);
     crumb = el('span', { class: 'pal-crumb', hidden: true });
     back = el('button', { type: 'button', class: 'btn-icon pal-back', 'aria-label': 'Back', hidden: true, onclick: goBack }, icon('chevLeft'));
-    foot = el('div', { class: 'pal-foot' }, el('span', { class: 'pal-count' }),
-      el('span', { class: 'pal-keys' }, kbd('↑'), kbd('↓'), ' choose'), el('span', { class: 'pal-keys' }, kbd('↩'), ' run'), el('span', { class: 'pal-keys' }, kbd('esc'), ' close'));
+    foot = el('div', { class: 'pal-foot' }, el('span', { class: 'pal-count' }));
     dlg.append(el('div', { class: 'grabber', 'aria-hidden': 'true' }), el('div', { class: 'pal-search sheet-drag' }, back, icon('search'), crumb, input), list, foot);
     // ⌘K opens it; with words selected, ⌘K still links them.
-    document.addEventListener('keydown', (e) => {
-      const mod = UI.device.apple ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-      const k = String(e.key || '').toLowerCase();
-      if (mod && !e.shiftKey && !e.altKey && k === 'k') {
-        if (dlg.open) { e.preventDefault(); e.stopPropagation(); UI.dismiss(dlg); return; }
-        if (document.querySelector('dialog[open]:modal')) return;
-        if (document.activeElement === Editor.rootEl() && hasSelection()) return;
-        e.preventDefault(); e.stopPropagation();
-        open();
-      } else if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && (e.code === 'KeyL' || k === 'l')) {
-        if (document.querySelector('dialog[open]:modal')) return;
-        e.preventDefault();
-        open({ page: 'lab' });
-      }
-    }, true);
+    TDW.Keys.on('palette', () => {
+      if (dlg.open) { UI.dismiss(dlg); return; }
+      if (document.querySelector('dialog[open]:modal')) return false;
+      if (document.activeElement === Editor.rootEl() && hasSelection()) return false; // the editor links them
+      open();
+    });
+    TDW.Keys.on('lab', () => open({ page: 'lab' }));
+    TDW.Keys.on('roll', () => { if (TDW.Challenges) TDW.Challenges.roll(); });
   }
 
   TDW.Palette = { init, open, toggle, close: () => UI.dismiss(dlg), isOpen: () => !!dlg && dlg.open };

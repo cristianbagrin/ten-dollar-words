@@ -147,6 +147,7 @@
 
   function clearMarks() {
     stop();
+    if (TDW.Fx) TDW.Fx.scan(false);
     endWalk(true);
     info = new Map();
     run = null;
@@ -247,7 +248,7 @@
     if (!run || run.kind !== 'check') return;
     const n = marks().length;
     card({ title: run.item.label, meta: n ? n + (n === 1 ? ' mark' : ' marks') : '',
-      body: TDW.UI.el('p', { class: 'lab-why', text: n ? 'Each mark has its reason in the margin. Nothing changes until you take a fix.' : 'Nothing stood out.' }),
+      body: TDW.UI.el('p', { class: 'lab-why', text: n ? '' : 'Nothing stood out.' }),
       actions: [{ label: 'Done', primary: true, run: () => { done(); E().focus(); } }] });
   }
 
@@ -261,6 +262,7 @@
     const pub = app().publishText();
     const key = lv.pct + '\u0000' + pub;
     if (cache.has(key)) { showCuts(k, cache.get(key)); return; }
+    if (TDW.Fx) TDW.Fx.scan(true);
     const c = new AbortController();
     ctrl = c;
     busy = true;
@@ -275,6 +277,7 @@
     }, (err) => {
       if (ctrl !== c) return;
       ctrl = null;
+      if (TDW.Fx) TDW.Fx.scan(false);
       if (err && err.code === 'cancelled') return;
       errorCard(lv.label, err, () => trim(k));
     });
@@ -285,6 +288,7 @@
     const placed = Core.place(E().getText(), quotes, E().getAnnotations().ghosts, []);
     setMarks(placed.map((p) => ({ start: p.start, end: p.end, type: 'trim' })), 'trim');
     trimCard();
+    if (TDW.Fx) TDW.Fx.zap();
   }
 
   function counts() {
@@ -319,12 +323,13 @@
   function cutNow(list) {
     if (!list.length) return 0;
     const before = app().state.words;
+    const shot = TDW.Fx ? TDW.Fx.capture(list) : null;
     const out = Core.applyCuts(E().getText(), E().getAnnotations(), list, { Marks: TDW.Marks, Engine: TDW.Engine, Inline: TDW.Inline });
     const keep = new Set(list.map((m) => m.id));
     E().change({ text: out.text, ann: out.ann, kind: 'edit' });
     E().setLab(E().getLab().filter((m) => !keep.has(m.id)));
     const saved = before - app().state.words;
-    if (saved > 0) TDW.Sound.play('coin');
+    if (saved > 0) { if (shot) TDW.Fx.cut(shot, saved); TDW.Sound.play('coin'); }
     return saved;
   }
 

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const F = require('../app/js/formats.js');
 
 test('formats: Instagram is gone, unknown keys fall back to Basic', () => {
-  assert.deepEqual(F.LIST.map((f) => f.key), ['basic', 'linkedin', 'x', 'substack']);
+  assert.deepEqual(F.LIST.map((f) => f.key), ['basic', 'linkedin', 'x', 'threads', 'substack']);
   assert.equal(F.get('instagram').key, 'basic');
 });
 
@@ -61,4 +61,21 @@ test('copying from Basic keeps headings, lists, bold and safe links', () => {
 
 test('numbered lists count from 1 in each run, as the editor shows them', () => {
   assert.equal(F.render('1. one\n3. three\n\n5. x', 'linkedin').text, '1. one\n2. three\n\n1. x');
+});
+
+test('Threads counts characters, 500 to a post, and marks where one runs over', () => {
+  const f = F.get('threads');
+  assert.equal(f.thread, true);
+  const short = 'a'.repeat(499) + ' 😀';
+  assert.equal(F.post(short, 0, short.length, f).length, 501);
+  assert.equal(F.post(short, 0, short.length, f).over, 500);
+  const ok = 'https://example.com/' + 'b'.repeat(100);
+  assert.equal(F.post(ok, 0, ok.length, f).length, ok.length, 'a link counts in full, not as 23 like on X');
+  assert.equal(F.post(ok, 0, ok.length, f).over, -1);
+  assert.equal(F.post(ok, 0, ok.length, 'x').length, 23);
+});
+
+test('a toggle posts without its arrow, and underline copies as <u>', () => {
+  assert.equal(F.render('▾ Read more\n▸ Shut', 'linkedin').text, 'Read more\nShut');
+  assert.equal(F.toHTML('▾ A ++b++'), '<p>A <u>b</u></p>');
 });

@@ -66,9 +66,10 @@
 
   /* Motion: one critically damped spring (response .32s) */
   --spring: cubic-bezier(.22, .8, .24, 1);
-  --spring-t: 480ms;
-  --fade-t: 200ms;
-  --press-t: 90ms;
+  --spring-t: 340ms;
+  --pop-t: 170ms;   /* things that appear under the pointer: menus, the bar over a selection, tips */
+  --fade-t: 160ms;
+  --press-t: 70ms;
 }
 @supports (transition-timing-function: linear(0, 1)) {
   :root { --spring: linear(0, .064, .198, .347, .487, .606, .703, .78, .838, .882, .915, .939, .956, .969, .978, .985, .989, .992, .995, .996, .997, .998, .999, .999, 1); }
@@ -122,7 +123,7 @@ body {
   font: 400 13px/1.4 var(--font-ui); letter-spacing: -.006em;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
   font-synthesis-weight: none;
-  transition: background-color 300ms ease, color 300ms ease;
+  transition: background-color 200ms ease, color 200ms ease;
 }
 button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
 button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -146,7 +147,7 @@ a { color: var(--blue); text-underline-offset: 2px; }
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: 34px; padding: 0 var(--s5); border: 1px solid transparent; border-radius: var(--r-sm);
   font: 600 13px/1 var(--font-ui); letter-spacing: -.006em; white-space: nowrap; text-decoration: none;
-  transition: background-color 120ms ease, border-color 120ms ease, transform var(--press-t) ease-out, color 120ms ease;
+  transition: background-color 80ms ease, border-color 80ms ease, transform var(--press-t) ease-out, color 80ms ease;
 }
 .btn:active:not(:disabled), .btn-outline:active:not(:disabled), .btn-quiet:active:not(:disabled), .btn-icon:active:not(:disabled) { transform: scale(.97); }
 .btn { background: var(--ink); color: var(--paper); }
@@ -163,7 +164,7 @@ a { color: var(--blue); text-underline-offset: 2px; }
   display: inline-grid; place-items: center; flex: none;
   width: 34px; height: 34px; padding: 0; border: 0; border-radius: var(--r-sm);
   background: transparent; color: var(--ink-2);
-  transition: background-color 120ms ease, transform var(--press-t) ease-out, color 120ms ease;
+  transition: background-color 80ms ease, transform var(--press-t) ease-out, color 80ms ease;
 }
 .btn-icon:hover { background: var(--hover); color: var(--ink); }
 .link { padding: 0; border: 0; background: none; color: var(--blue); font: inherit; font-weight: 500; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--blue) 35%, transparent); text-underline-offset: 3px; }
@@ -238,10 +239,10 @@ input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color:
   position: fixed; z-index: 80; min-width: 200px; max-width: min(320px, calc(100vw - 16px));
   max-height: min(420px, calc(100vh - 16px)); overflow-y: auto; padding: 5px;
   background: var(--paper); color: var(--ink); border-radius: var(--r); box-shadow: var(--shadow-lg);
-  animation: grow-in var(--spring-t) var(--spring);
+  animation: grow-in var(--pop-t) var(--spring);
 }
-.menu.is-leaving { animation: grow-out 130ms ease-in forwards; pointer-events: none; }
-@keyframes grow-in { from { opacity: 0; transform: scale(.96); } }
+.menu.is-leaving { animation: grow-out 90ms ease-in forwards; pointer-events: none; }
+@keyframes grow-in { from { opacity: 0; transform: scale(.97); } }
 @keyframes grow-out { to { opacity: 0; transform: scale(.98); } }
 .menu-item {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 6px 10px;
@@ -280,13 +281,13 @@ input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color:
 
 /* ---------- Toast: a confirmation, bottom center, above the keyboard ---------- */
 .toast {
-  position: fixed; left: 50%; bottom: calc(var(--s6) + max(var(--safe-b), var(--kb, 0px))); z-index: 90;
+  position: fixed; left: 50%; bottom: calc(60px + max(var(--safe-b), var(--kb, 0px))); z-index: 90;
   transform: translateX(-50%);
   display: flex; align-items: center; gap: 14px; width: max-content; max-width: calc(100vw - 32px);
   padding: 9px 14px 9px 16px; border-radius: var(--r);
   background: var(--ink); color: var(--paper); box-shadow: var(--shadow-lg);
   font: 500 13px/1.35 var(--font-ui);
-  animation: toast-in var(--spring-t) var(--spring);
+  animation: toast-in 240ms var(--spring);
 }
 .toast.is-leaving { animation: toast-out 160ms ease-in forwards; pointer-events: none; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
@@ -317,13 +318,13 @@ input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color:
   content: attr(data-tip); position: absolute; z-index: 95; top: calc(100% + 6px); left: 50%; transform: translate(-50%, -2px);
   width: max-content; max-width: 240px; padding: 5px 8px; border-radius: 6px; background: var(--ink); color: var(--paper);
   font: 500 11.5px/1.35 var(--font-ui); letter-spacing: 0; text-align: left; white-space: normal; text-transform: none;
-  opacity: 0; pointer-events: none; transition: opacity 120ms ease, transform 160ms ease;
+  opacity: 0; pointer-events: none; transition: opacity 90ms ease, transform 120ms ease;
 }
 [data-tip].tip-end::after { left: auto; right: 0; transform: translate(0, -2px); }
 [data-tip].tip-start::after { left: 0; transform: translate(0, -2px); }
 [data-tip].tip-up::after { top: auto; bottom: calc(100% + 6px); }
 @media (hover: hover) {
-  [data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 350ms; }
+  [data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 260ms; }
   [data-tip].tip-end:hover::after, [data-tip].tip-end:focus-visible::after, [data-tip].tip-start:hover::after, [data-tip].tip-start:focus-visible::after { transform: none; }
 }
 [data-tip][aria-expanded="true"]::after { display: none; }

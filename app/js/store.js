@@ -8,6 +8,9 @@
   const DEFAULTS = {
     skin: 'typewriter', autoNight: false, sound: 'typewriter', volume: 0.35, typewriterScroll: true, textSize: 0, defaultBudget: 2000,
     dictionary: [], noBackspace: true, defaultFormat: 'basic', fixHighlights: true,
+    // What each paragraph costs, in the gutter (off: only what is extra shows); the bench under the
+    // page; motion and sounds for cuts, trims and challenges; shortcuts changed from their defaults.
+    paragraphCost: false, bench: true, effects: true, effectSounds: true, keys: {},
     highlights: { spelling: true, veryHard: true, hard: true, complex: true, passive: true, adverb: true, qualifier: true }
   };
   const PREFIX = 'tdw.draft.';
@@ -288,6 +291,7 @@
     const obj = saved && typeof saved === 'object' ? saved : {};
     const s = Object.assign({}, DEFAULTS, obj);
     s.highlights = Object.assign({}, DEFAULTS.highlights, obj.highlights);
+    s.keys = obj.keys && typeof obj.keys === 'object' && !Array.isArray(obj.keys) ? Object.assign({}, obj.keys) : {};
     s.dictionary = Array.isArray(obj.dictionary) ? obj.dictionary.filter((w) => typeof w === 'string' && w) : [];
     if (TDW.Formats && TDW.Formats.get(s.defaultFormat).key !== s.defaultFormat) s.defaultFormat = 'basic';
     return s;

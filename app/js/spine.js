@@ -149,7 +149,7 @@
       e.preventDefault();
       const v = Math.round(Number(custom.value) / 10) * 10;
       if (!(v >= 10)) { custom.focus(); return; }
-      app().setBudget(v);
+      app().setBudget(v, true);
     });
     const stat = (k, v) => el('div', { class: 'tally-stat' }, el('dt', { text: k }), el('dd', { text: v }));
     const grade = tl.grade == null ? '—' : tl.grade + ' ' + ({ Good: 'easy', OK: 'fair', Hard: 'hard' }[Engine.gradeLabel(tl.grade)] || '');
@@ -163,11 +163,11 @@
         el('div', { class: 'tally-label', text: 'Budget for this draft' }),
         el('div', { class: 'presets', role: 'group', 'aria-label': 'Budgets' }, PRESETS.map((v) => el('button', {
           type: 'button', class: 'preset' + (v === tl.budget ? ' is-on' : ''), 'aria-pressed': String(v === tl.budget), text: money(v),
-          title: (v / 10) + ' words, ' + PRESET_NOTE[v], onclick: () => app().setBudget(v)
+          title: (v / 10) + ' words, ' + PRESET_NOTE[v], onclick: () => app().setBudget(v, true)
         }))),
         form),
       el('button', { type: 'button', class: 'tally-review', onclick: () => { UI.dismiss(dlg); app().toggleLens(); } },
-        icon('pencil'), el('span', { text: lens ? 'Stop reviewing' : 'Review this draft' }), UI.kbd('⌘E')));
+        icon('pencil'), el('span', { text: lens ? 'Stop reviewing' : 'Review this draft' }), TDW.Keys.combo('review') ? UI.kbd(TDW.Keys.combo('review')) : null));
   }
 
   function openTally() {
@@ -197,13 +197,15 @@
   function init() {
     $('spine-title').append(icon('chevDown'));
     $('spine-more').append(icon('more'));
-    $('spine-more').title = 'Commands (' + UI.keys('⌘K') + ')';
-    nbBtn = el('button', { type: 'button', class: 'spine-nb', hidden: true, 'aria-label': 'No backspace is on. Turn it off', title: 'No backspace is on for this draft. Click to turn it off.' }, icon('backspace'));
+    const tips = () => { $('spine-more').dataset.tip = TDW.Keys.tip('Commands', 'palette'); $('spine-title').dataset.tip = TDW.Keys.tip('Drafts', 'drafts'); };
+    $('spine-more').classList.add('tip-end');
+    tips();
+    TDW.Keys.onChange(tips);
+    nbBtn = el('button', { type: 'button', class: 'spine-nb', hidden: true, 'aria-label': 'No backspace is on. Turn it off', 'data-tip': 'No backspace' }, icon('backspace'));
     nbBtn.addEventListener('click', () => app().setBackspaceOff(false));
     $('spine-stage').after(nbBtn);
     for (const b of [$('spine-title'), $('spine-spend'), $('spine-more'), $('spine-sync'), nbBtn]) b.addEventListener('mousedown', (e) => e.preventDefault());
     $('spine-title').addEventListener('click', () => TDW.Drafts.toggle());
-    $('spine-title').dataset.tip = 'Drafts (' + UI.keys('⌘O') + ')';
     $('spine-stage').addEventListener('mousedown', (e) => e.preventDefault());
     $('spine-stage').addEventListener('click', () => { const d = app().state.draft; if (d && $('spine-stage').dataset.prop) TDW.Drafts.editProp($('spine-stage'), d, $('spine-stage').dataset.prop); });
     $('spine-spend').addEventListener('click', openTally);

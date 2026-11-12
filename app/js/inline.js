@@ -1,5 +1,5 @@
 /* Markdown-lite for one line of a draft: the block marker at the start (# , - , 1. , > , [ ] )
-   and inline **bold**, *italic* or _italic_, ~~strike~~, `code` and [links](url).
+   and inline **bold**, *italic* or _italic_, ~~strike~~, ++underline++, `code` and [links](url).
    Markers stay in the text; parse() flags which characters are syntax and how the rest is
    styled. UMD: TDW.Inline in the browser, module.exports in Node. */
 (function (root, factory) {
@@ -8,11 +8,11 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const MD = 1, B = 2, I = 4, S = 8, C = 16, L = 32;
+  const MD = 1, B = 2, I = 4, S = 8, C = 16, L = 32, U = 64;
 
   const BLOCKS = [
     [/^### /, 'h3'], [/^## /, 'h2'], [/^# /, 'h1'],
-    [/^[-*•] /, 'li'], [/^\d+[.)] /, 'ol'], [/^> /, 'quote'], [/^\[[ xX]\] /, 'todo']
+    [/^[-*•] /, 'li'], [/^\d+[.)] /, 'ol'], [/^> /, 'quote'], [/^\[[ xX]\] /, 'todo'], [/^[▸▾] /, 'toggle']
   ];
   const SEPARATOR = /^[ \t]*---[ \t]*$/;
   const OPAQUE = /^⟦[^\n]*⟧$/;
@@ -23,7 +23,10 @@
     if (OPAQUE.test(line)) return { type: 'opaque', prefix: line.length };
     for (const [re, type] of BLOCKS) {
       const m = re.exec(line);
-      if (m) return type === 'todo' ? { type, prefix: m[0].length, checked: m[0][1] !== ' ' } : { type, prefix: m[0].length };
+      if (!m) continue;
+      if (type === 'todo') return { type, prefix: m[0].length, checked: m[0][1] !== ' ' };
+      if (type === 'toggle') return { type, prefix: m[0].length, open: m[0][0] === '▾' };
+      return { type, prefix: m[0].length };
     }
     return { type: 'p', prefix: 0 };
   }
@@ -71,13 +74,13 @@
       links.push({ start: a + 1, end: labelEnd, url: m[2] });
     }
 
-    // Delimiter runs of * _ ~, matched roughly the way CommonMark does it. Literal * and ~ are
+    // Delimiter runs of * _ ~ +, matched roughly the way CommonMark does it. Literal * and ~ are
     // always escaped when the app writes a line, so for them only spaces decide: "**Hello.**World"
     // stays bold, where CommonMark would show the stars.
     const runs = [];
     while (i < n) {
       const ch = s[i];
-      if ((ch !== '*' && ch !== '_' && ch !== '~') || busy[i]) { i++; continue; }
+      if ((ch !== '*' && ch !== '_' && ch !== '~' && ch !== '+') || busy[i]) { i++; continue; }
       let j = i;
       while (j < n && s[j] === ch && !busy[j]) j++;
       const prev = s[i - 1], next = s[j];
@@ -88,7 +91,7 @@
         open = left && (!right || isPunct(prev));
         close = right && (!left || isPunct(next));
       }
-      if (ch !== '~' || j - i >= 2) runs.push({ ch, lo: i, hi: j, open, close });
+      if ((ch !== '~' && ch !== '+') || j - i >= 2) runs.push({ ch, lo: i, hi: j, open, close });
       i = j;
     }
 
@@ -99,7 +102,7 @@
           const o = stack[k];
           if (o.ch !== r.ch || o.hi <= o.lo) continue;
           let use;
-          if (r.ch === '~') {
+          if (r.ch === '~' || r.ch === '+') {
             if (o.hi - o.lo < 2 || r.hi - r.lo < 2) continue;
             use = 2;
           } else {
@@ -108,7 +111,7 @@
           const oa = o.hi - use, ca = r.lo;
           for (let x = oa; x < o.hi; x++) f[x] = MD;
           for (let x = ca; x < ca + use; x++) f[x] = MD;
-          const bit = r.ch === '~' ? S : use === 2 ? B : I;
+          const bit = r.ch === '~' ? S : r.ch === '+' ? U : use === 2 ? B : I;
           for (let x = o.hi; x < ca; x++) f[x] |= bit;
           o.hi -= use;
           r.lo += use;
@@ -133,7 +136,7 @@
 
   // Characters that would read as syntax get a backslash. snake_case stays as it is.
   function escapeText(t) {
-    return t.replace(/[\\*`[\]~]/g, '\\$&').replace(/_/g, (u, k, all) =>
+    return t.replace(/[\\*`[\]~+]/g, '\\$&').replace(/_/g, (u, k, all) =>
       /[A-Za-z0-9]/.test(all[k - 1] || '') && /[A-Za-z0-9]/.test(all[k + 1] || '') ? u : '\\_');
   }
 
@@ -142,7 +145,7 @@
   function escapeLineStart(md) {
     if (/^\d+[.)] /.test(md)) return md.replace(/^(\d+)/, '$1\\'); // 1\. stays a paragraph
     if (/^[ \t]+---[ \t]*$/.test(md)) return md.replace('-', '\\-'); // a backslash before a space would show
-    return /^(#{1,3} |[-*+•] |> |\[[ xX]\] |---[ \t]*$)/.test(md) ? '\\' + md : md;
+    return /^(#{1,3} |[-*+•▸▾] |> |\[[ xX]\] |---[ \t]*$)/.test(md) ? '\\' + md : md;
   }
 
   // A link address as the parser can read it back: spaces and unbalanced parentheses get
@@ -153,10 +156,10 @@
     return u.replace(/\s/g, (c) => encodeURIComponent(c)).replace(/\(/g, '%28').replace(/\)/g, '%29');
   }
 
-  // Styled runs → markdown. runs: [{ text, b, i, s, c, link }]. Spaces at a run's edges move
+  // Styled runs → markdown. runs: [{ text, b, i, s, u, c, link }]. Spaces at a run's edges move
   // outside its markers, since "** bold **" isn't bold.
   function serialize(runs) {
-    const same = (x, y) => !!x.b === !!y.b && !!x.i === !!y.i && !!x.s === !!y.s && !!x.c === !!y.c && (x.link || null) === (y.link || null);
+    const same = (x, y) => !!x.b === !!y.b && !!x.i === !!y.i && !!x.s === !!y.s && !!x.u === !!y.u && !!x.c === !!y.c && (x.link || null) === (y.link || null);
     const merged = [];
     for (const r of runs) {
       if (!r || !r.text) continue;
@@ -168,17 +171,18 @@
     for (const r of merged) {
       const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(r.text);
       let t = r.c ? m[2].replace(/`/g, '\u02cb') : escapeText(m[2]);
-      if (!t || (!r.b && !r.i && !r.s && !r.c && !r.link)) { out += r.c ? r.text : escapeText(r.text); continue; }
+      if (!t || (!r.b && !r.i && !r.s && !r.u && !r.c && !r.link)) { out += r.c ? r.text : escapeText(r.text); continue; }
       if (r.c) t = '`' + t + '`';
       if (r.b && r.i) t = '***' + t + '***';
       else if (r.b) t = '**' + t + '**';
       else if (r.i) t = '*' + t + '*';
       if (r.s) t = '~~' + t + '~~';
+      if (r.u) t = '++' + t + '++';
       if (r.link) t = '[' + t + '](' + linkTarget(r.link) + ')';
       out += m[1] + t + m[3];
     }
     return out;
   }
 
-  return { MD, B, I, S, C, L, block, parse, plain, serialize, escapeText, escapeLineStart };
+  return { MD, B, I, S, C, L, U, block, parse, plain, serialize, escapeText, escapeLineStart };
 });

@@ -19,6 +19,8 @@
     basic: { label: 'Basic', measure: null, budget: null },
     linkedin: { label: 'LinkedIn', measure: '52ch', budget: 2000, limit: 3000, social: true, fold: true },
     x: { label: 'X', measure: '43ch', budget: 500, limit: 280, social: true, thread: true },
+    // Threads counts plain characters, 500 to a post; a long piece is a chain of posts, like X.
+    threads: { label: 'Threads', measure: '46ch', budget: 800, limit: 500, social: true, thread: true, count: 'plain' },
     substack: { label: 'Substack', measure: '70ch', budget: 8000 }
   };
   const PLAIN = { key: 'plain', social: true, plain: true }; // clean text for the clipboard
@@ -66,7 +68,7 @@
       if (b.type === 'opaque') { ls += line.length + 1; return; } // images and such aren't text
       let from = 0, base = 0;
       if (b.type === 'h1' || b.type === 'h2' || b.type === 'h3') { from = b.prefix; base = f.plain ? 0 : Inline.B; }
-      else if (b.type === 'quote') from = b.prefix;
+      else if (b.type === 'quote' || b.type === 'toggle') from = b.prefix;
       else if (b.type === 'ol') { emit(ol + '. ', ls); from = b.prefix; }
       else if (b.type === 'todo') { emit(b.checked ? '☑ ' : '☐ ', ls); from = b.prefix; }
       else if (b.type === 'hr') { emit(line, ls); from = line.length; }
@@ -103,7 +105,7 @@
 
   function inlineHTML(line, from) {
     const { flags, links } = Inline.parse(line, from);
-    const STYLE = Inline.B | Inline.I | Inline.S | Inline.C;
+    const STYLE = Inline.B | Inline.I | Inline.S | Inline.C | Inline.U;
     let out = '';
     let k = from;
     while (k < line.length) {
@@ -121,6 +123,7 @@
       if (st & Inline.I) h = '<em>' + h + '</em>';
       if (st & Inline.B) h = '<strong>' + h + '</strong>';
       if (st & Inline.S) h = '<s>' + h + '</s>';
+      if (st & Inline.U) h = '<u>' + h + '</u>';
       if (lk && /^(https?:|mailto:)/i.test(lk.url)) h = '<a href="' + escH(lk.url) + '">' + h + '</a>';
       out += h;
       k = j;
@@ -145,7 +148,7 @@
       if (b.type === 'hr') out.push('<hr>');
       else if (b.type === 'h1' || b.type === 'h2' || b.type === 'h3') out.push('<' + b.type + '>' + inlineHTML(line, b.prefix) + '</' + b.type + '>');
       else if (b.type === 'quote') out.push('<blockquote>' + inlineHTML(line, b.prefix) + '</blockquote>');
-      else out.push('<p>' + inlineHTML(line, 0) + '</p>');
+      else out.push('<p>' + inlineHTML(line, b.type === 'toggle' ? b.prefix : 0) + '</p>');
     }
     closeList();
     return out.join('');
@@ -247,6 +250,21 @@
     return { length, over: w.at < 0 ? -1 : start + r.map[w.at] };
   }
 
+  // One post as its platform will count it (X weighs links and emoji; Threads counts characters).
+  function post(text, start, end, fmt) {
+    const f = typeof fmt === 'string' ? get(fmt) : fmt;
+    if (!f || f.count !== 'plain') return xPost(text, start, end, f ? f.limit : 280);
+    const r = render(text.slice(start, end), f);
+    let length = 0, at = -1;
+    for (let k = 0; k < r.text.length;) {
+      const step = r.text.codePointAt(k) > 0xffff ? 2 : 1;
+      length++;
+      if (length > f.limit && at < 0) at = k;
+      k += step;
+    }
+    return { length, over: at < 0 ? -1 : start + r.map[at] };
+  }
+
   /* ---------- The LinkedIn fold (browser only) ---------- */
 
   let probe = null;
@@ -294,5 +312,5 @@
     return k;
   }
 
-  return { LIST, FOLDS, get, budgetOf, render, toHTML, xLength, xOverflowIndex, xPost, posts, foldIndex, SEPARATOR };
+  return { LIST, FOLDS, get, budgetOf, render, toHTML, xLength, xOverflowIndex, xPost, post, posts, foldIndex, SEPARATOR };
 });

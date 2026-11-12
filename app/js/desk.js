@@ -1,11 +1,10 @@
-/* Save as Markdown, open a file, post to X, and the list of shortcuts. All reached from the
-   command palette; no LinkedIn button, on purpose. */
+/* Save as Markdown, open a file, post to X, Threads or LinkedIn, and the shortcuts sheet (where
+   any shortcut can be changed). */
 (function () {
   'use strict';
   const TDW = window.TDW = window.TDW || {};
   const { Editor, UI, Formats } = TDW;
   const app = () => TDW.App;
-  const IS_MAC = UI.device.apple;
 
   let fileInput = null;
   let sheet = null;
@@ -47,82 +46,149 @@
     fileInput.click();
   }
 
-  /* ---------- Post to X ---------- */
-  function postToX() {
+  /* ---------- Posting: X, Threads, LinkedIn ----------
+     Each site opens its own composer with the text in it. A chain of posts opens on the first
+     one and copies the rest for the replies. */
+  const SITES = {
+    x: { name: 'X', url: (t) => 'https://x.com/intent/post?text=' + encodeURIComponent(t) },
+    threads: { name: 'Threads', url: (t) => 'https://www.threads.net/intent/post?text=' + encodeURIComponent(t) },
+    linkedin: { name: 'LinkedIn', url: (t) => 'https://www.linkedin.com/feed/?shareActive=true&text=' + encodeURIComponent(t) }
+  };
+  const copy = (t) => (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject(new Error('no clipboard')));
+
+  function postTo(key) {
+    const site = SITES[key];
     const t = app().publishText(Editor.getText());
-    if (!t.trim()) { UI.toast('Write something to post first.'); return; }
-    const x = Formats.get('x');
-    const posts = Formats.posts(t).map((p) => Formats.render(t.slice(p.start, p.end), x).text.trim()).filter(Boolean);
-    const first = posts[0] || Formats.render(t, x).text.trim();
-    const url = 'https://x.com/intent/post?text=' + encodeURIComponent(first);
-    if (posts.length > 1) {
-      const rest = posts.slice(1).join('\n\n---\n\n');
-      (navigator.clipboard ? navigator.clipboard.writeText(rest) : Promise.reject()).then(
-        () => UI.toast('Opened the first post on X. The other ' + (posts.length - 1) + ' are copied for the replies.'),
-        () => UI.toast('Opened the first post on X. Copy the rest from the page.'));
+    if (!site) return;
+    if (!t.trim()) { UI.toast('Nothing to post yet.'); return; }
+    const f = Formats.get(key);
+    if (!f.thread) {
+      const text = Formats.render(t, f).text.trim();
+      // LinkedIn sometimes drops the text it is handed, so it is on the clipboard too.
+      copy(text).then(() => UI.toast('Copied. Paste it if ' + site.name + ' opens empty.'), () => {});
+      window.open(site.url(text), '_blank', 'noopener');
+      return;
     }
-    window.open(url, '_blank', 'noopener');
+    const posts = Formats.posts(t).map((p) => Formats.render(t.slice(p.start, p.end), f).text.trim()).filter(Boolean);
+    const first = posts[0] || Formats.render(t, f).text.trim();
+    if (posts.length > 1) {
+      const n = posts.length - 1;
+      copy(posts.slice(1).join('\n\n---\n\n')).then(
+        () => UI.toast('The other ' + n + (n === 1 ? ' post is' : ' posts are') + ' copied for the replies.'),
+        () => UI.toast('Copy the other posts from the page.'));
+    }
+    window.open(site.url(first), '_blank', 'noopener');
   }
 
-  /* ---------- Shortcuts ---------- */
-  const SHORTCUTS = [
-    ['The page', [
-      ['⌘E', 'Review on or off'], ['⌘K', 'Commands (with words selected: link them)'], ['⌘O', 'Drafts'], ['⌘⌥N', 'New draft'], ['⌘,', 'Settings'],
-      ['⌘S', 'Save now'], ['⌘Z', 'Undo, alternatives and ghosts included']
-    ]],
-    ['Writing', [
-      ['⌘B', 'Bold'], ['⌘I', 'Italic'], ['⌘⇧S', 'Strikethrough'], ['⌘⌥1', 'Heading 1 (2 and 3 the same)'], ['⌘⌥0', 'Plain text'],
-      ['⌘⇧8', 'Bullets'], ['⌘⇧7', 'Numbered list'], ['⌘⇧9', 'To-do'], ['⌘↩', 'New post (X threads)']
-    ]],
-    ['Blocks', [
-      ['/', 'Commands for the block'], ['⌘⇧↑', 'Move the block up (↓ down)'], ['⌘D', 'Duplicate the block'], ['⌘A', 'Select the block, again for all']
-    ]],
-    ['Notes and AI', [
-      ['Ctrl+J', 'Ask AI about the selection'], ['Ctrl+Shift+M', 'Add a note'], ['Ctrl+Shift+H', 'Highlight in the last color']
-    ]],
-    ['Alternatives', [
-      ['Ctrl+Shift+A', 'Alternatives for the selection'], ['Ctrl+Shift+G', 'Alternatives from AI'],
-      ['↑ ↓', 'Flip through them, pointer over the words'], ['⌥↑ ⌥↓', 'Flip through the one at the caret']
-    ]],
-    ['The desk', [
-      ['Ctrl+/', 'Ghost it or revive it'], ['Ctrl+Shift+X', 'Stash in Overflow'], ['Ctrl+Shift+O', 'Overflow'],
-      ['Ctrl+Shift+L', 'The Lab'], ['Ctrl+Shift+P', 'Post to X'], ['Ctrl+?', 'This list']
-    ]]
+  // Post wherever this draft's format says it is going; a plain draft goes to the clipboard.
+  function post() {
+    const d = app().state.draft;
+    const key = d ? Formats.get(d.format).key : 'basic';
+    if (SITES[key]) { postTo(key); return; }
+    const t = app().publishText(Editor.getText());
+    if (!t.trim()) { UI.toast('Nothing to copy yet.'); return; }
+    copy(Formats.render(t, 'plain').text).then(() => UI.toast('Copied'), () => UI.toast('Copy it with ' + UI.keys('⌘C') + '.'));
+  }
+
+  /* ---------- Shortcuts: the list, and changing any of them ---------- */
+  const FIXED = [
+    ['⌘Z', 'Undo'], ['⌘⇧Z', 'Redo'], ['/', 'Block commands'], ['⌘A', 'Select the block, then everything'],
+    ['⌘K', 'Link the selection'], ['⌘↩', 'New post'], ['⌥↑', 'Next alternative'], ['⌘⇧↩', 'Tick a to-do, open a toggle']
   ];
   const PHONE = [
-    ['As you type', [['#', 'Heading (## and ### smaller)'], ['-', 'Bullet'], ['1.', 'Numbered list'], ['[]', 'To-do'], ['>', 'Quote'], ['---', 'Divider (in X, a new post)'], ['**word**', 'Bold'], ['*word*', 'Italic']]]
+    ['As you type', [['#', 'Heading (## and ### smaller)'], ['-', 'Bullet'], ['1.', 'Numbered list'], ['[]', 'To-do'], ['>', 'Quote'], ['---', 'Divider (in X, a new post)'], ['**word**', 'Bold'], ['*word*', 'Italic'], ['++word++', 'Underline']]]
   ];
+  const K = () => TDW.Keys;
+  let recording = null; // { id, stop }
 
-  const keyText = (k) => (k.startsWith('Ctrl') ? (IS_MAC ? k.replace(/Ctrl\+/g, '⌃').replace(/Shift\+/g, '⇧') : k) : UI.keys(k));
+  function saveKeys() { app().updateSettings({ keys: K().custom() }); }
 
-  function buildSheet() {
-    sheet = UI.el('dialog', { class: 'shortcuts', 'aria-labelledby': 'keys-title' });
-    const close = UI.el('button', { type: 'button', class: 'btn-icon', 'aria-label': 'Close' }, UI.icon('close'));
+  function stopRecording() {
+    if (!recording) return;
+    const r = recording;
+    recording = null;
+    window.removeEventListener('keydown', r.onKey, true);
+    K().pause(false);
+    drawSheet();
+  }
+
+  function record(id) {
+    stopRecording();
+    const onKey = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') { stopRecording(); return; }
+      if ((e.key === 'Backspace' || e.key === 'Delete') && !e.metaKey && !e.ctrlKey && !e.altKey) { K().set(id, ''); saveKeys(); stopRecording(); return; }
+      const combo = K().comboOf(e);
+      if (!combo) return; // still holding modifiers, or a key that would stop you typing
+      const before = K().custom();
+      const other = K().ownerOf(combo, id);
+      K().set(id, combo);
+      saveKeys();
+      stopRecording();
+      if (other) UI.toast('“' + other.label + '” gave up ' + UI.keys(combo) + '.', { label: 'Undo', run: () => { K().load(before); saveKeys(); drawSheet(); } });
+    };
+    recording = { id, onKey };
+    K().pause(true);
+    window.addEventListener('keydown', onKey, true);
+    drawSheet();
+  }
+
+  function keyButton(a) {
+    const on = recording && recording.id === a.id;
+    const combo = K().combo(a.id);
+    const b = UI.el('button', { type: 'button', class: 'key-set' + (on ? ' is-recording' : '') + (combo ? '' : ' is-empty'), 'aria-label': a.label + ': ' + (combo ? UI.keys(combo) : 'no shortcut') + '. Change', dataset: { id: a.id } },
+      on ? 'Press keys' : combo ? UI.kbd(combo) : 'Set');
+    b.addEventListener('click', () => { if (on) stopRecording(); else record(a.id); });
+    return b;
+  }
+
+  function drawSheet() {
+    if (!sheet) return;
+    const el = UI.el;
+    const top = sheet.scrollTop;
+    const close = el('button', { type: 'button', class: 'btn-icon', 'aria-label': 'Close' }, UI.icon('close'));
     close.addEventListener('click', () => UI.dismiss(sheet));
-    const groups = (UI.device.phone ? PHONE : SHORTCUTS).map(([title, rows]) => UI.el('section', { class: 'keys-group' }, UI.el('h3', { text: title }),
-      rows.map(([k, what]) => UI.el('div', { class: 'keys-row' }, UI.el('span', { text: what }),
-        UI.device.phone ? UI.el('kbd', { text: k }) : UI.el('span', { class: 'keys' }, keyText(k).split(/(?<=[⌘⌥⇧⌃])|\+/).filter(Boolean).map((p) => UI.el('kbd', { text: p })))))));
-    sheet.append(UI.el('div', { class: 'grabber', 'aria-hidden': 'true' }),
-      UI.el('div', { class: 'dlg-head sheet-drag' }, UI.el('h2', { id: 'keys-title', text: UI.device.phone ? 'Typing shortcuts' : 'Keyboard shortcuts' }), close),
-      UI.el('div', { class: 'keys-grid' }, groups));
-    document.body.append(sheet);
+    let groups;
+    if (UI.device.phone) {
+      groups = PHONE.map(([title, rows]) => el('section', { class: 'keys-group' }, el('h3', { text: title }), rows.map(([k, what]) => el('div', { class: 'keys-row' }, el('span', { text: what }), el('kbd', { text: k })))));
+    } else {
+      const names = [...new Set(K().LIST.map((a) => a.group))];
+      groups = names.map((g) => el('section', { class: 'keys-group' }, el('h3', { text: g }),
+        K().LIST.filter((a) => a.group === g).map((a) => el('div', { class: 'keys-row' }, el('span', { text: a.label }),
+          el('span', { class: 'key-cell' },
+            K().isDefault(a.id) ? null : el('button', { type: 'button', class: 'key-reset', 'aria-label': 'Back to the default for ' + a.label, 'data-tip': 'Default', onclick: () => { K().set(a.id, null); saveKeys(); drawSheet(); } }, UI.icon('undo')),
+            keyButton(a))))));
+      groups.push(el('section', { class: 'keys-group' }, el('h3', { text: 'Fixed' }), FIXED.map(([k, what]) => el('div', { class: 'keys-row' }, el('span', { text: what }), UI.kbd(k)))));
+    }
+    const changed = !UI.device.phone && Object.keys(K().custom()).length > 0;
+    sheet.replaceChildren(el('div', { class: 'grabber', 'aria-hidden': 'true' }),
+      el('div', { class: 'dlg-head sheet-drag' }, el('h2', { id: 'keys-title', text: 'Shortcuts' }),
+        el('span', { class: 'keys-head-end' },
+          changed ? el('button', { type: 'button', class: 'btn-quiet btn-sm', text: 'Reset all', onclick: () => { const before = K().custom(); K().reset(); saveKeys(); drawSheet(); UI.toast('Shortcuts reset', { label: 'Undo', run: () => { K().load(before); saveKeys(); drawSheet(); } }); } }) : null,
+          close)),
+      el('div', { class: 'keys-grid' }, groups));
+    sheet.scrollTop = top;
+    if (recording) { const b = sheet.querySelector('.key-set.is-recording'); if (b) b.focus({ preventScroll: true }); }
   }
 
   function toggleSheet() {
-    if (!sheet) buildSheet();
+    if (!sheet) {
+      sheet = UI.el('dialog', { class: 'shortcuts', 'aria-labelledby': 'keys-title' });
+      sheet.addEventListener('close', stopRecording);
+      document.body.append(sheet);
+    }
     if (sheet.open) { UI.dismiss(sheet); return; }
+    drawSheet();
     UI.present(sheet, { onDismiss: () => Editor.focus() });
     sheet.querySelector('.btn-icon').focus({ preventScroll: true });
   }
 
   TDW.Desk = {
     init() {
-      document.addEventListener('keydown', (e) => {
-        if (document.querySelector('dialog[open]:modal') && !(sheet && sheet.open)) return;
-        if (e.ctrlKey && !e.metaKey && !e.altKey && e.shiftKey && (e.code === 'KeyP' || String(e.key).toLowerCase() === 'p')) { e.preventDefault(); postToX(); }
-        else if (e.ctrlKey && !e.metaKey && (e.key === '?' || (e.shiftKey && e.code === 'Slash'))) { e.preventDefault(); toggleSheet(); }
-      });
+      TDW.Keys.on('postX', () => post());
+      TDW.Keys.on('shortcuts', () => { if (document.querySelector('dialog[open]:modal') && !(sheet && sheet.open)) return false; toggleSheet(); });
     },
-    save, openFile, postToX, toggleSheet
+    save, openFile, post, postTo, postToX: () => postTo('x'), toggleSheet, SITES
   };
 })();

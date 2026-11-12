@@ -89,7 +89,7 @@
       pickTab(k);
       tabs[k].focus();
     });
-    const close = el('button', { type: 'button', class: 'btn-icon mh-close', 'aria-label': 'Close the margin', title: 'Close (' + UI.keys('⌘E') + ' ends the review)' }, icon('close'));
+    const close = el('button', { type: 'button', class: 'btn-icon mh-close', 'aria-label': 'Close the margin' }, icon('close'));
     close.addEventListener('mousedown', (e) => e.preventDefault());
     close.addEventListener('click', closeAll);
     sub = el('div', { class: 'mh-sub' });

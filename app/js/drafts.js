@@ -28,6 +28,7 @@
   let query = '';
   let view = null;
   let enterTimer = 0, leaveTimer = 0, spinUntil = 0;
+  let slide = null, dx = null; // the sidebar's spring, and where it is now (0 = fully in)
 
   /* ---------- The view: how the list is grouped, sorted and filtered ---------- */
   function loadView() {
@@ -229,11 +230,11 @@
 
   function drawBar() {
     const n = filterCount();
-    barEl.replaceChildren(
+    barEl.replaceChildren(...[
       viewButton(groupLabel(), 'Group by', groupMenu),
       viewButton(sortLabel(), 'Sort by', sortMenu, el('span', { class: 'dr-dir' + (view.dir === 'asc' ? ' is-asc' : ''), 'aria-hidden': 'true' }, icon('arrowDown'))),
       schema() ? viewButton('Filter', 'Show only some drafts', filterMenu, n ? el('span', { class: 'dr-n', text: String(n) }) : null) : null,
-      schema() ? el('button', { type: 'button', class: 'dr-view dr-view-icon', 'data-tip': 'Properties on each row', 'aria-label': 'Properties on each row', 'aria-haspopup': 'menu', onclick: (e) => propsMenu(e.currentTarget) }, icon('sliders')) : null);
+      schema() ? el('button', { type: 'button', class: 'dr-view dr-view-icon', 'data-tip': 'Properties on each row', 'aria-label': 'Properties on each row', 'aria-haspopup': 'menu', onclick: (e) => propsMenu(e.currentTarget) }, icon('sliders')) : null].filter(Boolean));
     const chips = [];
     for (const name of Object.keys(view.filters)) {
       const f = Object.assign({ name }, (schema() || {})[name]);
@@ -418,15 +419,17 @@
     Store.deleteDraft(id);
     app().draftDeleted(id);
     render();
-    toast('Deleted “' + Store.displayTitle(copy) + '”', {
-      label: 'Undo',
-      run: () => {
-        Store.saveDraft(copy);
-        Sync.restore(copy);
-        if (wasOpen) app().openDraft(copy.id);
-        render();
-      }
-    });
+    let back = false;
+    const restore = () => {
+      if (back) return false;
+      back = true;
+      Store.saveDraft(copy);
+      Sync.restore(copy);
+      if (wasOpen) app().openDraft(copy.id);
+      render();
+    };
+    app().did('deleted draft', restore, null);
+    toast('Deleted “' + Store.displayTitle(copy) + '”', { label: 'Undo', run: restore });
   }
 
   /* ---------- Showing and hiding ---------- */
@@ -434,23 +437,40 @@
   const narrow = () => TDW.UI.isNarrow();
   const remember = (on) => { try { localStorage.setItem(PIN_KEY, on ? '1' : ''); } catch (_) { /* private mode */ } };
 
-  function setState(next) {
+  // The sidebar rides one spring. A new target starts from where it is and how fast it is going,
+  // so changing your mind mid-way never makes it jump or wait.
+  function slideTo(shown, instant) {
+    const out = -(side.offsetWidth + 24);
+    const to = shown ? 0 : out;
+    const from = dx == null ? (shown ? out : 0) : dx;
+    const v = slide ? slide.velocity : 0;
+    if (slide) slide.stop();
+    const set = (x) => { dx = x; side.style.setProperty('--dx', x.toFixed(1) + 'px'); };
+    const done = () => { slide = null; set(to); side.classList.remove('is-moving'); };
+    if (instant || from === to) { done(); return; }
+    side.classList.add('is-moving');
+    slide = TDW.UI.spring({ from, to, velocity: v, response: 0.24, onUpdate: set, onDone: done });
+  }
+
+  function setState(next, instant) {
     clearTimeout(enterTimer);
     clearTimeout(leaveTimer);
+    leaveTimer = 0;
     if (next === state) return;
     const was = state;
     state = next;
+    if (!!was !== !!next) slideTo(!!next, instant);
     if (next) { if (body.parentNode !== side) side.append(body); app().saveNow(); render(); }
     root.dataset.drafts = next || '';
     side.inert = !next;
     pinBtn.setAttribute('aria-pressed', String(next === 'pinned' || next === 'held'));
-    pinBtn.dataset.tip = next === 'pinned' || next === 'held' ? 'Close the sidebar (' + keys('⌘O') + ')' : 'Keep the sidebar open (' + keys('⌘O') + ')';
+    pinBtn.dataset.tip = TDW.Keys.tip(next === 'pinned' || next === 'held' ? 'Close' : 'Keep open', 'drafts');
     $('spine-title').setAttribute('aria-expanded', String(!!next));
     // The page slides over when the sidebar docks; the margin's fixed parts follow it.
     if ((was === 'pinned') !== (next === 'pinned') && TDW.Margin) {
       const t0 = performance.now();
       root.classList.add('drafts-moving');
-      const follow = (now) => { TDW.Margin.measure(); if (now - t0 < 560) requestAnimationFrame(follow); else { root.classList.remove('drafts-moving'); TDW.Margin.onLayout(); } };
+      const follow = (now) => { TDW.Margin.measure(); if (now - t0 < 340) requestAnimationFrame(follow); else { root.classList.remove('drafts-moving'); TDW.Margin.onLayout(); } };
       requestAnimationFrame(follow);
     }
     if (!next && side.contains(document.activeElement)) TDW.Editor.focus();
@@ -510,7 +530,7 @@
       el('button', { type: 'button', class: 'link', text: 'Connect Notion', onclick: () => { if (state !== 'pinned') close(); TDW.Dialogs.openSettings('notion'); } }));
     body = el('div', { class: 'dr' },
       el('div', { class: 'dr-head sheet-drag' }, nameEl, syncBtn,
-        el('button', { type: 'button', class: 'dr-tool tip-end', 'aria-label': 'New draft', 'data-tip': 'New draft (' + keys('⌘⌥N') + ')', onclick: newDraft }, icon('plus')), pinBtn),
+        el('button', { type: 'button', class: 'dr-tool tip-end', 'aria-label': 'New draft', 'data-tip': TDW.Keys.tip('New draft', 'newDraft'), onclick: newDraft }, icon('plus')), pinBtn),
       el('div', { class: 'dr-find' }, icon('search'), findEl),
       barEl, chipsEl, listEl, footEl);
     sheet.append(el('div', { class: 'grabber', 'aria-hidden': 'true' }));
@@ -523,18 +543,27 @@
     build();
     // Rest on the left edge and the sidebar comes over; move away and it goes.
     const edge = $('drafts-edge');
+    // Heading for the edge opens it at once; drifting near it needs a short pause, so reaching
+    // for the block handles in the gutter doesn't set it off. Never while a button is held.
+    const peek = () => { if (!state && !narrow()) setState('peek'); };
     edge.addEventListener('pointerenter', (e) => {
-      if (e.pointerType === 'touch' || state || narrow()) return;
+      if (e.pointerType === 'touch' || e.buttons || state || narrow()) return;
       clearTimeout(enterTimer);
-      enterTimer = setTimeout(() => setState('peek'), 70);
+      enterTimer = setTimeout(peek, 60);
+    });
+    edge.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' || e.buttons || state) return;
+      if (e.clientX <= 3 || e.movementX <= -3) { clearTimeout(enterTimer); peek(); }
     });
     edge.addEventListener('pointerleave', () => clearTimeout(enterTimer));
     document.addEventListener('pointermove', (e) => {
       if (state !== 'peek') return;
-      const r = side.getBoundingClientRect();
-      const inside = e.clientX <= r.right + 20 && e.clientY >= r.top - 40;
-      if (inside || TDW.UI.menuOpen() || (e.target.closest && e.target.closest('.menu'))) { clearTimeout(leaveTimer); leaveTimer = 0; return; }
-      if (!leaveTimer) leaveTimer = setTimeout(() => { leaveTimer = 0; if (state === 'peek' && !TDW.UI.menuOpen()) setState(null); }, 260);
+      const right = 8 + side.offsetWidth; // where it rests, not where the spring has it now
+      const away = e.clientX - right;
+      if (away <= 28 || TDW.UI.menuOpen() || (e.target.closest && e.target.closest('.menu'))) { clearTimeout(leaveTimer); leaveTimer = 0; return; }
+      // Well clear of it, or leaving fast: go now. Just past its edge: a short grace, in case you overshot.
+      if (away > 140 || e.movementX > 14) { clearTimeout(leaveTimer); leaveTimer = 0; setState(null); return; }
+      if (!leaveTimer) leaveTimer = setTimeout(() => { leaveTimer = 0; if (state === 'peek' && !TDW.UI.menuOpen()) setState(null); }, 130);
     }, { passive: true });
     document.addEventListener('pointerdown', (e) => {
       if (state !== 'held' && state !== 'peek') return;
@@ -549,14 +578,14 @@
       if (query) { query = ''; findEl.value = ''; render(); return; }
       if (state === 'pinned') TDW.Editor.focus(); else close();
     });
-    TDW.UI.narrowQuery.addEventListener('change', () => { if (narrow()) setState(null); else if (sheet.open) dismiss(sheet); });
+    TDW.UI.narrowQuery.addEventListener('change', () => { if (narrow()) setState(null, true); else if (sheet.open) dismiss(sheet); });
     window.addEventListener('resize', () => {
       if (state === 'pinned' && !canPin()) setState('held');
       else if (state === 'held' && canPin()) setState('pinned');
     });
     let pinned = false;
     try { pinned = localStorage.getItem(PIN_KEY) === '1'; } catch (_) { pinned = false; }
-    if (pinned && !narrow() && canPin()) setState('pinned');
+    if (pinned && !narrow() && canPin()) setState('pinned', true);
   }
 
   TDW.Drafts = { init, open, close, toggle, isOpen, render, renderSync, newDraft, editProp };

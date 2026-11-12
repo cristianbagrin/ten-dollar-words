@@ -87,3 +87,25 @@ test('escapeLineStart: a spaced --- and a • stay paragraphs, with no stray bac
   assert.equal(Inline.escapeLineStart('• b'), '\\• b');
   assert.equal(Inline.block('\\• b').type, 'p');
 });
+
+test('underline is ++text++, and a plain plus is never mistaken for it', () => {
+  const I = require('../app/js/inline.js');
+  const flagsOf = (s) => [...I.parse(s, 0).flags];
+  const f = flagsOf('a ++b++ c');
+  assert.equal(f[2], I.MD); assert.equal(f[3], I.MD);
+  assert.equal(f[4], I.U);
+  assert.equal(I.plain('a ++b++ c'), 'a b c');
+  assert.equal(I.plain('C++ and 1+1=2 and a + b'), 'C++ and 1+1=2 and a + b');
+  const md = I.serialize([{ text: '1+1 ' }, { text: 'two', u: true, b: true }]);
+  assert.equal(md, '1\\+1 ++**two**++');
+  assert.equal(I.plain(md), '1+1 two');
+  assert.equal(I.parse(md, 0).flags[md.indexOf('two')] & (I.U | I.B), I.U | I.B);
+});
+
+test('a toggle is a block of its own, open or closed', () => {
+  const I = require('../app/js/inline.js');
+  assert.deepEqual(I.block('▾ Open'), { type: 'toggle', prefix: 2, open: true });
+  assert.deepEqual(I.block('▸ Shut'), { type: 'toggle', prefix: 2, open: false });
+  assert.equal(I.plain('▸ Shut'), 'Shut');
+  assert.equal(I.escapeLineStart('▸ not a toggle'), '\\▸ not a toggle');
+});

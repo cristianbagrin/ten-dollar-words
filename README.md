@@ -6,10 +6,23 @@ An account (Settings → Account) keeps your Notion connection, Gemini key, sett
 
 It's plain HTML, CSS, and JavaScript with no build step. The one piece that runs on a server is the account, a Netlify Function in `netlify/`.
 
+## New in 3.1
+
+- **The bench.** A quiet row under the page: the draft's format, Review, the Lab, Trim, a challenge, and Post. Icons only; each says its name and shortcut when you rest on it. Its × (or Settings → Look) puts it away; the palette's "Show the bench" brings it back.
+- **Shortcuts you can change.** F12 (Ctrl+Shift+/ off a Mac) opens the list. Click any shortcut and press the keys you want; Backspace clears it, Esc cancels, and the arrow beside a changed one puts the default back. They're saved with your settings. Defaults on a Mac: ⌘U underline, ⌘⌥4 to-do, ⌘⌥5 bullets, ⌘⌥6 numbers, ⌘⌥7 toggle, ⌘G ghost, ⌘⇧J Ask AI, ⌃N add a note, ⌘⇧H highlight in the last color, ⌃⇧J alternatives from AI, ⌃⇧R roll a challenge. The code is in `app/js/keys.js`.
+- **The bar over a selection** is five icons: Ask AI, Alternatives, Add a note, Ghost it, Stash in Overflow. Bold, italic, underline, strikethrough, code, link, color and Turn into are in its ⋯.
+- **Underline** (`++text++` in the saved text, underline in Notion) and **toggle lists**: a toggle hides the lines under it up to the next blank line, heading, divider or toggle. Click its arrow, or ⌘⇧↩.
+- **Links** show a card when you rest on them or click them: open, copy, edit, remove. ⌘-click opens one straight away.
+- **Undo reaches further.** ⌘Z works from anywhere on the page and also takes back a format or budget change, a stage, the backspace switch, an ignored note and a deleted draft, in the order they happened.
+- **Threads** is a format (500 characters a post, chained like X), and the palette and bench post to X, Threads or LinkedIn.
+- **The gutter shows only what is extra.** What each whole paragraph costs is a setting (Settings → Writing), off by default.
+- **Effects** (Settings → Look, and Sound → Desk sounds). Words cut by a fix burst into letters and the saving flies to the spend; Trim reads down the page and strikes its cuts in turn; rolling a challenge spins a reel and a red pencil rings what you got; a challenge met is stamped. Reduce Motion turns the movement off.
+- **Forgot your password?** Settings → Account → Sign in. The password is the key the account is encrypted with, so it can't be recovered; a reset starts the account again under a new password and fills it from the browser you're in. It needs the site's reset code: set `TDW_RESET_CODE` (8 characters or more) under Site configuration → Environment variables in Netlify and redeploy. Without it, resets are off.
+
 ## Reviewing
 
 - **⌘E** (or the palette's Review this draft) turns the review on and off. The text doesn't move a pixel.
-- **What each paragraph costs** stands in the left gutter, in red pencil, and under it how much of that is extra: the words its notes would cut ("$20 extra"). Rest on the figure and those words and their notes light up.
+- **What is extra** stands in the left gutter, in red pencil: the words a paragraph's notes would cut ("$20 extra"). Rest on the figure and those words and their notes light up. Settings → Writing can add what the whole paragraph costs above it.
 - **Every note says what fixing it saves.** Wordy phrases, adverbs and weakeners are counted exactly ("in order to" → "to" saves $20). Long sentences and passive voice are estimated and shown with a ~: a hard sentence usually loses about a fifth of its words when it's tightened, a very hard one about a third, and active voice drops the helper verb (and "by" when the doer is named). Inside a long sentence the paragraph counts the sentence's estimate or the smaller fixes in it, whichever is bigger, not both. Opening a note explains its estimate.
 - **× on a note** ignores that one note in that draft, with Undo. It comes back only if the sentence is rewritten; the palette brings all ignored notes back. "Hide weakeners" (and the like) in an opened note hides a whole kind.
 - **The grade** at the head of the margin opens a ruler on hover: "written for an 11-year-old", the draft's mark on a scale from 1 to 16, a dot per paragraph (rest on one and its paragraph lights up), and a children's novel, everyday adult reading, a broadsheet and an academic paper for comparison.
@@ -24,18 +37,18 @@ Version 2.1 makes the page work like Notion's: every line is a block you can gra
 
 - **Block handles.** Hover a block: a **+** and a grip (⋮⋮) appear in the left margin. **+** adds a block under it and opens the command menu (Alt+click adds one above). Drag the grip to move the block, or the selected blocks; a blue line shows where it lands. Click the grip for the block menu: Turn into, Color, Ask AI, Alternatives for this paragraph, Add a note, Duplicate, Move up, Move down, Delete.
 - **The "/" menu.** Type **/** at the start of a block or after a space: Text, Heading 1–3, Bulleted list, Numbered list, To-do list, Quote, Divider, Ask AI, Alternatives, Note, and every color ("/red", "/yellow back"). Keep typing to filter, ↑/↓ to choose, Return or Tab to run, Esc to close. The empty line you're on says "Type '/' for commands".
-- **The bar over a selection.** Select text and a bar appears above it: **✦ Ask AI**, **A/B** (alternatives), **Turn into**, bold, italic, strikethrough, code, link, **color** (A), **note**, and ⋯ for Ghost it, Stash and the rest. On a phone it sits under the selection, out of the way of the phone's own menu.
+- **The bar over a selection.** Select text and a bar of icons appears above it: Ask AI, Alternatives, Add a note, Ghost it, Stash in Overflow, and ⋯ for formatting, color and Turn into. On a phone it sits under the selection, out of the way of the phone's own menu.
 - **Keys.** ⌘⇧↑/↓ moves the block, ⌘D duplicates it, ⌘A selects the block (again for everything). `"` and a space starts a quote. A link pasted over selected text links it.
 - **Backspace** at the start of a heading, list item, to-do or quote turns it back into text, on the first line too (Safari used to ignore it there), and with No backspace on, since nothing is deleted.
 
 ### Colors
-Select text and pick a text color or a background from the bar's **A**, the block menu's Color (the whole block), or the "/" menu. **Ctrl+Shift+H** colors the selection with the last color you used, and again takes it off. They're Notion's colors, and they sync both ways: a color set in Notion shows here, and one set here shows in Notion. Gray text stays reserved for ghosts. Colors that were already in your Notion pages are kept: the app reads them once as highlights before it manages them.
+Select text and pick a text color or a background from the bar's **A**, the block menu's Color (the whole block), or the "/" menu. **⌘⇧H** colors the selection with the last color you used, and again takes it off. They're Notion's colors, and they sync both ways: a color set in Notion shows here, and one set here shows in Notion. Gray text stays reserved for ghosts. Colors that were already in your Notion pages are kept: the app reads them once as highlights before it manages them.
 
 ### Notes for future you
-Select some words and add a note: the bar's speech mark, **Ctrl+Shift+M**, right-click → Add a note, or "/note". The words get a yellow underline and a speech mark in the right margin; click either to open the note. Every note is a to-do you can tick off. If you delete the words, the note stays, pinned where they were. **Ctrl+Shift+M** with nothing selected (or the **Notes** button at the bottom right) opens the Notes panel: Open, Done or All, and a click takes you to the note. Notes stay out of Notion's text and out of the counts; signed in, your account carries them to your other devices.
+Select some words and add a note: the bar's speech mark, **⌃N**, right-click → Add a note, or "/note". The words get a yellow underline and a speech mark in the right margin; click either to open the note. Every note is a to-do you can tick off. If you delete the words, the note stays, pinned where they were. **⌃N** with nothing selected opens the Notes panel: Open, Done or All, and a click takes you to the note. Notes stay out of Notion's text and out of the counts; signed in, your account carries them to your other devices.
 
 ### Talk to the AI about a passage
-Select text and press **✦ Ask AI** (or **Ctrl+J**, or "/ai"). Type what you want, like a comment in a design tool: "other ways to say this", "make it punchier", "is this clear?", or tap one of the suggestions. The AI answers in a thread on that text, and when it suggests wording, its versions join the text's **alternatives**: click one in the thread to put it on the page, or flip through them in place with ↑/↓ (A/B, Jason Fried's way), and "Back to the original" returns. Reply to keep going. It never changes the page by itself, and the thread stays as a note you can come back to.
+Select text and press **✦ Ask AI** (or **⌘⇧J**, or "/ai"). Type what you want, like a comment in a design tool: "other ways to say this", "make it punchier", "is this clear?", or tap one of the suggestions. The AI answers in a thread on that text, and when it suggests wording, its versions join the text's **alternatives**: click one in the thread to put it on the page, or flip through them in place with ↑/↓ (A/B, Jason Fried's way), and "Back to the original" returns. Reply to keep going. It never changes the page by itself, and the thread stays as a note you can come back to.
 
 ## The writing desk
 
@@ -47,7 +60,7 @@ Any word, sentence or paragraph (the title too) can carry other versions of itse
 - Select some text, or put the caret on a word, and press **Ctrl+Shift+A** (or right-click → Alternatives for selection). The panel opens on the left with **Word · Sentence · Paragraph** tabs; switching tabs moves to the sentence or paragraph around the same spot. The rest of the page dims.
 - Type a new version in the empty row: the page changes as you type, so you read it in place. **Return** adds it, **Esc** closes and keeps what's on the page. **↑/↓** in the list tries each one in the sentence.
 - A small square marks your versions, a robot the AI's, and a filled dot the one on the page.
-- Type **??** as an entry (or right-click → AI alternatives for selection, **Ctrl+Shift+G**) and the AI adds more. It reads the sentence and paragraph around the text, so it's not a thesaurus. ⌘Z takes them back.
+- Type **??** as an entry (or **⌃⇧J**) and the AI adds more. It reads the sentence and paragraph around the text, so it's not a thesaurus. ⌘Z takes them back.
 - **Backspace** on an empty row, or **⌘⌫** on any row, removes that version. When only the original is left, the underline goes.
 - In the page, text with alternatives has a faint squiggle and a row of tiny dots under its end, one per version. The filled dot is the one showing; if it isn't the first, you're on a variation. A paragraph shows a thin line in the margin instead. Hover over it and press **↑/↓** to flip through the versions, or use **⌥↑/⌥↓** with the caret inside. Click the dots to open the list.
 - **a/an** follows the swap: "a paperclip" becomes "an eraser" (and "an hour", "a unicorn", "an FAQ").
@@ -55,7 +68,7 @@ Any word, sentence or paragraph (the title too) can carry other versions of itse
 - Notion only gets the version on the page. Signed in, the account carries the rest to your other devices. If an edit in Notion removes the text an alternative was on, its versions go to Overflow as one line, so nothing is lost.
 
 ### Ghost it
-Select text and press **Ctrl+/** (or right-click → Ghost it). It fades to about a tenth and stays in the draft, so you can see the paragraph without it. **Ctrl+/** again (or right-click → Revive) brings it back. Ghosted text doesn't count: not in the words, the dollars, the readability grade, the fold, X's count, copying for a platform, saving a file or posting. It works with No backspace on, since nothing is deleted. In Notion, ghosted text is gray, and gray text from Notion comes back ghosted.
+Select text and press **⌘G** (or right-click → Ghost it). It fades to about a tenth and stays in the draft, so you can see the paragraph without it. **⌘G** again (or right-click → Revive) brings it back. Ghosted text doesn't count: not in the words, the dollars, the readability grade, the fold, X's count, copying for a platform, saving a file or posting. It works with No backspace on, since nothing is deleted. In Notion, ghosted text is gray, and gray text from Notion comes back ghosted.
 
 ### Overflow
 A panel on the right for writing you want nearby but not in the draft: cut passages, notes, links, words you like, an outline. Open it with the button at the bottom right or **Ctrl+Shift+O**.

@@ -13,7 +13,6 @@
   const TDW = window.TDW = window.TDW || {};
   const { Marks, Editor, UI } = TDW;
   const app = () => TDW.App;
-  const IS_MAC = UI.device.apple;
   const LAST_KEY = 'tdw.lastColor';
 
   const NAMES = { brown: 'Brown', orange: 'Orange', yellow: 'Yellow', green: 'Green', blue: 'Blue', purple: 'Purple', pink: 'Pink', red: 'Red', gray: 'Gray' };
@@ -77,8 +76,7 @@
   function colorBlock(line, color) {
     const b = Editor.block(line);
     if (!b || !b.vis) return;
-    const pre = b.md.length - b.md.replace(/^(#{1,3} |- |\d+\. |\[[ xX]\] |> )/, '').length;
-    applyColor(b.start + pre, b.end, color);
+    applyColor(b.text, b.end, color);
   }
 
   // A popover of swatches: text colors, then backgrounds, then "Default".
@@ -176,7 +174,7 @@
     const save = UI.el('button', { type: 'button', class: 'btn btn-sm', text: ai ? 'Ask' : 'Add note' });
     const swap = UI.el('button', { type: 'button', class: 'btn-quiet btn-sm note-swap', text: ai ? 'Just a note' : '✦ Ask AI instead' });
     const foot = UI.el('div', { class: 'note-foot' }, UI.el('span', { class: 'note-spacer' }), swap, save);
-    node.append(quote, input, chips, foot);
+    node.append(...[quote, input, chips, foot].filter(Boolean));
     mountCard(node, ai ? 'Ask AI' : 'New note');
     card = { node, id: null, range: r, ai, marked: false };
     Editor.setOpenNote(null);
@@ -242,10 +240,10 @@
         UI.el('input', { type: 'checkbox', checked: !!n.done, 'aria-label': 'Done', onchange: (e) => setNote(n.id, { done: e.target.checked }) })),
       UI.el('span', { class: 'note-kind', text: n.ai ? '✦ AI thread' : 'Note' }),
       UI.el('span', { class: 'note-when', text: n.at ? UI.relTime(n.at) : '' }),
-      UI.el('button', { type: 'button', class: 'btn-icon note-del', 'aria-label': 'Delete note', title: 'Delete note', onclick: () => removeNote(n.id) }, UI.icon('trash') || '×'),
-      UI.el('button', { type: 'button', class: 'btn-icon note-x', 'aria-label': 'Close', title: 'Close (Esc)', onclick: () => closeCard() }, UI.icon('close')));
+      UI.el('button', { type: 'button', class: 'btn-icon note-del', 'aria-label': 'Delete note', onclick: () => removeNote(n.id) }, UI.icon('trash') || '×'),
+      UI.el('button', { type: 'button', class: 'btn-icon note-x', 'aria-label': 'Close', onclick: () => closeCard() }, UI.icon('close')));
     const quote = quoteText
-      ? UI.el('button', { type: 'button', class: 'note-quote', text: quoteText.slice(0, 160) + (quoteText.length > 160 ? '…' : ''), title: 'Select it on the page', onclick: () => { Editor.select(n.start, n.end); } })
+      ? UI.el('button', { type: 'button', class: 'note-quote', text: quoteText.slice(0, 160) + (quoteText.length > 160 ? '…' : ''), onclick: () => { Editor.select(n.start, n.end); } })
       : UI.el('div', { class: 'note-quote is-gone', text: 'The words this note was on were deleted.' });
     const kids = [head, quote];
     if (!n.ai || n.body) {
@@ -291,7 +289,7 @@
     const ul = UI.el('ul', { class: 'note-options' });
     for (const o of options) {
       const on = o === shown;
-      const b = UI.el('button', { type: 'button', class: 'note-option' + (on ? ' is-on' : ''), title: on ? 'On the page' : 'Try it on the page' },
+      const b = UI.el('button', { type: 'button', class: 'note-option' + (on ? ' is-on' : ''), },
         UI.el('span', { class: 'note-option-dot', 'aria-hidden': 'true' }), UI.el('span', { text: TDW.Inline.plain(o) }));
       b.addEventListener('mousedown', (e) => e.preventDefault());
       b.addEventListener('click', () => tryOption(n.id, o));
@@ -521,7 +519,7 @@
     }
     M().setView('notes');
     refreshPanel();
-    if (!(ann().notes || []).length) UI.toast('No notes yet. Select some words and press ' + (IS_MAC ? '⌃⇧M' : 'Ctrl+Shift+M') + '.');
+    if (!(ann().notes || []).length) UI.toast('No notes yet');
   }
 
   function togglePanel() {
@@ -541,20 +539,15 @@
       if (e.key === 'Escape' && card && !e.defaultPrevented) {
         if (card.node.contains(e.target) || document.activeElement === Editor.rootEl()) { e.preventDefault(); closeCard(); return; }
       }
-      if (!e.ctrlKey || e.metaKey) return;
-      const k = e.code;
-      if (e.shiftKey && !e.altKey && k === 'KeyM') {
-        e.preventDefault();
-        const s = Editor.getSelection();
-        if (s.end > s.start) compose({ ai: false }); else togglePanel();
-      } else if (!e.shiftKey && !e.altKey && k === 'KeyJ') { e.preventDefault(); compose({ ai: true }); }
-      else if (e.shiftKey && !e.altKey && k === 'KeyH') {
-        e.preventDefault();
-        const r = range({ allowEmpty: true });
-        if (r.end <= r.start) return;
-        const c = lastColor();
-        applyColor(r.start, r.end, Marks.colorAt(ann(), r.start, r.end) === c ? null : c);
-      }
+    });
+    TDW.Keys.on('note', () => { if (app().state.loading) return false; const s = Editor.getSelection(); if (s.end > s.start) compose({ ai: false }); else togglePanel(); });
+    TDW.Keys.on('askAI', () => { if (app().state.loading) return false; compose({ ai: true }); });
+    TDW.Keys.on('highlight', () => {
+      if (app().state.loading) return false;
+      const r = range({ allowEmpty: true });
+      if (r.end <= r.start) return;
+      const c = lastColor();
+      applyColor(r.start, r.end, Marks.colorAt(ann(), r.start, r.end) === c ? null : c);
     });
     Editor.rootEl().addEventListener('click', (e) => {
       const el = e.target.closest && e.target.closest('[data-note]');

@@ -68,11 +68,12 @@
         row('New drafts use', segmented({ label: 'New drafts use', value: TDW.Formats.get(s.defaultFormat).key, options: TDW.Formats.LIST.map((f) => ({ value: f.key, label: f.label })), onChange: (v) => update({ defaultFormat: v }) }), null, true)),
       ...group('Review',
         switchRow('Mark fixes when reviewing', s.fixHighlights !== false, (on) => update({ fixHighlights: on }), 'Off: the review shows the grade and the spend, and no pencil marks.'),
-        s.fixHighlights !== false ? kinds : null),
+        s.fixHighlights !== false ? kinds : null,
+        switchRow('Show what each paragraph costs', !!s.paragraphCost, (on) => update({ paragraphCost: on }), 'Off: the gutter shows only what is extra.')),
       ...group('No backspace',
         switchRow('Turn it on when the stage says “no backspace”', !!s.noBackspace, (on) => update({ noBackspace: on }), 'The command palette can still turn it on or off for any draft.')),
       ...group('Your dictionary', el('div', { class: 'set-row is-stack' }, dictionaryField())),
-      el('div', { class: 'set-actions' }, el('button', { type: 'button', class: 'btn-outline btn-sm', onclick: () => { dismiss(settingsDlg); setTimeout(() => TDW.Desk.toggleSheet(), 160); } }, icon('keyboard'), device.phone ? 'Typing shortcuts' : 'Keyboard shortcuts'))
+      el('div', { class: 'set-actions' }, el('button', { type: 'button', class: 'btn-outline btn-sm', onclick: () => { dismiss(settingsDlg); setTimeout(() => TDW.Desk.toggleSheet(), 130); } }, icon('keyboard'), 'Shortcuts'))
     ];
   }
 
@@ -93,7 +94,9 @@
       row('Review marks', segmented({ label: 'Review marks', value: s.marks === 'highlighter' ? 'highlighter' : 'pencil', options: [{ value: 'pencil', label: 'Pencil' }, { value: 'highlighter', label: 'Highlighter' }], onChange: (v) => update({ marks: v }) }),
         'Pencil underlines what to fix. Highlighter washes it in a light color for each kind.'),
       row('Theme', segmented({ label: 'Theme', value: app().themeSetting(s), options: [{ value: 'auto', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], onChange: (v) => update({ theme: v }) }),
-        'System follows your device: light by day, graphite at night.'));
+        'System follows your device: light by day, graphite at night.'),
+      switchRow('The bench under the page', s.bench !== false, (on) => update({ bench: on }), 'Format, the Lab, Trim and challenges, one click away.'),
+      switchRow('Effects', s.effects !== false, (on) => update({ effects: on }), 'Cut words burst, Trim scans the page, a challenge rolls.'));
   }
 
   function soundSection(s) {
@@ -102,7 +105,8 @@
     const test = () => { TDW.Sound.unlock(); ['key', 'key', 'space', 'key', 'enter'].forEach((k, i) => setTimeout(() => TDW.Sound.play(k), i * 90)); };
     return [...group(null,
       row('Typing sound', segmented({ label: 'Typing sound', value: s.sound, options: SOUNDS.map(([value, label]) => ({ value, label })), onChange: (v) => { update({ sound: v }); if (v !== 'off') test(); } })),
-      row('Volume', el('div', { class: 'range-row', style: 'width:220px' }, vol, el('button', { type: 'button', class: 'btn-outline btn-sm', text: 'Test', onclick: test })))),
+      row('Volume', el('div', { class: 'range-row', style: 'width:220px' }, vol, el('button', { type: 'button', class: 'btn-outline btn-sm', text: 'Test', onclick: test }))),
+      switchRow('Desk sounds', s.effectSounds !== false, (on) => { update({ effectSounds: on }); if (on) { TDW.Sound.unlock(); TDW.Sound.play('stamp'); } }, 'The pencil, the stamp and the till, for cuts, trims and challenges.')),
     device.phone && device.apple ? el('p', { class: 'set-note', text: 'Silent mode on your iPhone mutes these sounds.' }) : null];
   }
 
@@ -232,10 +236,12 @@
     }
     function signedOutView() {
       const email = input('email', 'acct-email', 'username', { inputmode: 'email', value: Account.lastEmail() });
+      if (mode === 'reset') return resetView(email);
       const pw = input('password', 'acct-password', mode === 'up' ? 'new-password' : 'current-password', { minlength: '8' });
       const go = el('button', { type: 'submit', class: 'btn', text: mode === 'up' ? 'Create account' : 'Sign in' });
+      const forgot = mode === 'in' ? el('button', { type: 'button', class: 'link', text: 'Forgot your password?', onclick: () => { mode = 'reset'; say(''); render(); } }) : null;
       const form = el('form', { class: 'acct-form' }, field('Email', email),
-        field('Password', pw, mode === 'up' ? "At least 8 characters. There's no way to reset it yet, so let your password manager save it." : ''), el('div', null, go));
+        field('Password', pw, mode === 'up' ? 'At least 8 characters.' : ''), el('div', { class: 'set-actions' }, go, forgot));
       form.noValidate = true;
       form.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -255,6 +261,32 @@
         device.phone ? el('p', { class: 'set-note', style: 'margin-top:0', text: 'Easiest: connect Notion and Gemini on your computer, then sign in here.' }) : null,
         el('div', { style: 'margin-bottom:14px' }, pick), form];
     }
+    // Your password is the key to what the account keeps, so nobody can read it back to you. A
+    // reset starts the account again under a new password, filled from this browser.
+    function resetView(email) {
+      const code = input('password', 'acct-code', 'off');
+      const pw = input('password', 'acct-password', 'new-password', { minlength: '8' });
+      const go = el('button', { type: 'submit', class: 'btn', text: 'Reset and sign in' });
+      const form = el('form', { class: 'acct-form' }, field('Email', email),
+        field('Reset code', code, 'The TDW_RESET_CODE set for this site in Netlify.'),
+        field('New password', pw, 'At least 8 characters.'),
+        el('div', { class: 'set-actions' }, go, el('button', { type: 'button', class: 'btn-quiet', text: 'Back', onclick: () => { mode = 'in'; say(''); render(); } })));
+      form.noValidate = true;
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        for (const f of [email, code, pw]) if (!f.value.trim()) { f.focus(); return; }
+        run(go, 'Resetting…', async () => {
+          await Account.resetPassword(email.value, code.value, pw.value);
+          mode = 'in';
+          render(); refreshSettings(); TDW.App.syncChanged();
+          toast('Password reset. You’re signed in.');
+        });
+      });
+      return [
+        el('p', { class: 'set-note', style: 'margin-top:0', text: 'A forgotten password can’t be recovered: it is the key your account is locked with. Resetting starts the account again under a new password, and this browser’s Notion connection, Gemini key, settings and dictionary go into it. Drafts are untouched.' }),
+        form];
+    }
+
     function signedInView() {
       const st = Account.state();
       const out = el('button', { type: 'button', class: 'btn-outline btn-sm', text: 'Sign out' });
@@ -353,12 +385,9 @@
       settingsDlg = $('settings-dialog');
       TDW.Drafts.init();
       Account.onChange(() => { if (settingsDlg.open && accountRefresh) accountRefresh(); });
-      document.addEventListener('keydown', (e) => {
-        const mod = (e.metaKey || e.ctrlKey) && !e.shiftKey;
-        if (mod && e.altKey && e.code === 'KeyN') { e.preventDefault(); newDraft(); }
-        else if (mod && !e.altKey && e.key === ',') { e.preventDefault(); openSettings(); }
-        else if (mod && !e.altKey && String(e.key).toLowerCase() === 'o') { e.preventDefault(); TDW.Drafts.toggle(); }
-      });
+      TDW.Keys.on('newDraft', () => newDraft());
+      TDW.Keys.on('settings', () => openSettings());
+      TDW.Keys.on('drafts', () => TDW.Drafts.toggle());
     },
     openDrafts, openSettings, refreshSettings, renderDraftList, newDraft,
     isDraftsOpen() { return TDW.Drafts.isOpen(); }

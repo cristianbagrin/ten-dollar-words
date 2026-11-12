@@ -8,8 +8,8 @@
   'use strict';
 
   const TEXT_TYPES = new Set(['paragraph', 'heading_1', 'heading_2', 'heading_3',
-    'bulleted_list_item', 'numbered_list_item', 'quote', 'to_do']);
-  const PREFIX = { heading_1: '# ', heading_2: '## ', heading_3: '### ', bulleted_list_item: '- ', quote: '> ' };
+    'bulleted_list_item', 'numbered_list_item', 'quote', 'to_do', 'toggle']);
+  const PREFIX = { heading_1: '# ', heading_2: '## ', heading_3: '### ', bulleted_list_item: '- ', quote: '> ', toggle: '▾ ' };
   const OPAQUE_LABELS = {
     image: 'image', video: 'video', audio: 'audio', file: 'file', pdf: 'PDF', bookmark: 'link',
     embed: 'embed', link_preview: 'link', callout: 'callout', toggle: 'toggle', code: 'code',
@@ -37,7 +37,7 @@
   const urlOf = (r) => (r && r.type === 'text' ? (r.text && r.text.link && r.text.link.url) || r.href || null : null);
   const styleRun = (r) => {
     const a = r.annotations || {};
-    return { text: display(plainOf(r)), b: !!a.bold, i: !!a.italic, s: !!a.strikethrough, c: !!a.code, link: urlOf(r) };
+    return { text: display(plainOf(r)), b: !!a.bold, i: !!a.italic, s: !!a.strikethrough, u: !!a.underline, c: !!a.code, link: urlOf(r) };
   };
   // Rich text → the draft's markdown: **bold**, *italic*, ~~strike~~, `code`, [links](url).
   const richToMd = (rich) => Inline.serialize((rich || []).map(styleRun));
@@ -47,7 +47,7 @@
   function signature(runs) {
     let out = '', last = null;
     for (const r of runs) {
-      const k = (r.b ? 'b' : '') + (r.i ? 'i' : '') + (r.s ? 's' : '') + (r.c ? 'c' : '') + '\u0001' + (r.link || '');
+      const k = (r.b ? 'b' : '') + (r.i ? 'i' : '') + (r.s ? 's' : '') + (r.u ? 'u' : '') + (r.c ? 'c' : '') + '\u0001' + (r.link || '');
       for (const ch of r.text) {
         const kk = r.c || !/\s/.test(ch) ? k : last; // a styled space looks like any other space
         out += (kk === last ? '' : '\u0002' + kk + '\u0003') + ch;
@@ -63,7 +63,7 @@
       const f = flags[k];
       if (f & Inline.MD) continue;
       const lk = f & Inline.L ? links.find((l) => k >= l.start && k < l.end) : null;
-      out.push({ text: md[k], b: !!(f & Inline.B), i: !!(f & Inline.I), s: !!(f & Inline.S), c: !!(f & Inline.C), link: lk ? lk.url : null });
+      out.push({ text: md[k], b: !!(f & Inline.B), i: !!(f & Inline.I), s: !!(f & Inline.S), u: !!(f & Inline.U), c: !!(f & Inline.C), link: lk ? lk.url : null });
     }
     return out;
   }
@@ -87,7 +87,8 @@
     return (blocks || []).map((b) => {
       const type = b.type;
       n = type === 'numbered_list_item' ? n + 1 : 0;
-      if (TEXT_TYPES.has(type)) {
+      // A toggle with nothing inside it is a line of the draft; one that holds blocks stays whole.
+      if (TEXT_TYPES.has(type) && !(type === 'toggle' && b.has_children)) {
         const body = b[type] || {};
         const rich = body.rich_text || [];
         let prefix = PREFIX[type] || '';
@@ -113,6 +114,7 @@
     if ((m = /^[-*•] (.*)$/.exec(line))) return { type: 'bulleted_list_item', text: m[1] };
     if ((m = /^\d+[.)] (.*)$/.exec(line))) return { type: 'numbered_list_item', text: m[1] };
     if ((m = /^> (.*)$/.exec(line))) return { type: 'quote', text: m[1] };
+    if ((m = /^[▸▾] (.*)$/.exec(line))) return { type: 'toggle', text: m[1] };
     if ((m = /^\[([ xX])\] (.*)$/.exec(line))) return { type: 'to_do', text: m[2], checked: m[1] !== ' ' };
     return { type: 'paragraph', text: line };
   }
@@ -196,8 +198,8 @@
   }
 
   /* Rich text for a markdown line, rebuilt from the old rich text: the markdown decides bold,
-     italics, strikethrough, code and links; text the user did not touch keeps its color,
-     underline, soft line breaks, and its mentions. Inserted text takes the color of the
+     italics, strikethrough, underline, code and links; text the user did not touch keeps its
+     color, soft line breaks, and its mentions. Inserted text takes the color of the
      character before it. */
   // mask (optional): one boolean per visible character of md, true where the draft has it
   // ghosted. Given, it decides gray: ghosted text is gray, and text that was gray but isn't
@@ -217,7 +219,7 @@
     while (q < oldText.length - p && q < newText.length - p &&
       oldText[oldText.length - 1 - q] === newText[newText.length - 1 - q]) q++;
 
-    let carry = { color: 'default', u: false };
+    let carry = { color: 'default' };
     const cells = chars.map((c, k) => {
       let from = -1;
       if (k < p) from = k;
@@ -226,11 +228,11 @@
       if (from >= 0) {
         const seg = segs[owner[from]];
         const a = seg.r.annotations || {};
-        carry = { color: a.color || 'default', u: !!a.underline };
+        carry = { color: a.color || 'default' };
         const obj = seg.r.type === 'mention' || seg.r.type === 'equation' ? owner[from] : -1;
-        cell = Object.assign({}, c, { text: oldRaw[from], color: carry.color, u: carry.u, obj, from });
+        cell = Object.assign({}, c, { text: oldRaw[from], color: carry.color, obj, from });
       } else {
-        cell = Object.assign({}, c, { color: carry.color, u: carry.u, obj: -1, from: -1 });
+        cell = Object.assign({}, c, { color: carry.color, obj: -1, from: -1 });
       }
       if (mask && mask.colorMode) {
         // Every color is the draft's to say: ghosts, highlights, or none.
