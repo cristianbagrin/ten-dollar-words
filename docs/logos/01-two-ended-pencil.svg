@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Two-ended pencil">
+  <title>Two-ended pencil</title>
+  <desc>The editor's pencil: blue end for notes, red end for the money.</desc>
+  <rect width="512" height="512" rx="112" fill="#ffffff"/>
+  <g transform="translate(256 256) rotate(-36)" stroke-linejoin="round">
+    <path d="M-140-36H0V36H-140Z" fill="#3c8ff6"/>
+    <path d="M0-36H140V36H0Z" fill="#fb4712"/>
+    <path d="M-140-36L-222 0L-140 36Z" fill="#cdd3dc" stroke="#cdd3dc" stroke-width="6"/>
+    <path d="M140-36L222 0L140 36Z" fill="#cdd3dc" stroke="#cdd3dc" stroke-width="6"/>
+    <path d="M-186-16L-222 0L-186 16Z" fill="#2a6ad1" stroke="#2a6ad1" stroke-width="6"/>
+    <path d="M186-16L222 0L186 16Z" fill="#c8380b" stroke="#c8380b" stroke-width="6"/>
+    <rect x="-8" y="-36" width="16" height="72" fill="#22252b"/>
+  </g>
+</svg>

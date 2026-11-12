@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Gutter bracket">
+  <title>Gutter bracket</title>
+  <desc>A galley in miniature: the slug line with the spend in red, and a blue bracket in the gutter beside a hard sentence.</desc>
+  <rect width="512" height="512" rx="112" fill="#ffffff"/>
+  <rect x="196" y="147" width="104" height="26" rx="13" fill="#22252b"/>
+  <rect x="352" y="147" width="56" height="26" rx="13" fill="#fb4712"/>
+  <rect x="196" y="215" width="212" height="26" rx="13" fill="#22252b"/>
+  <rect x="196" y="277" width="212" height="26" rx="13" fill="#22252b"/>
+  <rect x="196" y="339" width="134" height="26" rx="13" fill="#22252b"/>
+  <path d="M150 208H124V310H150" fill="none" stroke="#3c8ff6" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
