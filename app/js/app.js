@@ -7,7 +7,7 @@
   const { Engine, Editor, UI, Store, Sound, Dialogs, Spell, Sync, Formats, Account, Marks } = TDW;
   const opt = (name) => TDW[name] || null;
 
-  const APP_VERSION = '3.1.0';
+  const APP_VERSION = '3.1.1';
   const SAMPLE_TEXT = [
     'Every word you type costs ten dollars. That sounds harsh, but it is really the fastest way to learn to cut.',
     'Most people write long sentences because they are afraid that short ones will make them look simple to readers.',

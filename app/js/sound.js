@@ -154,8 +154,25 @@
     if (PROFILES[profile] && !cache[profile]) cache[profile] = PROFILES[profile]();
   }
 
+  // An open context keeps the whole machine's audio running in tiny low-delay buffers, which
+  // makes sound in every other app skip. So it only runs while there is something to hear:
+  // wake() starts it, and a few silent seconds later it is suspended again.
+  const IDLE_MS = 4000;
+  let idleTimer = 0;
+
+  function rest() {
+    idleTimer = 0;
+    if (ctx && ctx.state === 'running' && ctx.suspend) ctx.suspend().catch(() => {});
+  }
+
+  function wake() {
+    if (!ctx) return;
+    if (ctx.state !== 'running' && ctx.resume) ctx.resume().catch(() => {});
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(rest, IDLE_MS);
+  }
+
   function unlock() {
-    if (ctx && ctx.state === 'running') return;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     if (!ctx) {
@@ -164,9 +181,10 @@
       master = ctx.createGain();
       master.gain.value = volume * 0.6;
       master.connect(ctx.destination);
+      build();
     }
-    if (ctx.state !== 'running' && ctx.resume) ctx.resume().catch(() => {});
-    build();
+    if (profile === 'off' && !effects) rest();
+    else wake();
   }
 
   function kindForKey(e) {
@@ -201,6 +219,7 @@
     const list = desk ? shared[kind] : cache[profile] && cache[profile][kind];
     if (!list || !list.length) return;
     if (!desk) { lastAt = now; Sound.lastKeyAt = now; }
+    wake();
     const src = ctx.createBufferSource();
     src.buffer = list[Math.floor(Math.random() * list.length)];
     src.playbackRate.value = (o.rate || 1) * (1 + jitter(0.04));
