@@ -4,7 +4,7 @@ A writing app where every word costs $10. Version 3 is the Margin design (`docs/
 
 An account (Settings → Account) keeps your Notion connection, Gemini key, settings and dictionary, so every browser you sign in to is set up at once. On a phone the app speaks phone: taps instead of clicks and typing shortcuts instead of keyboard shortcuts.
 
-It's plain HTML, CSS, and JavaScript with no build step. The one piece that runs on a server is the account, a Netlify Function in `netlify/`.
+It's plain HTML, CSS, and JavaScript with no build step. It lives at https://tendollarwords.cristianbagrin.com, on one Cloudflare Worker: the Worker serves `app/` as it is, and the one piece that runs on a server is the account (`worker/`, with its records in a Cloudflare D1 database).
 
 ## New in 3.1
 
@@ -17,7 +17,7 @@ It's plain HTML, CSS, and JavaScript with no build step. The one piece that runs
 - **Threads** is a format (500 characters a post, chained like X), and the palette and bench post to X, Threads or LinkedIn.
 - **The gutter shows only what is extra.** What each whole paragraph costs is a setting (Settings → Writing), off by default.
 - **Effects** (Settings → Look, and Sound → Desk sounds). Words cut by a fix burst into letters and the saving flies to the spend; Trim reads down the page and strikes its cuts in turn; rolling a challenge spins a reel and a red pencil rings what you got; a challenge met is stamped. Reduce Motion turns the movement off.
-- **Forgot your password?** Settings → Account → Sign in. The password is the key the account is encrypted with, so it can't be recovered; a reset starts the account again under a new password and fills it from the browser you're in. It needs the site's reset code: set `TDW_RESET_CODE` (8 characters or more) under Site configuration → Environment variables in Netlify and redeploy. Without it, resets are off.
+- **Forgot your password?** Settings → Account → Sign in. The password is the key the account is encrypted with, so it can't be recovered; a reset starts the account again under a new password and fills it from the browser you're in. It needs the site's reset code: the Worker secret `TDW_RESET_CODE` (8 characters or more), set with `npx wrangler secret put TDW_RESET_CODE`. Without it, resets are off.
 
 ## Reviewing
 
@@ -101,17 +101,19 @@ Right-click the page for Alternatives for selection, AI alternatives for selecti
 
 ### Around the page
 - The spine: the title (opens Drafts), the Notion stage, the spend against the budget (click it for words, characters, reading time and budget presets), and ⋯ for the palette. A dot after the spend shows only when sync needs you.
-- The palette's Share group: **save** the draft as a Markdown file (ghosts left out, each alternative as it is on the page), **open** a `.md` or `.txt` file as a new draft, and **post to X** (**Ctrl+Shift+P**), which opens X's composer with the text the way X shows it. For a thread it opens the first post and copies the rest. There's no LinkedIn button, on purpose.
+- The palette's Share group: **save** the draft as a Markdown file (ghosts left out, each alternative as it is on the page), **open** a `.md` or `.txt` file as a new draft, **save a backup** of everything this browser keeps and **open a backup** in another browser (see Moving to the new address), and **post to X** (**Ctrl+Shift+P**), which opens X's composer with the text the way X shows it. For a thread it opens the first post and copies the rest. There's no LinkedIn button, on purpose.
 - The palette's Shortcuts (or **Ctrl+?**) lists every shortcut.
 - The Ctrl shortcuts are Ctrl on a Mac too, so they don't clash with ⌘. Where a browser keeps Ctrl+Shift+A for itself, Alt+Shift+A and Alt+Shift+G work too. On Windows, strikethrough is Ctrl+Shift+S only, because Ctrl+Shift+X stashes.
 
 ## Run it locally
 
-From this folder, run `node tools/dev-server.mjs` in Terminal, then open http://127.0.0.1:8765/. It serves the app and the account API; accounts live in memory until you stop it (add `--blobs some-folder` to keep them, after `npm install`).
+From this folder, run `node tools/dev-server.mjs` in Terminal, then open http://127.0.0.1:8765/. It serves the app and the account API; accounts live in memory until you stop it (add `--db some-folder` to keep them, after `npm install`).
+
+For the real thing, the Worker itself: `npm install` once, then `npm run dev` and open http://127.0.0.1:8787/. Accounts are kept in a local D1 database under `.wrangler/`. To try "Forgot your password?", copy `.dev.vars.example` to `.dev.vars`.
 
 `python3 -m http.server 8765 --directory app` still works for everything except accounts. (The Run button in `.claude/launch.json` can fail with "Operation not permitted", because macOS blocks the app's python3 from reading iCloud Drive. Use the Terminal command instead.)
 
-Run the tests with `node --test tests/` from this folder. Run `npm install` once first to include the test against Netlify's local Blobs server; without it, that one test is skipped.
+Run the tests with `npm test` (or `node --test tests/`) from this folder. Run `npm install` once first to include the tests against a real local D1 database; without it, those are skipped.
 
 ## Get a Gemini key
 
@@ -141,7 +143,7 @@ To use a different database, press Disconnect, then Connect with the new link (t
 
 Settings → Account → Create account, with an email and a password. Then sign in on any other browser (your phone, a second computer) and it's set up: the Notion secret and database, the Gemini key and model, every setting, your dictionary, and each Notion draft's format, budget, message and backspace switch, which Notion doesn't keep. Change something on one device and the others pick it up when you next bring the app to the front (or within 5 minutes). The drafts themselves travel through Notion, as before.
 
-- **Private by design.** Your password never leaves the browser. It's turned into two keys there (PBKDF2, 600,000 rounds): one signs you in, and the server keeps only a scrypt hash of it; the other encrypts everything the account keeps (AES-GCM) and never leaves your devices. The server stores ciphertext it can't read, in Netlify Blobs.
+- **Private by design.** Your password never leaves the browser. It's turned into two keys there (PBKDF2, 600,000 rounds): one signs you in, and the server keeps only a scrypt hash of it; the other encrypts everything the account keeps (AES-GCM) and never leaves your devices. The server stores ciphertext it can't read, in a Cloudflare D1 database.
 - **No password reset yet.** Resetting would need email, and the server couldn't decrypt your data anyway, so let your password manager save the password. Changing it (Settings → Account) re-encrypts the account and signs your other devices out, which then sign in with the new one.
 - **Signing out** takes your keys and Notion connection out of that browser. Drafts stay. **Deleting the account** removes it from the server; each browser keeps what it has.
 - Sessions last a year from your last visit. Eight wrong passwords in a row lock the account for 15 minutes.
@@ -205,11 +207,14 @@ The review underlines unknown words in red pencil. Open its note for fixes, or "
   docs/DESIGN.md           the Margin design: tokens, layout, and where every feature lives
   docs/PLAN.md … PLAN-v5-redesign.md   the build plans and design decisions (PLAN-v4-challenges.md: the challenge list)
   README.md                this file
-  netlify.toml             publishes app/ and the account function
-  package.json             @netlify/blobs, for the account function
-  netlify/
-    functions/account.mjs  /api/account/*: picks the Blobs store and hands over to the lib
-    lib/account-api.mjs    accounts: sign up and in, sessions, the lockout, the encrypted document
+  wrangler.jsonc           the Cloudflare Worker: app/ as static files, /api/* to the Worker, the D1 database
+  package.json             wrangler (to run and deploy the Worker) and the npm scripts
+  .dev.vars.example        the reset code for wrangler dev (copy to .dev.vars)
+  worker/
+    index.mjs              the Worker: /api/account/* to the account, everything else from app/
+    account-api.mjs        accounts: sign up and in, sessions, the lockout, the encrypted document; D1 storage
+  migrations/              the D1 database's table
+  scripts/migrate-from-netlify.mjs   moves the accounts from Netlify Blobs to D1, and checks the move
   tests/                   node tests (engine, formatting, formats, Notion mapping, spelling, the vault, the account API),
                            plus fake-notion.mjs, a local stand-in for the Notion API used for sync stress tests
   tools/build-dict.mjs     rebuilds app/dict/en-us.txt
@@ -219,7 +224,7 @@ The review underlines unknown words in red pencil. Open its note for fixes, or "
     index.html             page markup
     manifest.webmanifest   install-as-app settings
     sw.js                  service worker (offline use)
-    _headers               Netlify security headers
+    _headers               security headers (Cloudflare reads this file)
     css/base.css           tokens (color, type, spacing, motion), light and dark, buttons, menus
     css/page.css           the page, the post formats, marks (pencil and highlighter), the gutter's costs
     css/margin.css         the margin: review notes, the grade ruler, cards
@@ -264,7 +269,17 @@ The review underlines unknown words in red pencil. Open its note for fixes, or "
 
 ## Ship an update
 
-Bump `APP_VERSION` in `app/js/app.js`, `VERSION` in `app/sw.js`, and the `?v=` on every script and stylesheet in `index.html` together (for example `1.3.1`, `tdw-1.3.1`, `?v=1.3.1`). A new script also goes in the `PRECACHE` list in `sw.js`. The new service worker then replaces the old cache, and installed copies pick up the change. Deploy the whole folder, not just `app/`: Netlify installs `@netlify/blobs` and builds the account function from `netlify/` (see `netlify.toml`). The service worker never caches `/api/`.
+Bump `APP_VERSION` in `app/js/app.js`, `VERSION` in `app/sw.js`, and the `?v=` on every script and stylesheet in `index.html` together (for example `1.3.1`, `tdw-1.3.1`, `?v=1.3.1`). A new script also goes in the `PRECACHE` list in `sw.js`. The new service worker then replaces the old cache, and installed copies pick up the change. Deploy with `npm run deploy` (it brings the D1 table up to date, then runs `wrangler deploy`, which uploads `app/` and the Worker together). The service worker never caches `/api/`.
+
+## Moving to the new address
+
+The app used to live at tendollarwords.netlify.app. A browser keeps what it stores per web address, so the new address starts empty in every browser. What comes back by itself, and what needs a backup:
+
+- **Comes back when you sign in** at the new address: the Notion connection, the Gemini key and model, every setting, the dictionary, shortcuts, and each Notion draft's format, budget, message, alternatives, notes and challenge.
+- **Comes back through Notion**: every draft that is a Notion page, with its text, formatting, colors, ghosts and Overflow.
+- **Only in the old address's browser storage**: drafts that never went to Notion, edits that hadn't synced yet, ignored review notes, the challenge streak and difficulty, the drafts sidebar's view, the last highlight color. A backup carries these.
+
+To move everything: at the old address, ⋯ → **Save a backup** (the old address also offers this when it opens). At the new address, ⋯ → **Open a backup**, then sign in. Opening a backup only fills in what's missing and never replaces anything newer, so doing it twice is safe. The file holds your keys in plain text: delete it once it's opened. Do this in each browser you write in, and in the Home Screen app on a phone, which has storage of its own.
 
 ## Later
 

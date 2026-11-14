@@ -1,0 +1,33 @@
+// One Worker: app/ as static assets (app/_headers included), and /api/* in worker/index.mjs.
+// Accounts live in the D1 database bound as DB (schema: migrations/).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tendollarwords",
+  "account_id": "1da66eb742220c8ae068a08cdeeaade3",
+  "main": "worker/index.mjs",
+  "compatibility_date": "2026-11-01",
+  // account-api.mjs uses node:crypto (scrypt, randomBytes, timingSafeEqual).
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./app",
+    "binding": "ASSETS",
+    // The account API runs before any file lookup. Everything else is a file from app/.
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tendollarwords",
+      // From `npx wrangler d1 create tendollarwords`. Local dev (wrangler dev) doesn't need the real one.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Secrets (not in this file): TDW_RESET_CODE turns on "Forgot your password?" (8+ characters).
+  //   production: npx wrangler secret put TDW_RESET_CODE
+  //   wrangler dev: .dev.vars (copy .dev.vars.example)
+  "routes": [
+    { "pattern": "tendollarwords.cristianbagrin.com", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+}

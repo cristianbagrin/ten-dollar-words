@@ -1,11 +1,13 @@
 {
   "name": "ten-dollar-words",
   "private": true,
-  "description": "A writing app where every word costs $10. The app is static (app/); accounts run on one Netlify Function (netlify/).",
+  "description": "A writing app where every word costs $10. The app is static (app/); accounts run on one Cloudflare Worker (worker/) with a D1 database.",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test tests/",
+    "dev": "wrangler d1 migrations apply tendollarwords --local && wrangler dev",
+    "deploy": "wrangler d1 migrations apply tendollarwords --remote && wrangler deploy"
   },
-  "dependencies": {
-    "@netlify/blobs": "^11.1.1"
+  "devDependencies": {
+    "wrangler": "4.156.2"
   }
 }

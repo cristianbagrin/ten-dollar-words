@@ -1,13 +1,14 @@
 // The app with accounts, on this computer: serves app/ with the headers from app/_headers, and
-// answers /api/account/* with the same code the Netlify Function runs.
-//   node tools/dev-server.mjs [--port 8765] [--blobs <folder>]
-// Accounts live in memory and go when the server stops. With --blobs they're kept in that folder,
-// through Netlify's local Blobs server (the same client code as production).
+// answers /api/account/* with the same code the Worker runs. No install needed.
+//   node tools/dev-server.mjs [--port 8765] [--db <folder>] [--reset-code <code>]
+// Accounts live in memory and go when the server stops. With --db they're kept in that folder, in
+// a local D1 database (the same storage code as production; needs `npm install`). For the real
+// Worker, static files and all, use `npm run dev` (wrangler dev) instead.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHandler, memoryKV, blobsKV } from '../netlify/lib/account-api.mjs';
+import { createHandler, memoryKV, d1KV } from '../worker/account-api.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../app');
 const arg = (name) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : null; };
@@ -34,15 +35,16 @@ function siteHeaders() {
 }
 
 async function store() {
-  const dir = arg('--blobs');
+  const dir = arg('--db');
   if (!dir) return memoryKV();
-  const { BlobsServer } = await import('@netlify/blobs/server');
-  const { getStore } = await import('@netlify/blobs');
+  const { getPlatformProxy } = await import('wrangler');
+  const repo = path.resolve(ROOT, '..');
   fs.mkdirSync(dir, { recursive: true });
-  const server = new BlobsServer({ directory: dir, token: 'dev', port: 0 });
-  const { port } = await server.start();
-  const url = 'http://localhost:' + port;
-  return blobsKV(getStore({ name: 'accounts', siteID: 'dev', token: 'dev', edgeURL: url, uncachedEdgeURL: url, consistency: 'strong' }));
+  const { env } = await getPlatformProxy({ configPath: path.join(repo, 'wrangler.jsonc'), persist: { path: path.resolve(dir) } });
+  for (const f of fs.readdirSync(path.join(repo, 'migrations')).sort()) {
+    for (const sql of fs.readFileSync(path.join(repo, 'migrations', f), 'utf8').replace(/--.*$/gm, '').split(';')) if (sql.trim()) await env.DB.prepare(sql).run();
+  }
+  return d1KV(env.DB);
 }
 
 const handle = createHandler({ kv: await store(), secure: false, resetCode: process.env.TDW_RESET_CODE || arg('--reset-code') || '' });

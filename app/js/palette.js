@@ -58,6 +58,8 @@
     out.push(
       { group: 'Share', label: 'Save as Markdown', icon: 'download', run: () => TDW.Desk.save(), words: 'export file md download' },
       { group: 'Share', label: 'Open a file', icon: 'folder', run: () => TDW.Desk.openFile(), words: 'import md txt' },
+      { group: 'Share', label: 'Save a backup', icon: 'download', desc: 'Every draft, setting and key in this browser, as one file', run: () => TDW.Desk.backup(), words: 'export everything move new address browser json' },
+      { group: 'Share', label: 'Open a backup', icon: 'folder', desc: 'Fills this browser in; anything newer here stays', run: () => TDW.Desk.restore(), words: 'import restore everything move new address browser json' },
       { group: 'Share', label: 'Post to X', icon: 'x', run: () => TDW.Desk.postTo('x'), words: 'twitter publish tweet thread' },
       { group: 'Share', label: 'Post to Threads', icon: 'at', run: () => TDW.Desk.postTo('threads'), words: 'meta instagram publish thread' },
       { group: 'Share', label: 'Post to LinkedIn', icon: 'linkedin', run: () => TDW.Desk.postTo('linkedin'), words: 'publish share' },

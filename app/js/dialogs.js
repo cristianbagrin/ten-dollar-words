@@ -268,7 +268,7 @@
       const pw = input('password', 'acct-password', 'new-password', { minlength: '8' });
       const go = el('button', { type: 'submit', class: 'btn', text: 'Reset and sign in' });
       const form = el('form', { class: 'acct-form' }, field('Email', email),
-        field('Reset code', code, 'The TDW_RESET_CODE set for this site in Netlify.'),
+        field('Reset code', code, 'The TDW_RESET_CODE set for this site in Cloudflare.'),
         field('New password', pw, 'At least 8 characters.'),
         el('div', { class: 'set-actions' }, go, el('button', { type: 'button', class: 'btn-quiet', text: 'Back', onclick: () => { mode = 'in'; say(''); render(); } })));
       form.noValidate = true;

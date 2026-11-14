@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createHandler, memoryKV, blobsKV } from '../netlify/lib/account-api.mjs';
+import { createHandler, memoryKV, d1KV } from '../worker/account-api.mjs';
 
 const auth = () => crypto.randomBytes(32).toString('base64url');
 const IV = crypto.randomBytes(12).toString('base64');
@@ -159,38 +159,81 @@ test('an email left claimed by a signup that never finished can sign up again', 
   assert.equal((await call('signup', { email: 'a@b.co', auth: auth() })).status, 200);
 });
 
-// Needs `npm install` (for @netlify/blobs); skipped without it.
-test('the same flows on Netlify Blobs (the local Blobs server)', async (t) => {
-  const blobs = await Promise.all([import('@netlify/blobs/server'), import('@netlify/blobs')]).catch(() => null);
-  if (!blobs) { t.skip('run npm install first'); return; }
-  const [{ BlobsServer }, { getStore }] = blobs;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tdw-blobs-'));
-  const server = new BlobsServer({ directory: dir, token: 'tok', port: 0 });
-  const { port } = await server.start();
-  try {
-    const url = 'http://localhost:' + port;
-    const store = getStore({ name: 'accounts', siteID: 'site', token: 'tok', edgeURL: url, uncachedEdgeURL: url, consistency: 'strong' });
-    const { call } = setup(blobsKV(store));
-    const a = auth(), b = auth();
-    const one = await call('signup', { email: 'a@b.co', auth: a });
-    assert.equal(one.status, 200);
-    assert.equal((await call('signup', { email: 'a@b.co', auth: a })).status, 409);
-    assert.equal((await call('push', { base: 0, iv: IV, ct: CT }, one.cookie)).body.rev, 1);
-    const stale = await call('push', { base: 0, iv: IV, ct: 'AAAA' }, one.cookie);
-    assert.deepEqual([stale.status, stale.body.ct], [409, CT]);
-    const two = await call('login', { email: 'a@b.co', auth: a });
-    assert.equal((await call('password', { auth: a, newAuth: b, base: 1, iv: IV, ct: 'BBBB' }, one.cookie)).body.rev, 2);
-    assert.equal((await call('pull', {}, two.cookie)).status, 401);
-    assert.equal((await call('delete', { auth: b }, one.cookie)).status, 200);
-    assert.deepEqual((await store.list()).blobs, []);
-  } finally {
-    await server.stop();
-    fs.rmSync(dir, { recursive: true, force: true });
+// A real D1 database (wrangler's local one, in a temporary folder). Needs `npm install`; skipped without it.
+async function localD1(t) {
+  const wrangler = await import('wrangler').catch(() => null);
+  if (!wrangler) { t.skip('run npm install first'); return null; }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tdw-d1-'));
+  const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
+  const proxy = await wrangler.getPlatformProxy({ configPath: path.join(root, 'wrangler.jsonc'), persist: { path: dir } });
+  const db = proxy.env.DB;
+  for (const f of fs.readdirSync(path.join(root, 'migrations')).sort()) {
+    for (const sql of fs.readFileSync(path.join(root, 'migrations', f), 'utf8').replace(/--.*$/gm, '').split(';')) if (sql.trim()) await db.prepare(sql).run();
   }
+  t.after(async () => { await proxy.dispose(); fs.rmSync(dir, { recursive: true, force: true }); });
+  return db;
+}
+
+test('the same flows on D1', async (t) => {
+  const db = await localD1(t);
+  if (!db) return;
+  const { call } = setup(d1KV(db));
+  const a = auth(), b = auth();
+  const one = await call('signup', { email: 'a@b.co', auth: a });
+  assert.equal(one.status, 200);
+  assert.equal((await call('signup', { email: 'a@b.co', auth: a })).status, 409);
+  assert.equal((await call('push', { base: 0, iv: IV, ct: CT }, one.cookie)).body.rev, 1);
+  const stale = await call('push', { base: 0, iv: IV, ct: 'AAAA' }, one.cookie);
+  assert.deepEqual([stale.status, stale.body.ct], [409, CT]);
+  const two = await call('login', { email: 'a@b.co', auth: a });
+  assert.equal((await call('password', { auth: a, newAuth: b, base: 1, iv: IV, ct: 'BBBB' }, one.cookie)).body.rev, 2);
+  assert.equal((await call('pull', {}, two.cookie)).status, 401);
+  assert.equal((await call('delete', { auth: b }, one.cookie)).status, 200);
+  assert.deepEqual((await db.prepare('SELECT k FROM kv').all()).results, []);
+});
+
+test('D1 writes: only-if-new, only-if-unchanged, prefixes, and no stale ETag after a delete', async (t) => {
+  const db = await localD1(t);
+  if (!db) return;
+  const kv = d1KV(db);
+  assert.equal(await kv.put('x/1', { n: 1 }, { isNew: true }), true);
+  assert.equal(await kv.put('x/1', { n: 2 }, { isNew: true }), false);
+  const first = await kv.get('x/1');
+  assert.deepEqual(first.data, { n: 1 });
+  assert.equal(await kv.put('x/1', { n: 3 }, { etag: first.etag }), true);
+  assert.equal(await kv.put('x/1', { n: 4 }, { etag: first.etag }), false, 'an old ETag no longer matches');
+  assert.equal(await kv.put('x/1', { n: 5 }, { etag: '' }), false, 'a checked write is never blind');
+  const now = await kv.get('x/1');
+  await kv.del('x/1');
+  await kv.put('x/1', { n: 3 });
+  assert.equal(await kv.put('x/1', { n: 6 }, { etag: now.etag }), false, 'same value again, still a new ETag');
+  await kv.put('x/2', {});
+  await kv.put('x_3', {});
+  assert.deepEqual(await kv.keys('x/'), ['x/1', 'x/2']);
+  assert.equal(await kv.get('nope'), null);
+});
+
+test('the Worker: /api/account/* reaches the account, other /api/ paths 404, the rest are files', async (t) => {
+  const db = await localD1(t);
+  if (!db) return;
+  const worker = (await import('../worker/index.mjs')).default;
+  const env = { DB: db, TDW_RESET_CODE: '', ASSETS: { fetch: (req) => new Response('file ' + new URL(req.url).pathname) } };
+  const post = (url, body) => worker.fetch(new Request(url, { method: 'POST', headers: { 'X-TDW': '1', 'Sec-Fetch-Site': 'same-origin' }, body: JSON.stringify(body || {}) }), env);
+  const up = await post('https://tendollarwords.cristianbagrin.com/api/account/signup', { email: 'a@b.co', auth: auth() });
+  assert.equal(up.status, 200);
+  assert.match(up.headers.get('set-cookie'), /; Secure/);
+  const local = await post('http://127.0.0.1:8787/api/account/signup', { email: 'c@d.co', auth: auth() });
+  assert.doesNotMatch(local.headers.get('set-cookie'), /Secure/, 'plain http on this computer');
+  const none = await post('https://x.test/api/nothing');
+  assert.deepEqual([none.status, (await none.json()).error], [404, 'not_found']);
+  assert.equal((await post('https://x.test/api/account/nope')).status, 404);
+  assert.equal(await (await worker.fetch(new Request('https://x.test/js/app.js?v=1'), env)).text(), 'file /js/app.js');
+  const off = await post('https://x.test/api/account/reset', { email: 'a@b.co', code: 'whatever-long', auth: auth() });
+  assert.equal(off.status, 403, 'no TDW_RESET_CODE, no resets');
 });
 
 test('a reset needs the site code, then starts the account again under the new password', async () => {
-  const { createHandler: make, memoryKV: mem } = await import('../netlify/lib/account-api.mjs');
+  const { createHandler: make, memoryKV: mem } = await import('../worker/account-api.mjs');
   const AUTH1 = 'A'.repeat(43), AUTH2 = 'B'.repeat(43);
   const callOn = (h) => (action, body, cookie) => h(new Request('http://x/api/account/' + action, {
     method: 'POST', headers: Object.assign({ 'x-tdw': '1', 'content-type': 'application/json' }, cookie ? { cookie } : {}), body: JSON.stringify(body || {})
@@ -221,7 +264,7 @@ test('a reset needs the site code, then starts the account again under the new p
 });
 
 test('wrong reset codes lock the email out like wrong passwords', async () => {
-  const { createHandler: make, memoryKV: mem } = await import('../netlify/lib/account-api.mjs');
+  const { createHandler: make, memoryKV: mem } = await import('../worker/account-api.mjs');
   const h = make({ kv: mem(), secure: false, resetCode: 'correct-horse-battery' });
   const api = (body) => h(new Request('http://x/api/account/reset', { method: 'POST', headers: { 'x-tdw': '1' }, body: JSON.stringify(body) }), 'reset');
   for (let k = 0; k < 8; k++) assert.equal((await api({ email: 'a@b.co', code: 'nope-nope-nope', auth: 'B'.repeat(43) })).status, 401);

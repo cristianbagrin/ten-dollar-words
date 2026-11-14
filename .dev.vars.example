@@ -1,0 +1,5 @@
+# Secrets for `npx wrangler dev` on this computer. Copy this file to .dev.vars (git ignores it).
+# In production the same name is a Worker secret: npx wrangler secret put TDW_RESET_CODE
+#
+# TDW_RESET_CODE turns on "Forgot your password?" (8 characters or more). Leave it out and resets are off.
+TDW_RESET_CODE=local-reset-code-123

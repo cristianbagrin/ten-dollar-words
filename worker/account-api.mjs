@@ -56,35 +56,43 @@ const fail = (status, error, message, extra) => json(status, Object.assign({ err
 
 const docOut = (doc) => (doc && doc.ct ? { rev: doc.rev, iv: doc.iv, ct: doc.ct } : { rev: doc ? doc.rev : 0 });
 
-// A Netlify Blobs store as the small key-value interface the handler uses.
-export function blobsKV(store) {
+/* A Cloudflare D1 database as the small key-value interface the handler uses: one table, kv
+   (migrations/0001_accounts.sql). D1 sends every query to one primary database, so a read always
+   sees the last write, and each write below is one statement, so "only if unchanged" and "only if
+   new" can't race. Each write gets a fresh random ETag, so a row deleted and made again never
+   matches an old one. `meta` holds what Netlify Blobs kept beside each value, from the move. */
+export function d1KV(db) {
+  const tag = () => '"' + crypto.randomBytes(12).toString('hex') + '"';
+  const changed = (r) => !!(r && r.meta && r.meta.changes > 0);
   return {
     async get(key) {
-      const r = await store.getWithMetadata(key, { type: 'json' });
-      if (!r) return null;
-      let etag = r.etag;
-      if (!etag) { // Netlify's local Blobs server leaves the ETag off reads; a listing has it
-        const { blobs } = await store.list({ prefix: key });
-        const hit = blobs.find((b) => b.key === key);
-        etag = hit && hit.etag;
-      }
-      return { data: r.data, etag };
+      const row = await db.prepare('SELECT v, etag FROM kv WHERE k = ?1').bind(key).first();
+      return row ? { data: JSON.parse(row.v), etag: row.etag } : null;
     },
     async put(key, value, cond) {
       if (cond && 'etag' in cond && !cond.etag) return false; // never turn a checked write into a blind one
-      const opts = cond && cond.etag ? { onlyIfMatch: cond.etag } : cond && cond.isNew ? { onlyIfNew: true } : undefined;
-      const r = await store.setJSON(key, value, opts);
-      return !r || r.modified !== false;
+      const v = JSON.stringify(value);
+      if (cond && cond.etag) {
+        return changed(await db.prepare('UPDATE kv SET v = ?2, etag = ?3, meta = NULL WHERE k = ?1 AND etag = ?4').bind(key, v, tag(), cond.etag).run());
+      }
+      if (cond && cond.isNew) {
+        return changed(await db.prepare('INSERT INTO kv (k, v, etag) VALUES (?1, ?2, ?3) ON CONFLICT (k) DO NOTHING').bind(key, v, tag()).run());
+      }
+      await db.prepare('INSERT INTO kv (k, v, etag) VALUES (?1, ?2, ?3) ON CONFLICT (k) DO UPDATE SET v = excluded.v, etag = excluded.etag, meta = NULL')
+        .bind(key, v, tag()).run();
+      return true;
     },
-    del: (key) => store.delete(key),
+    async del(key) {
+      await db.prepare('DELETE FROM kv WHERE k = ?1').bind(key).run();
+    },
     async keys(prefix) {
-      const { blobs } = await store.list({ prefix });
-      return blobs.map((b) => b.key);
+      const { results } = await db.prepare('SELECT k FROM kv WHERE substr(k, 1, length(?1)) = ?1 ORDER BY k').bind(prefix).all();
+      return results.map((r) => r.k);
     }
   };
 }
 
-// In memory, for tests and the local dev server. Same answers as blobsKV.
+// In memory, for tests and the local dev server. Same answers as d1KV.
 export function memoryKV() {
   const m = new Map();
   let n = 0;

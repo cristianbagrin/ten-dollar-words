@@ -316,10 +316,62 @@
     return config && typeof config === 'object' ? config : null;
   }
 
+  /* ---------- A backup of everything this browser keeps ----------
+     For moving to another browser or web address, where localStorage starts empty. It leaves
+     out the account's own record (it holds the key the account is encrypted with; each address
+     signs in for itself) and what only matters for a minute. */
+  const BACKUP_SKIP = new Set([ACCOUNT, PROBE, MARKS, 'tdw.syncWant', 'tdw.notionBase']);
+
+  function exportAll() {
+    check();
+    const items = {};
+    const keys = [];
+    if (!memoryOnly) {
+      try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch (_) { useMemory(); }
+    }
+    keys.push(...mem.keys());
+    for (const k of keys) if (k && k.startsWith('tdw.') && !BACKUP_SKIP.has(k) && !(k in items)) { const v = get(k); if (v != null) items[k] = v; }
+    return { app: 'ten-dollar-words', backup: 1, from: location.origin, at: Date.now(), items };
+  }
+
+  /* Fills this browser in from a backup and never overwrites anything newer. A draft goes in
+     unless this browser has a newer copy of it (by id, or the same Notion page fetched here
+     afresh); everything else goes in only where this browser has nothing. Returns what it did,
+     or null when the file isn't a backup. The page reloads after, so nothing holds an old copy. */
+  function importAll(backup) {
+    if (!backup || backup.app !== 'ten-dollar-words' || !backup.items || typeof backup.items !== 'object') return null;
+    load();
+    const done = { drafts: 0, kept: 0, other: 0, failed: 0 };
+    const put = (k, v) => { if (set(k, v) === true) return true; done.failed++; return false; };
+    for (const k of Object.keys(backup.items)) {
+      const v = backup.items[k];
+      if (typeof v !== 'string' || !k.startsWith('tdw.') || BACKUP_SKIP.has(k)) continue;
+      if (!k.startsWith(PREFIX)) {
+        if (get(k) == null && put(k, v)) done.other++;
+        continue;
+      }
+      const raw = parse(v, null);
+      if (!raw || typeof raw !== 'object') continue;
+      const id = k.slice(PREFIX.length);
+      const twin = drafts.get(id) || (raw.notionId ? findByNotionId(raw.notionId) : null);
+      // A copy here wins only when it is newer: by id, its last save; for the same Notion page
+      // under another id (pulled from Notion here), only typing newer than the backup's.
+      const mine = twin && (twin.id === id ? twin.updatedAt >= (Number(raw.updatedAt) || 0) : twin.dirty && twin.textAt > (Number(raw.textAt) || 0));
+      if (mine) { done.kept++; continue; }
+      if (!put(k, v)) continue;
+      if (twin && twin.id !== id) { remove(PREFIX + twin.id); drafts.delete(twin.id); }
+      drafts.set(id, normalize(Object.assign({}, raw, { id })));
+      done.drafts++;
+    }
+    const last = backup.items['tdw.last'];
+    if (typeof last === 'string' && drafts.has(last)) set('tdw.last', last);
+    return done;
+  }
+
   TDW.Store = {
     DEFAULTS,
     listDrafts, getDraft, findByNotionId, saveDraft, deleteDraft, newDraft, displayTitle, firstSentence, countWords,
-    getSettings, getStoredSettings,
+    getSettings, getStoredSettings, exportAll, importAll,
     saveSettings(s) { set('tdw.settings', JSON.stringify(s)); },
     getAccount,
     setAccount(a) { if (a) set(ACCOUNT, JSON.stringify(a)); else remove(ACCOUNT); },
