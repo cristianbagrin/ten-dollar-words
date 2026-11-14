@@ -18,8 +18,8 @@
     {
       "binding": "DB",
       "database_name": "tendollarwords",
-      // From `npx wrangler d1 create tendollarwords`. Local dev (wrangler dev) doesn't need the real one.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // The production database (created 2026-11-14). Local dev (wrangler dev) uses a local copy.
+      "database_id": "99c5ebd3-f016-4e64-8bdc-3edbd4b1aab4",
       "migrations_dir": "migrations"
     }
   ],
